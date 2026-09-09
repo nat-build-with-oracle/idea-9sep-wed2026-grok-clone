@@ -56,6 +56,8 @@ public enum WorkspaceMutation: Sendable {
   /// Atomically replaces only editable bot fields when they still match `expected`.
   case editBot(id: UUID, expected: BotProfile, replacement: BotProfile)
   case setHidden(botID: UUID, at: Date?)
+  /// Deletes only after the persisted destructive impact still matches the confirmed plan.
+  case deleteBot(expected: BotDeletionPlan)
   case createGroup(Conversation)
   case updateGroup(id: UUID, title: String, members: [UUID])
   /// Atomically replaces only editable group fields when they still match `expected`.
@@ -76,6 +78,7 @@ public enum WorkspaceMutation: Sendable {
 public protocol WorkspaceRepository: Sendable {
   func snapshot() async throws -> WorkspaceSnapshot
   func exportSnapshot() async throws -> WorkspaceExportDocument
+  func botDeletionPlan(botID: UUID) async throws -> BotDeletionPlan
   @discardableResult func apply(_ mutation: WorkspaceMutation, expectedRevision: Int64?)
     async throws -> Int64
   func messages(conversationID: UUID, beforeSequence: Int64?, limit: Int) async throws
@@ -87,6 +90,10 @@ public protocol WorkspaceRepository: Sendable {
 extension WorkspaceRepository {
   public func exportSnapshot() async throws -> WorkspaceExportDocument {
     throw WorkspaceExportError.unsupportedRepository
+  }
+
+  public func botDeletionPlan(botID: UUID) async throws -> BotDeletionPlan {
+    throw BotDeletionError.unsupportedRepository
   }
 
   public func message(id: UUID) async throws -> Message {

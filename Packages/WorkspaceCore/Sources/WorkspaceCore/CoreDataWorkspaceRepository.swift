@@ -109,6 +109,13 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
   }
 
+  public func botDeletionPlan(botID: UUID) async throws -> BotDeletionPlan {
+    try await context.perform {
+      try self.requireOpen()
+      return try self.makeBotDeletionPlan(botID: botID)
+    }
+  }
+
   @discardableResult public func apply(_ mutation: WorkspaceMutation, expectedRevision: Int64?)
     async throws -> Int64
   {
@@ -194,6 +201,28 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     await context.perform { self.failNextSave = true }
   }
 
+  /// Test-only corruption seam proving destructive operations refuse attachment references that
+  /// the v1 store cannot otherwise create or own.
+  func injectUnsupportedAttachmentReferenceForTesting(messageID: UUID) async throws {
+    try await context.perform {
+      try self.requireOpen()
+      do {
+        let message: Message = try self.read("Message", id: messageID)
+        let corrupted = Message(
+          id: message.id, conversationID: message.conversationID, sequence: message.sequence,
+          role: message.role, speakerBotID: message.speakerBotID,
+          speakerNameSnapshot: message.speakerNameSnapshot, text: message.text,
+          createdAt: message.createdAt, replyToID: message.replyToID,
+          attachmentIDs: [UUID()], generationID: message.generationID)
+        try self.put("Message", value: corrupted)
+        try self.context.save()
+      } catch {
+        self.context.rollback()
+        throw error
+      }
+    }
+  }
+
   private func mutate(_ mutation: WorkspaceMutation) throws {
     switch mutation {
     case .createBot(let input, let conversationID):
@@ -243,6 +272,25 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       bot.hiddenAt = at
       try put("Bot", value: bot)
 
+    case .deleteBot(let expected):
+      let current = try makeBotDeletionPlan(botID: expected.botID)
+      guard current.hasSameContent(as: expected) else {
+        throw BotDeletionError.confirmationChanged
+      }
+      guard current.activeGenerationIDs.isEmpty else { throw BotDeletionError.activeWork }
+
+      for id in current.messageIDs { try delete("Message", id: id) }
+      for id in current.draftConversationIDs { try delete("Draft", id: id) }
+      for id in current.generationIDs { try delete("Generation", id: id) }
+      for id in current.routineIDs { try delete("Routine", id: id) }
+      for id in current.directConversationIDs { try delete("Conversation", id: id) }
+      for affected in current.affectedGroups {
+        var group: Conversation = try read("Conversation", id: affected.id)
+        group.memberBotIDs = affected.remainingMemberBotIDs
+        try put("Conversation", value: group)
+      }
+      try delete("Bot", id: current.botID)
+
     case .createGroup(var conversation):
       guard conversation.kind == .group, conversation.nextSequence == 1,
         conversation.lastReadSequence == 0
@@ -265,9 +313,15 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     case .editGroup(let id, let expected, let replacement):
       var conversation: Conversation = try read("Conversation", id: id)
       guard conversation.kind == .group else { throw WorkspaceError.invalidMembers }
-      let expected = try expected.validated()
       let replacement = try replacement.validated()
-      guard GroupProfile(conversation) == expected else { throw WorkspaceError.editConflict }
+      let current = GroupProfile(conversation)
+      if current.memberBotIDs.count < 2 {
+        // Confirmed bot deletion may intentionally leave a readable zero/one-member group. Its
+        // exact stored snapshot remains a valid CAS expectation solely so the UI can repair it.
+        guard current == expected else { throw WorkspaceError.editConflict }
+      } else {
+        guard current == (try expected.validated()) else { throw WorkspaceError.editConflict }
+      }
       try validateEditedMembers(
         replacement.memberBotIDs, retaining: Set(conversation.memberBotIDs))
       conversation.title = replacement.title
@@ -377,8 +431,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       else {
         throw WorkspaceError.identityConflict
       }
-      let _: Bot = try read("Bot", id: generation.targetBotID)
       var conversation: Conversation = try read("Conversation", id: generation.conversationID)
+      if conversation.kind == .group {
+        try validateMembers(conversation.memberBotIDs, allowHidden: true)
+      }
+      let _: Bot = try read("Bot", id: generation.targetBotID)
       guard conversation.memberBotIDs.contains(generation.targetBotID),
         conversation.nextSequence < Int64.max
       else {
@@ -442,6 +499,57 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   private func validateProvider(_ id: UUID?) throws {
     if let id { let _: ProviderConfig = try read("Provider", id: id) }
   }
+  private func makeBotDeletionPlan(botID: UUID) throws -> BotDeletionPlan {
+    let bot: Bot = try read("Bot", id: botID)
+    let conversations = try all("Conversation", as: Conversation.self)
+    let directConversations = conversations.filter {
+      $0.kind == .direct && $0.memberBotIDs.contains(botID)
+    }
+    let directIDs = Set(directConversations.map(\.id))
+    let messages = try all("Message", as: Message.self).filter {
+      directIDs.contains($0.conversationID)
+    }
+    let drafts = try all("Draft", as: Draft.self).filter {
+      directIDs.contains($0.conversationID)
+    }
+    // Attachment persistence has not shipped. Refuse destructive cleanup if unexpected references
+    // exist rather than deleting bytes that this repository cannot account for.
+    guard messages.allSatisfy(\.attachmentIDs.isEmpty), drafts.allSatisfy(\.attachmentIDs.isEmpty)
+    else { throw BotDeletionError.unsupportedAttachments }
+
+    let generations = try all("Generation", as: Generation.self)
+    let deletedGenerations = generations.filter { directIDs.contains($0.conversationID) }
+    let routines = try all("Routine", as: Routine.self).filter { $0.ownerBotID == botID }
+    let groups = conversations.filter {
+      $0.kind == .group && $0.memberBotIDs.contains(botID)
+    }.map {
+      BotDeletionPlan.AffectedGroup(
+        id: $0.id, title: $0.title,
+        remainingMemberBotIDs: $0.memberBotIDs.filter { $0 != botID })
+    }
+    let initialCancellationIDs = Set(directConversations.map(\.id) + groups.map(\.id))
+    let activeGenerations = generations.filter {
+      !$0.state.isTerminal
+        && ($0.targetBotID == botID || initialCancellationIDs.contains($0.conversationID))
+    }
+    let cancellationConversationIDs = initialCancellationIDs.union(
+      activeGenerations.map(\.conversationID))
+
+    return BotDeletionPlan(
+      botID: bot.id, name: bot.name,
+      directConversationIDs: sortedIDs(directConversations.map(\.id)),
+      messageIDs: sortedIDs(messages.map(\.id)),
+      draftConversationIDs: sortedIDs(drafts.map(\.conversationID)),
+      generationIDs: sortedIDs(deletedGenerations.map(\.id)),
+      routineIDs: sortedIDs(routines.map(\.id)),
+      affectedGroups: groups.sorted { $0.id.uuidString < $1.id.uuidString },
+      activeGenerationIDs: sortedIDs(activeGenerations.map(\.id)),
+      cancellationConversationIDs: sortedIDs(Array(cancellationConversationIDs)))
+  }
+
+  private func sortedIDs(_ ids: [UUID]) -> [UUID] {
+    ids.sorted { $0.uuidString < $1.uuidString }
+  }
   private func validateMembers(_ ids: [UUID], allowHidden: Bool = false) throws {
     _ = try GroupProfile(title: "Members", memberBotIDs: ids).validated()
     for id in ids {
@@ -493,6 +601,12 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     request.predicate = NSPredicate(format: "id == %@", id)
     request.fetchLimit = 1
     return try context.fetch(request).first
+  }
+  private func delete(_ entity: String, id: UUID) throws {
+    guard let record = try find(entity, id: id.uuidString) else {
+      throw WorkspaceError.missingRecord
+    }
+    context.delete(record)
   }
   private func read<T: Decodable>(_ entity: String, id: UUID) throws -> T {
     guard let record = try find(entity, id: id.uuidString) else {

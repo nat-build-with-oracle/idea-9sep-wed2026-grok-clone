@@ -2,6 +2,13 @@ import Foundation
 
 /// Persistence-before-effect, one active reply per conversation, at most three globally.
 public actor GenerationCoordinator {
+  private struct OperationEpoch: Sendable {
+    let botID: UUID
+    let conversationID: UUID
+    let bot: UInt64
+    let conversation: UInt64
+  }
+
   private struct Job: Sendable {
     let generationID: UUID
     let attemptID: UUID
@@ -9,6 +16,7 @@ public actor GenerationCoordinator {
     let userMessageID: UUID
     let targetBotID: UUID
     let request: ChatRequest
+    let epoch: OperationEpoch
   }
   private let repository: any WorkspaceRepository
   private let credentials: any CredentialStore
@@ -17,7 +25,14 @@ public actor GenerationCoordinator {
   private let onError: @Sendable (String) async -> Void
   private var pending: [Job] = []
   private var active: [UUID: Task<Void, Never>] = [:]
+  private var activeJobs: [UUID: Job] = [:]
   private var activeConversations: Set<UUID> = []
+  private var botEpochs: [UUID: UInt64] = [:]
+  private var conversationEpochs: [UUID: UInt64] = [:]
+  private var blockedBots: Set<UUID> = []
+  private var blockedConversations: Set<UUID> = []
+  private var pumpSuspensionCount = 0
+  private var deletionInProgress = false
   private var shuttingDown = false
 
   public init(
@@ -34,25 +49,28 @@ public actor GenerationCoordinator {
   }
 
   public func submit(_ command: SendCommand, configuration: ProviderConfig) async throws -> UUID {
-    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    let epoch = try captureEpoch(
+      botID: command.targetBotID, conversationID: command.conversationID)
     let request = try await prepare(
       configuration: configuration, conversationID: command.conversationID,
       targetBotID: command.targetBotID, beforeSequence: nil, newText: command.text,
-      replyToID: command.replyToID)
+      replyToID: command.replyToID, epoch: epoch)
     try Task.checkCancellation()
-    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    try requireCurrent(epoch)
     // A failing save cannot reach provider.stream(). The editable draft remains in the repository.
     try await repository.apply(.beginGeneration(command))
-    guard !shuttingDown else {
+    do {
+      try requireCurrent(epoch)
+    } catch {
       try await repository.apply(
         .cancelGeneration(id: command.generationID, attemptID: command.attemptID))
-      throw WorkspaceError.storeClosed
+      throw error
     }
     pending.append(
       Job(
         generationID: command.generationID, attemptID: command.attemptID,
         conversationID: command.conversationID, userMessageID: command.userMessageID,
-        targetBotID: command.targetBotID, request: request))
+        targetBotID: command.targetBotID, request: request, epoch: epoch))
     pump()
     await onChange(command.conversationID)
     return command.generationID
@@ -60,29 +78,41 @@ public actor GenerationCoordinator {
 
   public func retry(_ generationID: UUID, configuration: ProviderConfig) async throws {
     guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    // The target IDs are not known until the repository read returns. Capture the current epoch
+    // maps first so a deletion that starts and finishes during that suspension is still detectable.
+    let capturedBotEpochs = botEpochs
+    let capturedConversationEpochs = conversationEpochs
     let snapshot = try await repository.snapshot()
     guard let generation = snapshot.generations.first(where: { $0.id == generationID }),
       [.failed, .cancelled, .interrupted].contains(generation.state), active[generationID] == nil
     else {
       throw WorkspaceError.identityConflict
     }
+    let epoch = OperationEpoch(
+      botID: generation.targetBotID, conversationID: generation.conversationID,
+      bot: capturedBotEpochs[generation.targetBotID, default: 0],
+      conversation: capturedConversationEpochs[generation.conversationID, default: 0])
+    try requireCurrent(epoch)
     let message = try await repository.message(id: generation.userMessageID)
+    try requireCurrent(epoch)
     let request = try await prepare(
       configuration: configuration, conversationID: generation.conversationID,
       targetBotID: generation.targetBotID, beforeSequence: message.sequence + 1, newText: nil,
-      replyToID: message.replyToID)
+      replyToID: message.replyToID, epoch: epoch)
     let attempt = UUID()
-    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    try requireCurrent(epoch)
     try await repository.apply(.retryGeneration(id: generationID, attemptID: attempt))
-    guard !shuttingDown else {
+    do {
+      try requireCurrent(epoch)
+    } catch {
       try await repository.apply(.cancelGeneration(id: generationID, attemptID: attempt))
-      throw WorkspaceError.storeClosed
+      throw error
     }
     pending.append(
       Job(
         generationID: generationID, attemptID: attempt,
         conversationID: generation.conversationID, userMessageID: generation.userMessageID,
-        targetBotID: generation.targetBotID, request: request))
+        targetBotID: generation.targetBotID, request: request, epoch: epoch))
     pump()
     await onChange(generation.conversationID)
   }
@@ -120,24 +150,138 @@ public actor GenerationCoordinator {
 
   public func waitForIdle() async {
     while !active.isEmpty || (!shuttingDown && !pending.isEmpty) {
-      if let task = active.values.first { await task.value } else { pump() }
+      if let task = active.values.first {
+        await task.value
+      } else if pumpSuspensionCount == 0 {
+        pump()
+      } else {
+        await Task.yield()
+      }
     }
+  }
+
+  /// Coordinates transport cancellation with the repository's compare-and-delete mutation.
+  /// A confirmation which is already stale at preflight performs no cancellation. A later content
+  /// race may still make the final atomic deletion fail after confirmed replies have been stopped.
+  public func deleteBot(expected plan: BotDeletionPlan) async throws {
+    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    let current = try await repository.botDeletionPlan(botID: plan.botID)
+    // Naturally completed work may disappear from the active set. Newly queued group work does not
+    // change destructive content, however, and must be shown in a fresh confirmation before it is
+    // cancelled.
+    guard current.hasSameContent(as: plan),
+      Set(current.activeGenerationIDs).isSubset(of: Set(plan.activeGenerationIDs))
+    else { throw BotDeletionError.confirmationChanged }
+    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    guard !deletionInProgress else { throw WorkspaceError.identityConflict }
+
+    // Cancellation scope comes only from the repository's fresh plan. Public DTO fields supplied by
+    // a caller must never be able to widen transport cancellation to unrelated conversations.
+    let conversationIDs = Set(current.cancellationConversationIDs)
+    let confirmedActiveIDs = Set(plan.activeGenerationIDs)
+    let isAffected: (Job) -> Bool = { job in
+      job.targetBotID == plan.botID || conversationIDs.contains(job.conversationID)
+    }
+    let inMemoryAffectedIDs = Set(
+      pending.filter(isAffected).map(\.generationID)
+        + activeJobs.values.filter(isAffected).map(\.generationID))
+    guard inMemoryAffectedIDs.isSubset(of: confirmedActiveIDs) else {
+      throw BotDeletionError.confirmationChanged
+    }
+
+    deletionInProgress = true
+    pumpSuspensionCount += 1
+    var barrierInstalled = false
+    defer {
+      if barrierInstalled {
+        blockedBots.remove(plan.botID)
+        blockedConversations.subtract(conversationIDs)
+      }
+      pumpSuspensionCount -= 1
+      deletionInProgress = false
+      pump()
+    }
+
+    // Include non-terminal persisted work that this coordinator did not create, such as recovered
+    // generations. Cancellation state changes are intentionally ignored by the repository's final
+    // content-impact comparison.
+    let snapshot = try await repository.snapshot()
+    let persistedAffected = snapshot.generations.filter {
+      !$0.state.isTerminal
+        && ($0.targetBotID == plan.botID || conversationIDs.contains($0.conversationID))
+    }
+    guard Set(persistedAffected.map(\.id)).isSubset(of: confirmedActiveIDs) else {
+      throw BotDeletionError.confirmationChanged
+    }
+    let frozenInMemoryAffectedIDs = Set(
+      pending.filter(isAffected).map(\.generationID)
+        + activeJobs.values.filter(isAffected).map(\.generationID))
+    guard frozenInMemoryAffectedIDs.isSubset(of: confirmedActiveIDs) else {
+      throw BotDeletionError.confirmationChanged
+    }
+
+    blockedBots.insert(plan.botID)
+    blockedConversations.formUnion(conversationIDs)
+    botEpochs[plan.botID, default: 0] &+= 1
+    for id in conversationIDs { conversationEpochs[id, default: 0] &+= 1 }
+    barrierInstalled = true
+    let removedPending = pending.filter(isAffected)
+    pending.removeAll(where: isAffected)
+    let affectedActive = activeJobs.values.filter(isAffected)
+    let running = affectedActive.compactMap { active[$0.generationID] }
+    // Stop transport promptly. The explicit persistence loop below owns cancellation state, so the
+    // invalidated run tasks intentionally do not attempt a second repository mutation.
+    for task in running { task.cancel() }
+    var firstFailure: (any Error)?
+    var cancelledIDs: Set<UUID> = []
+    for generation in persistedAffected {
+      do {
+        try await repository.apply(
+          .cancelGeneration(id: generation.id, attemptID: generation.attemptID))
+        cancelledIDs.insert(generation.id)
+      } catch {
+        if firstFailure == nil { firstFailure = error }
+      }
+    }
+    // A just-queued in-memory job may not have appeared in the snapshot if its submit was already
+    // invalidated. Persist cancellation from the captured job identity as a best effort.
+    for job in removedPending where !cancelledIDs.contains(job.generationID) {
+      do {
+        try await repository.apply(
+          .cancelGeneration(id: job.generationID, attemptID: job.attemptID))
+      } catch WorkspaceError.missingRecord {
+        // Its invalidated submit never committed, so there is no work to resume.
+      } catch {
+        if firstFailure == nil { firstFailure = error }
+      }
+    }
+
+    for task in running { await task.value }
+    if let firstFailure { throw firstFailure }
+    try await repository.apply(.deleteBot(expected: plan))
   }
 
   private func prepare(
     configuration: ProviderConfig, conversationID: UUID, targetBotID: UUID,
-    beforeSequence: Int64?, newText: String?, replyToID: UUID?
+    beforeSequence: Int64?, newText: String?, replyToID: UUID?, epoch: OperationEpoch
   ) async throws -> ChatRequest {
     let snapshot = try await repository.snapshot()
+    try requireCurrent(epoch)
     guard snapshot.providers.contains(configuration),
       let bot = snapshot.bots.first(where: { $0.id == targetBotID }),
       let conversation = snapshot.conversations.first(where: { $0.id == conversationID }),
       conversation.memberBotIDs.contains(targetBotID)
     else { throw WorkspaceError.invalidProvider }
+    if conversation.kind == .group, !(2...6).contains(conversation.memberBotIDs.count) {
+      throw WorkspaceError.invalidMembers
+    }
     let replyTarget = try await loadReplyTarget(id: replyToID, conversationID: conversationID)
+    try requireCurrent(epoch)
     let credential = try await credentials.read(configuration.credentialReference)
+    try requireCurrent(epoch)
     let page = try await repository.messages(
       conversationID: conversationID, beforeSequence: beforeSequence, limit: 100)
+    try requireCurrent(epoch)
     var contextMessages = page.messages.filter { $0.role != .event && !$0.text.isEmpty }
     if let replyTarget, !contextMessages.contains(where: { $0.id == replyTarget.id }) {
       contextMessages.insert(replyTarget, at: 0)
@@ -158,7 +302,32 @@ public actor GenerationCoordinator {
     let request = ChatRequest(provider: configuration, turns: turns, credential: credential)
     // Validate URL, key shape and payload before clearing a draft or queuing an effect.
     _ = try ProviderRouter.makeRequest(request)
+    try requireCurrent(epoch)
     return request
+  }
+
+  private func captureEpoch(botID: UUID, conversationID: UUID) throws -> OperationEpoch {
+    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    guard !blockedBots.contains(botID), !blockedConversations.contains(conversationID) else {
+      throw WorkspaceError.missingRecord
+    }
+    return OperationEpoch(
+      botID: botID, conversationID: conversationID, bot: botEpochs[botID, default: 0],
+      conversation: conversationEpochs[conversationID, default: 0])
+  }
+
+  private func requireCurrent(_ epoch: OperationEpoch) throws {
+    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    guard !blockedBots.contains(epoch.botID), !blockedConversations.contains(epoch.conversationID),
+      botEpochs[epoch.botID, default: 0] == epoch.bot,
+      conversationEpochs[epoch.conversationID, default: 0] == epoch.conversation
+    else { throw WorkspaceError.missingRecord }
+  }
+
+  private func isCurrent(_ epoch: OperationEpoch) -> Bool {
+    !blockedBots.contains(epoch.botID) && !blockedConversations.contains(epoch.conversationID)
+      && botEpochs[epoch.botID, default: 0] == epoch.bot
+      && conversationEpochs[epoch.conversationID, default: 0] == epoch.conversation
   }
 
   private func loadReplyTarget(id: UUID?, conversationID: UUID) async throws -> Message? {
@@ -177,11 +346,14 @@ public actor GenerationCoordinator {
   }
 
   private func pump() {
-    while !shuttingDown, active.count < 3,
-      let index = pending.firstIndex(where: { !activeConversations.contains($0.conversationID) })
+    while !shuttingDown, pumpSuspensionCount == 0, active.count < 3,
+      let index = pending.firstIndex(where: {
+        !activeConversations.contains($0.conversationID) && isCurrent($0.epoch)
+      })
     {
       let job = pending.remove(at: index)
       activeConversations.insert(job.conversationID)
+      activeJobs[job.generationID] = job
       active[job.generationID] = Task { await self.run(job) }
     }
   }
@@ -190,11 +362,14 @@ public actor GenerationCoordinator {
     var sequence: Int64 = 1
     do {
       try Task.checkCancellation()
+      try requireCurrent(job.epoch)
       try await apply(job, sequence: sequence, kind: .started)
       try Task.checkCancellation()
+      try requireCurrent(job.epoch)
       var completed = false
       for try await event in provider.stream(job.request) {
         try Task.checkCancellation()
+        try requireCurrent(job.epoch)
         sequence += 1
         switch event {
         case .text(let text): try await apply(job, sequence: sequence, kind: .delta(text))
@@ -206,7 +381,10 @@ public actor GenerationCoordinator {
       }
       if !completed { throw ProviderError.streamEnded }
     } catch {
-      if Task.isCancelled || (error as? ProviderError) == .cancelled {
+      if !isCurrent(job.epoch) {
+        // Coordinated deletion owns persistence for invalidated jobs. Late provider events must not
+        // recreate deleted records or turn accepted cancellation into a misleading storage alert.
+      } else if Task.isCancelled || (error as? ProviderError) == .cancelled {
         do {
           try await repository.apply(
             .cancelGeneration(id: job.generationID, attemptID: job.attemptID))
@@ -221,6 +399,7 @@ public actor GenerationCoordinator {
       await onChange(job.conversationID)
     }
     active[job.generationID] = nil
+    activeJobs[job.generationID] = nil
     activeConversations.remove(job.conversationID)
     pump()
   }
