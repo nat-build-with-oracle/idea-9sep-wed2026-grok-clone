@@ -29,7 +29,7 @@ struct WorkspaceExportSection: View {
         Text(status).font(.caption).textSelection(.enabled)
       }
       if let error = store.exportError {
-        Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+        Text(error).font(.caption).foregroundStyle(ShellTheme.warning).textSelection(.enabled)
       }
     }.frame(maxWidth: .infinity, alignment: .leading)
   }

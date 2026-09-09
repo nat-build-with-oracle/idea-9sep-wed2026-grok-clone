@@ -145,8 +145,19 @@ enum ComposerInputPolicy {
   @Published var pickerMode: PickerMode = .closed
   @Published var selectedRecipients: [UUID] = []
   @Published var highlightedRecipient = 0
-  @Published var inspectorPreferred = true
-  @Published var sidebarVisible = true
+  let preferencesStorage: WorkspacePreferencesStorage
+  @Published var preferences: WorkspacePreferences {
+    didSet { preferencesStorage.save(preferences) }
+  }
+  @Published var appearanceSettingsDirty = false
+  var inspectorPreferred: Bool {
+    get { preferences.inspectorPreferred }
+    set { preferences.inspectorPreferred = newValue }
+  }
+  var sidebarVisible: Bool {
+    get { preferences.sidebarVisible }
+    set { preferences.sidebarVisible = newValue }
+  }
   @Published var panel: Panel?
   @Published var editTarget: ProfileEditTarget?
   @Published var profileEditorDirty = false
@@ -205,7 +216,10 @@ enum ComposerInputPolicy {
   var retryOpening: (() -> Void)?
   var searchRequest = 0
 
-  init(seed: Bool = true) {
+  init(seed: Bool = true, preferencesStorage: WorkspacePreferencesStorage? = nil) {
+    let storage = preferencesStorage ?? WorkspacePreferencesStorage()
+    self.preferencesStorage = storage
+    preferences = storage.load()
     if seed { seedReference() }
   }
 

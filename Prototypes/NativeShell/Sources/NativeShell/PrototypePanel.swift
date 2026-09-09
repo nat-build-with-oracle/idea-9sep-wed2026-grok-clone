@@ -35,11 +35,10 @@ struct PrototypePanel: View {
       case .routine: routineForm
       case .profile: profileForm
       }
-      if let error { Text(error).foregroundStyle(.orange).font(.system(size: 12)) }
+      if let error { Text(error).foregroundStyle(ShellTheme.warning).font(.system(size: 12)) }
     }
     .padding(26).frame(width: 440)
     .background(ShellTheme.sidebar).foregroundStyle(ShellTheme.foreground)
-    .preferredColorScheme(.dark)
     .disabled(store.isSaving)
     .onAppear { if panel == .profile { name = store.name } }
   }
@@ -62,7 +61,9 @@ struct PrototypePanel: View {
             color = option
           } label: {
             Circle().fill(ShellTheme.avatarColor(option)).frame(width: 23, height: 23)
-              .overlay(Circle().strokeBorder(color == option ? Color.white : .clear, lineWidth: 2))
+              .overlay(
+                Circle().strokeBorder(
+                  color == option ? ShellTheme.avatarSelectionRing : .clear, lineWidth: 2))
           }.buttonStyle(.plain).accessibilityLabel("\(option) avatar")
             .accessibilityAddTraits(color == option ? [.isSelected] : [])
         }

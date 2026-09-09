@@ -44,7 +44,7 @@ struct RoutineInspectorSection: View {
         Text("No runs while the app is closed, the Mac is asleep, or you are logged out.")
           .font(.system(size: 11)).foregroundStyle(ShellTheme.secondary)
         if let error = store.routineError {
-          Text(error).font(.system(size: 11)).foregroundStyle(.orange)
+          Text(error).font(.system(size: 11)).foregroundStyle(ShellTheme.warning)
         }
       } else {
         ForEach(store.routines.filter { $0.botID == store.currentBot?.id }) { routine in
@@ -130,7 +130,7 @@ struct RoutineDetailView: View {
             }.buttonStyle(.bordered)
           }
           if let error = store.routineError {
-            Text(error).foregroundStyle(.orange).textSelection(.enabled)
+            Text(error).foregroundStyle(ShellTheme.warning).textSelection(.enabled)
           }
           Divider()
           HStack {
@@ -163,7 +163,8 @@ struct RoutineDetailView: View {
               }
               Text(run.createdAt.formatted(date: .abbreviated, time: .standard)).font(.caption)
               if let failure = run.error {
-                Text(routineFailureLabel(failure)).font(.callout).foregroundStyle(.orange)
+                Text(routineFailureLabel(failure)).font(.callout).foregroundStyle(
+                  ShellTheme.warning)
               }
               if run.skippedCount > 0, let first = run.firstSkippedAt, let last = run.lastSkippedAt
               {

@@ -46,7 +46,7 @@ struct BotDeletionView: View {
             ).font(.callout).foregroundStyle(ShellTheme.secondary)
           }
           if let error = store.botDeletionError {
-            Text(error).foregroundStyle(.orange)
+            Text(error).foregroundStyle(ShellTheme.warning)
             Button("Review Current Impact") { store.reloadBotDeletionPlan() }
               .disabled(store.isDeletingBot || store.isLoadingBotDeletion)
               .accessibilityIdentifier("bot-delete-reload")
@@ -70,7 +70,6 @@ struct BotDeletionView: View {
     .padding(26).frame(width: 500)
     .foregroundStyle(ShellTheme.foreground).background(ShellTheme.sidebar)
     .background(BotDeletionSheetPolicy())
-    .preferredColorScheme(.dark)
     .interactiveDismissDisabled(true)
     .onExitCommand { store.cancelBotDeletion() }
     .accessibilityIdentifier("bot-delete-sheet")

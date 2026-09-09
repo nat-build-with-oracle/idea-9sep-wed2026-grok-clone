@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import WorkspaceCore
 
@@ -13,7 +14,27 @@ import WorkspaceCore
 }
 
 @MainActor final class ShellAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-  private let store = PreviewWorkspace(seed: false)
+  private let store: PreviewWorkspace
+  private let preferenceFixtureSuite: String?
+  private var appearanceSubscription: AnyCancellable?
+
+  override init() {
+    let arguments = ProcessInfo.processInfo.arguments
+    let durable =
+      Bundle.main.bundleIdentifier == "local.independent.BotWorkspace"
+      || arguments.contains("--workspace")
+    let isolated = arguments.contains("--verify-workspace")
+    preferenceFixtureSuite =
+      isolated && arguments.contains("--verify-appearance")
+      ? "NativeAppearanceSmoke-\(UUID())" : nil
+    let defaults =
+      preferenceFixtureSuite.flatMap { UserDefaults(suiteName: $0) }
+      ?? (durable && !isolated ? UserDefaults.standard : nil)
+    store = PreviewWorkspace(
+      seed: false,
+      preferencesStorage: WorkspacePreferencesStorage(defaults: defaults))
+    super.init()
+  }
   private var persistentRepository: CoreDataWorkspaceRepository?
   private var window: NSWindow?
   private var settingsWindow: NSWindow?
@@ -32,8 +53,13 @@ import WorkspaceCore
     } else {
       store.seedReference()
     }
-    let small = arguments.contains("--small")
-    let size = NSSize(width: small ? 800 : 1280, height: small ? 650 : 880)
+    appearanceSubscription = store.$preferences.map(\.appearance).removeDuplicates().sink {
+      [weak self] appearance in self?.applyAppearance(appearance)
+    }
+    let small = arguments.contains("--small") || arguments.contains("--minimum")
+    let minimum = verifyWorkspace && arguments.contains("--minimum")
+    let size = NSSize(
+      width: minimum ? 760 : small ? 800 : 1280, height: minimum ? 600 : small ? 650 : 880)
     let window = NSWindow(
       contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -42,8 +68,8 @@ import WorkspaceCore
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
     window.titlebarSeparatorStyle = .none
-    window.backgroundColor = NSColor(ShellTheme.background)
-    window.appearance = NSAppearance(named: .darkAqua)
+    window.backgroundColor = ShellTheme.backgroundNSColor
+    window.appearance = nil
     window.contentMinSize = NSSize(width: 760, height: 600)
     window.isReleasedWhenClosed = false
     window.contentView = NSHostingView(rootView: WorkspaceView(store: store))
@@ -81,6 +107,18 @@ import WorkspaceCore
         NSApp.terminate(nil)
       }
     }
+  }
+
+  private func applyAppearance(_ appearance: WorkspaceAppearance) {
+    switch appearance {
+    case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+    case .light: NSApp.appearance = NSAppearance(named: .aqua)
+    case .system: NSApp.appearance = nil
+    }
+    // Nil inherits the app's appearance; System must clear every former override.
+    window?.appearance = nil
+    settingsWindow?.appearance = nil
+    window?.backgroundColor = ShellTheme.backgroundNSColor
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -200,6 +238,11 @@ import WorkspaceCore
             repository: reopened, url: url, conversationID: groupID, targetID: botID,
             directory: directory, small: small, arguments: arguments)
         }
+        if arguments.contains("--verify-appearance") {
+          reopened = try await verifyAppearanceFlow(
+            repository: reopened, url: url, conversationID: groupID, targetID: botID,
+            small: small, arguments: arguments)
+        }
         if arguments.contains("--verify-routines") {
           reopened = try await verifyRoutineFlow(
             repository: reopened, url: url, botID: botID, groupID: groupID,
@@ -271,14 +314,97 @@ import WorkspaceCore
         persistentRepository = nil
         store.repository = nil
         try FileManager.default.removeItem(at: directory)
+        cleanupPreferenceFixture()
         NSApp.terminate(nil)
       } catch {
         print("NATIVE_PERSISTENCE_SMOKE=FAIL \(error.localizedDescription)")
+        cleanupPreferenceFixture()
         try? await persistentRepository?.close()
         persistentRepository = nil
         NSApp.terminate(nil)
       }
     }
+  }
+
+  private func cleanupPreferenceFixture() {
+    guard let suite = preferenceFixtureSuite else { return }
+    UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+  }
+
+  /// Exercises the real preference write/appearance propagation with an isolated suite.
+  /// No OS appearance preference, user workspace, or real credential is modified.
+  private func verifyAppearanceFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, conversationID: UUID, targetID: UUID,
+    small: Bool, arguments: [String]
+  ) async throws -> CoreDataWorkspaceRepository {
+    guard let suite = preferenceFixtureSuite, let defaults = UserDefaults(suiteName: suite) else {
+      throw WorkspaceError.invalidStore
+    }
+    try await verifyProviderFlow(
+      repository: repository, conversationID: conversationID, targetID: targetID)
+    let baseline = try await repository.snapshot()
+    let retainedText = "Keep this draft — สวัสดี"
+    store.draft = retainedText
+    store.preferences.sidebarWidth = 400
+    store.preferences.inspectorWidth = 400
+    showSettings()
+    for appearance in [WorkspaceAppearance.light, .dark, .system, .light] {
+      var edit = AppearanceSettingsDraft(store.preferences)
+      edit.appearance = appearance
+      store.preferences = edit.applying(to: store.preferences)
+      let expected: NSAppearance.Name? =
+        appearance == .system ? nil : appearance == .dark ? .darkAqua : .aqua
+      let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+      while NSApp.appearance?.name != expected || window?.appearance != nil
+        || settingsWindow?.appearance != nil
+      {
+        guard ContinuousClock.now < deadline else { throw WorkspaceError.invalidStore }
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      guard store.draft == retainedText, store.currentMessages.count == 2 else {
+        throw WorkspaceError.invalidStore
+      }
+      if let expected {
+        guard window?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == expected,
+          settingsWindow?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == expected
+        else { throw WorkspaceError.invalidStore }
+      }
+      // Layout settlement is only for fixture rendering, not a performance assertion.
+      try await Task.sleep(for: .milliseconds(100))
+      writeSnapshot(small: small, arguments: arguments + ["--appearance-\(appearance.rawValue)"])
+      writeSnapshot(
+        small: small, arguments: arguments + ["--settings", "--appearance-\(appearance.rawValue)"])
+    }
+    let persisted = WorkspacePreferencesStorage(defaults: defaults).load()
+    guard persisted == store.preferences, persisted.appearance == .light,
+      persisted.sidebarWidth == 400, persisted.inspectorWidth == 400,
+      let window
+    else { throw WorkspaceError.invalidStore }
+    let layout = WorkspaceLayout(
+      containerWidth: Double(window.contentLayoutRect.width), preferences: persisted,
+      pickerOpen: false)
+    if arguments.contains("--minimum") {
+      guard layout.sidebarWidth == 335, !layout.showsInspector else {
+        throw WorkspaceError.invalidStore
+      }
+    }
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(reopened, displayName: "Appearance smoke workspace")
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    try await store.loadMessages(conversationID)
+    let after = try await reopened.snapshot()
+    guard after.bots == baseline.bots, after.providers == baseline.providers,
+      after.generations == baseline.generations, store.draft == retainedText,
+      store.preferences == persisted, store.currentMessages.count == 2
+    else { throw WorkspaceError.invalidStore }
+    print(
+      "NATIVE_APPEARANCE_SMOKE=PASS isolatedPreferences=true lightDarkSystem=true appAndSettingsInherited=true preferencesRestored=true draftsAndMessagesPreserved=true savedWidthsPreserved=true minimumLayout=\(arguments.contains("--minimum")) physicalInputTested=false"
+    )
+    return reopened
   }
 
   /// Exercises explicit file selection, managed persistence and disclosure with synthetic local
@@ -880,7 +1006,7 @@ import WorkspaceCore
     settings.title = "Bot Workspace Settings"
     settings.contentMinSize = NSSize(width: 520, height: 620)
     settings.isReleasedWhenClosed = false
-    settings.appearance = NSAppearance(named: .darkAqua)
+    settings.appearance = nil
     settings.contentView = NSHostingView(
       rootView: ProviderSettingsView(
         store: store, discovery: discovery ?? ModelDiscoveryController()))
@@ -919,17 +1045,21 @@ import WorkspaceCore
     closing.contentView = nil
     settingsWindow = nil
     store.providerSettingsDirty = false
+    store.appearanceSettingsDirty = false
   }
 
   private func discardProviderChangesIfNeeded() -> Bool {
-    guard store.providerSettingsDirty, !store.isProviderSaving else { return true }
+    guard store.providerSettingsDirty || store.appearanceSettingsDirty else { return true }
+    guard !store.isProviderSaving else { return false }
     let alert = NSAlert()
-    alert.messageText = "Discard unsaved provider changes?"
-    alert.informativeText = "The entered credential and configuration edits have not been saved."
+    alert.messageText = "Discard unsaved Settings changes?"
+    alert.informativeText =
+      "Unsaved appearance and provider edits, including any entered credential, will be discarded."
     alert.addButton(withTitle: "Keep Editing")
     alert.addButton(withTitle: "Discard Changes")
     guard alert.runModal() == .alertSecondButtonReturn else { return false }
-    store.providerSettingsDirty = false
+    // Keep dirty state until the window actually closes. A later draft/storage
+    // failure may cancel termination and leave these edit buffers visible.
     return true
   }
   private func discardRoutineChangesIfNeeded() -> Bool {
@@ -974,33 +1104,37 @@ import WorkspaceCore
     guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
+    let appearanceState = arguments.last { $0.hasPrefix("--appearance-") }
     let state =
-      arguments.contains("--attachment-confirmation")
-      ? "attachment-confirmation"
-      : arguments.contains("--verify-routines")
-        ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
-        : arguments.contains("--deletion-confirmation")
-          ? "delete-confirmation"
-          : arguments.contains("--verify-deletion")
-            ? "degraded-group"
-            : arguments.contains("--verify-export")
-              ? "export-settings"
-              : arguments.contains("--verify-profiles")
-                ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-                : arguments.contains("--verify-codex-fixture")
-                  || arguments.contains("--verify-codex-stdin")
-                  ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-                  : arguments.contains("--verify-provider")
-                    ? (arguments.contains("--settings")
-                      ? (arguments.contains("--router-models")
-                        ? "router-model-settings" : "provider-settings")
-                      : "provider-chat")
-                    : arguments.contains("--verify-replies")
-                      ? "reply-chat"
-                      : arguments.contains("--verify-workspace")
-                        ? "durable-workspace"
-                        : arguments.contains("--group")
-                          ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      appearanceState.map {
+        String($0.dropFirst(2)) + (arguments.contains("--settings") ? "-settings" : "-workspace")
+      }
+      ?? (arguments.contains("--attachment-confirmation")
+        ? "attachment-confirmation"
+        : arguments.contains("--verify-routines")
+          ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
+          : arguments.contains("--deletion-confirmation")
+            ? "delete-confirmation"
+            : arguments.contains("--verify-deletion")
+              ? "degraded-group"
+              : arguments.contains("--verify-export")
+                ? "export-settings"
+                : arguments.contains("--verify-profiles")
+                  ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+                  : arguments.contains("--verify-codex-fixture")
+                    || arguments.contains("--verify-codex-stdin")
+                    ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+                    : arguments.contains("--verify-provider")
+                      ? (arguments.contains("--settings")
+                        ? (arguments.contains("--router-models")
+                          ? "router-model-settings" : "provider-settings")
+                        : "provider-chat")
+                      : arguments.contains("--verify-replies")
+                        ? "reply-chat"
+                        : arguments.contains("--verify-workspace")
+                          ? "durable-workspace"
+                          : arguments.contains("--group")
+                            ? "group" : arguments.contains("--picker") ? "picker" : "chat")
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

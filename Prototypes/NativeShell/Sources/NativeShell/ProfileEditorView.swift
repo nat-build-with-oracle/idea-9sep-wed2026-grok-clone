@@ -387,12 +387,12 @@ struct ProfileEditorView: View {
         }
         if let validation = controller.validationMessage, controller.baseline != nil {
           Label(validation, systemImage: "exclamationmark.triangle.fill")
-            .font(.caption).foregroundStyle(.orange)
+            .font(.caption).foregroundStyle(ShellTheme.warning)
             .accessibilityIdentifier("profile-validation-error")
         }
         if let error = controller.errorMessage {
           VStack(alignment: .leading, spacing: 8) {
-            Text(error).foregroundStyle(.orange)
+            Text(error).foregroundStyle(ShellTheme.warning)
               .accessibilityIdentifier("profile-save-error")
             Button("Reload latest") { _ = controller.requestReload() }
               .accessibilityIdentifier("profile-reload-latest")
@@ -411,7 +411,6 @@ struct ProfileEditorView: View {
     .background(ShellTheme.background)
     .background(ProfileSheetWindowPolicy())
     .foregroundStyle(ShellTheme.foreground)
-    .preferredColorScheme(.dark)
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
         Divider()
@@ -487,7 +486,8 @@ struct ProfileEditorView: View {
               Circle().fill(ShellTheme.avatarColor(color)).frame(width: 28, height: 28)
                 .overlay {
                   if controller.color == color {
-                    Image(systemName: "checkmark").font(.caption.bold()).foregroundStyle(.white)
+                    Image(systemName: "checkmark").font(.caption.bold())
+                      .foregroundStyle(ShellTheme.avatarSelectionRing)
                   }
                 }
             }

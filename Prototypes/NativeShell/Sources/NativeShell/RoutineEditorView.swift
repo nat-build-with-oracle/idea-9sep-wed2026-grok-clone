@@ -574,12 +574,12 @@ struct RoutineEditorView: View {
         }
         if let validation = controller.validationMessage {
           Label(validation, systemImage: "exclamationmark.triangle.fill")
-            .font(.caption).foregroundStyle(.orange)
+            .font(.caption).foregroundStyle(ShellTheme.warning)
             .accessibilityIdentifier("routine-validation-error")
         }
         if let error = controller.errorMessage {
           VStack(alignment: .leading, spacing: 8) {
-            Text(error).foregroundStyle(.orange)
+            Text(error).foregroundStyle(ShellTheme.warning)
               .accessibilityIdentifier("routine-save-error")
             if controller.target.routineID != nil {
               Button("Reload latest") { _ = controller.requestReload() }
@@ -595,7 +595,6 @@ struct RoutineEditorView: View {
     .background(ShellTheme.background)
     .background(RoutineSheetWindowPolicy())
     .foregroundStyle(ShellTheme.foreground)
-    .preferredColorScheme(.dark)
     .safeAreaInset(edge: .bottom, spacing: 0) { footer }
     .interactiveDismissDisabled(true)
     .onAppear { _ = controller.load() }

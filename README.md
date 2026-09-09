@@ -21,6 +21,7 @@ scripts/native-app.sh smoke
 scripts/native-app.sh provider-smoke # offline fixture; no key or live network
 scripts/native-app.sh codex-smoke    # synthetic auth + intercepted Responses SSE
 scripts/native-app.sh profile-smoke  # bot edit + group edit + close/reopen
+scripts/native-app.sh appearance-smoke # isolated Dark/Light/System + persistent pane preferences
 scripts/native-app.sh attachment-smoke # synthetic selected files + consent + offline send
 scripts/native-app.sh reply-smoke    # reply draft restart + referenced fixture send
 scripts/native-app.sh export-smoke   # JSON export + atomic file replacement (text fixture)
@@ -48,6 +49,7 @@ third-party dependency installation is needed for the current app or tests.
 
 | Area | Current status |
 |---|---|
+| Appearance/layout | Saved Dark/Light/System, Save/Cancel settings, persistent pane widths/visibility, minimum-width chat protection |
 | Native UI | Three-pane workspace, bot/group creation and profile editing, search, hide/show, confirmed bot deletion/group repair, native text composer, message replies |
 | Local data | Core Data v3 with tested v1/v2 migration, text/reply drafts, message pagination, routine ledger, JSON export v3 including stored attachment bytes |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
@@ -56,8 +58,8 @@ third-party dependency installation is needed for the current app or tests.
 | Text attachments | Native file picker, persistent/removable chips, atomic managed copies and per-send file/destination confirmation; no images |
 | Remaining gates | Broad provider/9router validation, real file-picker sandbox grants and remaining native accessibility flows |
 
-Verification: **438 tests** (234 core + 204 shell), desktop/narrow native persistence,
-offline provider smokes, profile-edit and reply close/reopen smokes, attachment storage/migration, importer and explicit-consent guards, text-fixture export, confirmed deletion and routine editor/run/restart smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
+Verification: **460 tests** (234 core + 226 shell), desktop/narrow native persistence,
+offline provider smokes, profile-edit and reply close/reopen smokes, attachment storage/migration, importer and explicit-consent guards, text-fixture export, confirmed deletion and routine editor/run/restart smokes, appearance/pane preference tests and light/dark minimum-window rendering, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
 and limitations below for the current test counts and scope. An explicitly authorized
 manual native Codex check also completed a minimal reply with persistence and
 attribution; one account/time is not broad compatibility or release certification.
@@ -73,6 +75,7 @@ Native provider settings + composer → GenerationCoordinator
 
 - [Product and acceptance contract](docs/NATIVE-REWRITE-CONTRACT.md)
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
+- [Appearance and layout preferences](docs/APPEARANCE.md)
 - [Native attachment workflow and storage decision](docs/ATTACHMENTS.md)
 - [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)
 - [Confirmed bot deletion and group repair](docs/BOT-DELETION.md)

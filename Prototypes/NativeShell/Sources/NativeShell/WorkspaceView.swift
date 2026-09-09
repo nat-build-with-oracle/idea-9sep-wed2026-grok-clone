@@ -4,19 +4,19 @@ import WorkspaceCore
 
 struct WorkspaceView: View {
   @ObservedObject var store: PreviewWorkspace
-  @State private var sidebarWidth: CGFloat = 280
-  @State private var inspectorWidth: CGFloat = 320
 
   var body: some View {
     GeometryReader { geometry in
-      let sideWidth = store.sidebarVisible ? sidebarWidth : 0
-      let showInspector =
-        store.inspectorPreferred && store.pickerMode == .closed
-        && geometry.size.width >= sideWidth + inspectorWidth + 426
+      let layout = WorkspaceLayout(
+        containerWidth: Double(geometry.size.width), preferences: store.preferences,
+        pickerOpen: store.pickerMode != .closed)
       HStack(spacing: 0) {
         if store.sidebarVisible {
-          SidebarView(store: store).frame(width: sidebarWidth)
-          PaneDivider(width: $sidebarWidth, bounds: 240...400, direction: 1)
+          SidebarView(store: store).frame(width: layout.sidebarWidth)
+          PaneDivider(
+            width: $store.preferences.sidebarWidth, displayedWidth: layout.sidebarWidth,
+            bounds: WorkspacePreferences.sidebarBounds,
+            direction: 1)
         }
         Group {
           if store.pickerMode != .closed {
@@ -26,9 +26,12 @@ struct WorkspaceView: View {
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        if showInspector {
-          PaneDivider(width: $inspectorWidth, bounds: 280...440, direction: -1)
-          InspectorView(store: store).frame(width: inspectorWidth)
+        if layout.showsInspector {
+          PaneDivider(
+            width: $store.preferences.inspectorWidth, displayedWidth: layout.inspectorWidth,
+            bounds: WorkspacePreferences.inspectorBounds,
+            direction: -1)
+          InspectorView(store: store).frame(width: layout.inspectorWidth)
         }
       }
       .background(ShellTheme.background)
@@ -36,7 +39,6 @@ struct WorkspaceView: View {
     .frame(minWidth: 760, minHeight: 600)
     .foregroundStyle(ShellTheme.foreground)
     .font(.system(size: 15))
-    .preferredColorScheme(.dark)
     .ignoresSafeArea()
     .sheet(item: $store.panel) { panel in PrototypePanel(store: store, panel: panel) }
     .sheet(item: $store.editTarget) { target in ProfileEditorView(store: store, target: target) }
@@ -66,7 +68,7 @@ struct WorkspaceView: View {
           .background(ShellTheme.sidebar, in: RoundedRectangle(cornerRadius: 12)).padding(.top, 60)
       } else if let error = store.storageError {
         VStack(spacing: 8) {
-          Text(error).foregroundStyle(.orange)
+          Text(error).foregroundStyle(ShellTheme.warning)
           Text("Your data has not been reset. Unsaved drafts remain in this window.")
             .font(.system(size: 12))
           if store.repository != nil {
@@ -107,29 +109,30 @@ struct WorkspaceView: View {
 }
 
 private struct PaneDivider: View {
-  @Binding var width: CGFloat
-  let bounds: ClosedRange<CGFloat>
-  let direction: CGFloat
-  @State private var initialWidth: CGFloat?
+  @Binding var width: Double
+  let displayedWidth: Double
+  let bounds: ClosedRange<Double>
+  let direction: Double
+  @State private var initialWidth: Double?
   var body: some View {
     Rectangle().fill(ShellTheme.separator).frame(width: 1)
       .overlay {
         Color.clear.frame(width: 7).contentShape(Rectangle())
           .gesture(
             DragGesture(minimumDistance: 1).onChanged { value in
-              let initial = initialWidth ?? width
+              let initial = initialWidth ?? displayedWidth
               initialWidth = initial
               width = min(
                 bounds.upperBound,
-                max(bounds.lowerBound, initial + direction * value.translation.width))
+                max(bounds.lowerBound, initial + direction * Double(value.translation.width)))
             }.onEnded { _ in initialWidth = nil })
       }
       .accessibilityLabel("Resize pane")
-      .accessibilityValue("\(Int(width)) points")
+      .accessibilityValue("\(Int(displayedWidth)) points")
       .accessibilityAdjustableAction { adjustment in
         switch adjustment {
-        case .increment: width = min(bounds.upperBound, width + 20)
-        case .decrement: width = max(bounds.lowerBound, width - 20)
+        case .increment: width = min(bounds.upperBound, displayedWidth + 20)
+        case .decrement: width = max(bounds.lowerBound, displayedWidth - 20)
         @unknown default: break
         }
       }
@@ -163,7 +166,7 @@ private struct SidebarView: View {
       }
       .padding(.horizontal, 11).frame(height: 38)
       .background(ShellTheme.bubble, in: RoundedRectangle(cornerRadius: 10))
-      .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+      .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShellTheme.contrast.opacity(0.08)))
       .padding(.horizontal, 13).padding(.bottom, 9)
 
       ScrollView {
@@ -171,7 +174,7 @@ private struct SidebarView: View {
           if store.pickerMode != .closed {
             HStack(spacing: 12) {
               Image(systemName: "plus").font(.system(size: 23)).frame(width: 42, height: 42)
-                .background(.white.opacity(0.06), in: Circle())
+                .background(ShellTheme.contrast.opacity(0.06), in: Circle())
               Text(store.pickerMode == .group ? "New group chat" : "New chat").fontWeight(.medium)
               Spacer(minLength: 0)
             }
@@ -200,7 +203,7 @@ private struct SidebarView: View {
             Image(systemName: "square.grid.2x2").font(.system(size: 17)).frame(
               width: 34, height: 34
             )
-            .background(.white.opacity(0.04), in: Circle())
+            .background(ShellTheme.contrast.opacity(0.04), in: Circle())
             Text("Marketplace")
             Spacer()
           }.frame(height: 39)
@@ -210,7 +213,7 @@ private struct SidebarView: View {
         } label: {
           HStack(spacing: 12) {
             Image(systemName: "person.crop.circle.fill").font(.system(size: 34))
-              .foregroundStyle(Color(hex: 0x7aaef0))
+              .foregroundStyle(ShellTheme.profileIcon)
             Text(store.name).lineLimit(1)
             Spacer(minLength: 0)
           }.frame(height: 42)
@@ -514,7 +517,7 @@ private struct ConversationView: View {
           Image(systemName: "plus").font(.system(size: 23, weight: .light)).frame(
             width: 33, height: 33
           )
-          .background(.white.opacity(0.08), in: Circle())
+          .background(ShellTheme.contrast.opacity(0.08), in: Circle())
         }.buttonStyle(.plain).foregroundStyle(ShellTheme.secondary).padding(.bottom, 1)
           .disabled(store.isPersistent && !store.canChooseAttachments)
           .accessibilityLabel("Attach text files")
@@ -538,7 +541,7 @@ private struct ConversationView: View {
             .background(
               store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && store.currentDraftAttachmentIDs.isEmpty
-                ? Color.gray : Color.white, in: Circle())
+                ? Color.gray : ShellTheme.sendButton, in: Circle())
         }.buttonStyle(.plain).disabled(
           (store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && store.currentDraftAttachmentIDs.isEmpty) || store.isSubmitting
@@ -555,7 +558,7 @@ private struct ConversationView: View {
       }
       .padding(.horizontal, 9).padding(.vertical, 7)
       .background(ShellTheme.composer, in: RoundedRectangle(cornerRadius: 27))
-      .overlay(RoundedRectangle(cornerRadius: 27).strokeBorder(.white.opacity(0.19)))
+      .overlay(RoundedRectangle(cornerRadius: 27).strokeBorder(ShellTheme.contrast.opacity(0.19)))
     }.padding(.horizontal, 22).padding(.top, 8).padding(.bottom, 20)
   }
 
@@ -638,7 +641,7 @@ private struct GenerationStatusView: View {
             .accessibilityIdentifier("retry-\(generation.id)")
         }
       }
-      if let error = generation.error { Text(error).foregroundStyle(.orange) }
+      if let error = generation.error { Text(error).foregroundStyle(ShellTheme.warning) }
     }.font(.system(size: 12)).foregroundStyle(ShellTheme.secondary)
       .disabled(store.pendingGenerationActions.contains(generation.id))
   }
@@ -709,7 +712,7 @@ private struct MessageBubble: View {
             }
             .padding(.horizontal, 15).padding(.vertical, 11)
             .background(
-              message.role == .user ? Color(hex: 0x5a5a5a) : ShellTheme.bubble,
+              message.role == .user ? ShellTheme.userBubble : ShellTheme.bubble,
               in: RoundedRectangle(cornerRadius: 22)
             )
             .frame(maxWidth: 550, alignment: message.role == .user ? .trailing : .leading)
@@ -786,7 +789,7 @@ private struct InspectorView: View {
                 .center)
           }
           .frame(maxWidth: .infinity).frame(height: 174)
-          .background(Color(hex: 0x191919), in: RoundedRectangle(cornerRadius: 9))
+          .background(ShellTheme.disconnectedPanel, in: RoundedRectangle(cornerRadius: 9))
           .accessibilityIdentifier("computer-disconnected")
           Text("\(store.currentBot?.name ?? "Group")'s screen")
             .font(.system(size: 13)).foregroundStyle(ShellTheme.secondary)

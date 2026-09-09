@@ -1,7 +1,7 @@
 # Design
 
 ## Source of truth
-- Status: Native planning draft; browser implementation assumptions are superseded. See docs/NATIVE-REWRITE-CONTRACT.md.
+- Status: Active native design contract; browser implementation assumptions are superseded. See docs/NATIVE-REWRITE-CONTRACT.md.
 - Last refreshed: 2026-09-10.
 - Surface: main workspace, new chat/group picker, bot/group profile editor, inspector, settings and marketplace overlays.
 - Evidence: user-supplied private reference screenshots, excluded from the public repository. The layout contract below is sufficient to build and test without those images.
@@ -22,7 +22,8 @@ Persistent sidebar → chat → optional inspector. New chat replaces the conver
 Reference fidelity over decorative invention. Keep one primary focus per view. Show offline/provider states honestly without overwhelming the chat. Use predictable keyboard controls and preserve drafts.
 
 ## Visual language
-- Base #070707; sidebar #111111; agent bubble #262626; selected row #353535; subtle text #aaa.
+- Default Dark preserves base #070707, sidebar #111111, agent bubble #262626, selected row #353535 and subtle text #ababab. Appearance settings add explicit Light and Follow System choices; this is not a replacement of the reference default.
+- Light uses near-white #fafafa, sidebar #f1f2f4, bubble #e8e9eb, selected #d8dadf, composer #e7e8ea, foreground #1b1c1e, secondary #5c6066, separator #cdd0d5 and accessible blue #0068d9. Light warning text uses #924600 rather than a low-contrast bright orange. Use semantic tokens for decorative contrast, fields, selection and message surfaces rather than scattered fixed dark colors. Avatar brand colors/eyes remain original.
 - System sans matching the reference, 15–16pt default; no downloaded fonts.
 - Desktop sidebar 280pt (240–400pt), flexible chat minimum 424pt, inspector default 320pt/minimum 280pt.
 - Rounded message bubbles and pill composer; 1px separators, light menu shadow only.
@@ -37,10 +38,12 @@ Avatar, icon button, conversation row, message bubble, timeline separator, compo
 Semantic controls with names; keyboard submit and Escape; visible focus; dialog focus trapping/restoration; live status announcements; readable contrast; no keyboard-only hidden actions. Respect reduced motion.
 
 ## Responsive behavior
-Three columns on wide desktop. Collapse inspector when sidebar + chat + inspector minimum widths cannot fit. Minimum supported window content size is proposed as 760×600pt. No horizontal chat scrolling except within code blocks; composer remains visible.
+Three columns on wide desktop. Collapse inspector when sidebar + chat + inspector minimum widths cannot fit. Minimum supported window content size is proposed as 760×600pt. Pane widths and preferred visibility persist as local UI preferences, separate from workspace/export data. Widths are finite and clamped to documented ranges. Inspector auto-collapse does not overwrite the preference; the chat keeps its minimum by temporarily constraining wide saved sidebars. No horizontal chat scrolling except within code blocks; composer remains visible.
 
 ## Interaction states
 Loading, empty searches, empty groups, sending, profile validation/conflict, unsaved-profile discard, provider error/offline, routine paused/running/failed, upload validation, API failures, and persistence failures must be explicit. Profile edits use a detached buffer tied to a stable bot/group identity: navigation cannot redirect a save, stale editable fields require an explicit reload, and Cancel/Escape/window close confirms before discarding dirty fields. Reply cards use intrinsic content height, a two-line excerpt, an explicit cancel action in the composer, and loading/unavailable states. Parent selection is conversation-scoped and does not send; jump-to-original must not redirect later navigation. Public sample conversations are synthetic project-planning examples, not copied user history or live service output.
+
+Appearance/layout settings use a detached edit buffer with Save/Cancel and a dirty-close warning; Save applies to the workspace, Settings and sheets without discarding provider forms, drafts or selections. AppKit may commit active marked text during an appearance transition; do not recreate composition based only on unchanged text. Physical IME/automatic-appearance integration remains a validation gate (docs/APPEARANCE.md). Dragged divider widths persist when adjusted. Follow System removes app/window overrides and follows the effective OS appearance. Tests/smokes inject isolated preference storage and never change the user's normal preferences.
 
 ## Content voice
 Permanent bot deletion uses a dedicated confirmation sheet with affected-record counts,

@@ -21,8 +21,7 @@ struct NativeComposer: NSViewRepresentable {
     view.importsGraphics = false
     view.drawsBackground = false
     view.font = .systemFont(ofSize: 16)
-    view.textColor = NSColor(white: 0.94, alpha: 1)
-    view.insertionPointColor = .white
+    applyTheme(to: view)
     view.isVerticallyResizable = true
     view.isHorizontallyResizable = false
     view.autoresizingMask = [.width]
@@ -49,6 +48,12 @@ struct NativeComposer: NSViewRepresentable {
       DispatchQueue.main.async { [weak view] in view?.window?.makeFirstResponder(view) }
     }
     context.coordinator.measure()
+  }
+
+  private func applyTheme(to view: NSTextView) {
+    // Install adaptive colors once. Reassigning them during updates can interrupt marked text.
+    view.textColor = ShellTheme.foregroundNSColor
+    view.insertionPointColor = ShellTheme.foregroundNSColor
   }
 
   @MainActor final class Coordinator: NSObject, NSTextViewDelegate {

@@ -87,15 +87,16 @@ Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
   13 content/repository tests, 5 historical migration/recovery tests, 13 generation-consent and 3 wire/fingerprint
   tests and legacy export-summary decoding. All use offline credentials,
   URLProtocol/provider fixtures and/or actual temporary stores.
-- **204 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
+- **226 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
   profiles/replies/export/deletion, **11 routine editor** tests and **14 routine workspace/lifecycle**
-  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Total: **438 tests**.
+  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Appearance adds 8 preference-storage, 9 workspace/layout and 5 theme/composer tests. Total: **460 tests**.
   Routine coverage includes explicit owner/binding consent, provider
   drift, dirty/cancel/reload/save races, catch-up/wake, direct-chat output, draft preservation,
   Stop/partial text, confirmed deletion, active history after clock rollback, and quit joining.
 
 - Native `smoke` uses a newly minted temporary workspace inside this app's sandbox, creates two bots/one group/one paused routine/a Unicode draft through the UI's service path, closes/reopens the store, asserts restored identities/content, renders the native window, removes only its own test directory and exits. It does not open, mutate, or capture the user's normal workspace.
 - Provider smoke injects offline credentials and a fixture stream into that isolated native workspace, verifies persisted user/assistant messages and attribution, and renders desktop/narrow chat and the separate Settings window. No live endpoint or real Keychain item is accessed.
+- Appearance smoke switches Dark/Light/System using an isolated preference suite, renders workspace and Settings, preserves saved widths and draft/message state, and checks the 760×600 minimum variant. Physical input/system-theme switching remain manual; see [appearance evidence](APPEARANCE.md).
 - Attachment smoke copies a synthetic selected text file, deletes its original, reopens the managed copy, renders chips/consent, verifies Cancel has no credential/provider calls and confirms an exact offline file send. OS panel clicks and external grants remain manual. See [attachment contract](ATTACHMENTS.md).
 - Reply smoke restores a selected parent/text after SQLite reopen, checks explicit context at the fixture provider boundary, sends/persists the reference, clears only the matching draft, then renders an unsent follow-up. See [reply workflow](REPLY-WORKFLOW.md).
 - Export smoke writes/replaces a synthetic JSON file in its own sandbox temporary directory, checks complete fixture records/draft flush/credential-reference exclusion and renders Settings. It injects the destination; native Save Panel interaction and its external sandbox grant remain unautomated. See [export format and limits](WORKSPACE-EXPORT.md).

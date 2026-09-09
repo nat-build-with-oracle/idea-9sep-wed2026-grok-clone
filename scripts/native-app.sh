@@ -8,10 +8,11 @@ if [[ "$MODE" == "test" ]]; then
   exec "$ROOT/scripts/native-prototype.sh" test
 fi
 export NATIVE_WORKSPACE_APP=1
-if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" || "$MODE" == "routine-smoke" || "$MODE" == "attachment-smoke" ]]; then
+if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" || "$MODE" == "routine-smoke" || "$MODE" == "attachment-smoke" || "$MODE" == "appearance-smoke" ]]; then
   "$ROOT/scripts/native-prototype.sh" build
   VERIFY_ARGS=(--verify-workspace)
   VERIFY_MODELS=0
+  if [[ "$MODE" == "appearance-smoke" ]]; then VERIFY_ARGS+=(--verify-appearance); fi
   if [[ "$MODE" == "routine-smoke" ]]; then VERIFY_ARGS+=(--verify-routines); fi
   if [[ "$MODE" == "attachment-smoke" ]]; then VERIFY_ARGS+=(--verify-attachments); fi
   if [[ "$MODE" == "deletion-smoke" ]]; then VERIFY_ARGS+=(--verify-deletion); fi
@@ -37,6 +38,7 @@ if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smo
   if [[ "$MODE" == "deletion-smoke" ]]; then grep -q '^NATIVE_DELETION_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "routine-smoke" ]]; then grep -q '^NATIVE_ROUTINE_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "attachment-smoke" ]]; then grep -q '^NATIVE_ATTACHMENT_SMOKE=PASS ' <<< "$OUTPUT"; fi
+  if [[ "$MODE" == "appearance-smoke" ]]; then grep -q '^NATIVE_APPEARANCE_SMOKE=PASS ' <<< "$OUTPUT"; fi
   exit
 fi
 exec "$ROOT/scripts/native-prototype.sh" "$MODE" --workspace "$@"

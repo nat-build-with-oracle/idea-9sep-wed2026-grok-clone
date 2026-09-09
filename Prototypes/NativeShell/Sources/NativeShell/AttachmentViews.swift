@@ -32,7 +32,7 @@ struct AttachmentChipList: View {
         ForEach(rows) { row in
           HStack(spacing: 8) {
             Image(systemName: row.isUnavailable ? "doc.badge.exclamationmark" : "doc.text")
-              .foregroundStyle(row.isUnavailable ? .orange : ShellTheme.secondary)
+              .foregroundStyle(row.isUnavailable ? ShellTheme.warning : ShellTheme.secondary)
               .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
               Text(row.name ?? "Unavailable attachment")
@@ -42,7 +42,7 @@ struct AttachmentChipList: View {
                 .help(row.name ?? "Attachment metadata is unavailable")
               Text(row.detail)
                 .font(.system(size: 10))
-                .foregroundStyle(row.isUnavailable ? .orange : ShellTheme.secondary)
+                .foregroundStyle(row.isUnavailable ? ShellTheme.warning : ShellTheme.secondary)
             }
             Spacer(minLength: 6)
             if let onRemove {
@@ -158,7 +158,7 @@ struct AttachmentConfirmationView: View {
         if let error {
           Text(error)
             .font(.callout)
-            .foregroundStyle(.orange)
+            .foregroundStyle(ShellTheme.warning)
             .textSelection(.enabled)
             .accessibilityIdentifier("attachment-confirmation-error")
         }

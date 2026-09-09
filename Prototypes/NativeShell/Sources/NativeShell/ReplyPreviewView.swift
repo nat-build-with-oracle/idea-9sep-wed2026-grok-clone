@@ -82,12 +82,12 @@ struct ReplyPreviewView: View {
     }
     .fixedSize(horizontal: false, vertical: true)
     .padding(.leading, 20).padding(.trailing, 11).padding(.vertical, 8)
-    .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+    .background(ShellTheme.contrast.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
     .overlay(alignment: .leading) {
       RoundedRectangle(cornerRadius: 1.5).fill(Color(hex: 0x16be8b)).frame(width: 3)
         .padding(.leading, 11).padding(.vertical, 8).accessibilityHidden(true)
     }
-    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(ShellTheme.contrast.opacity(0.08)))
   }
 
   private var title: String {

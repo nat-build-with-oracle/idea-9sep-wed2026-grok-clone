@@ -91,14 +91,8 @@ struct ProviderSettingsView: View {
       VStack(alignment: .leading, spacing: 22) {
         introduction
         WorkspaceExportSection(store: store)
-        DisclosureGroup("Workspace preferences") {
-          VStack(alignment: .leading, spacing: 10) {
-            Toggle("Show hidden conversations", isOn: $store.showHidden)
-            Toggle("Show conversation details", isOn: $store.inspectorPreferred)
-            Text("These display preferences apply to this session.")
-              .font(.caption).foregroundStyle(ShellTheme.secondary)
-          }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .leading)
-        }
+        AppearanceSettingsSection(store: store)
+        Toggle("Show hidden conversations in this session", isOn: $store.showHidden)
         configurationPicker
         if isNewProvider { templatePicker }
         providerFields
@@ -111,7 +105,6 @@ struct ProviderSettingsView: View {
     }
     .background(ShellTheme.background)
     .foregroundStyle(ShellTheme.foreground)
-    .preferredColorScheme(.dark)
     .frame(minWidth: 520, minHeight: 620)
     .safeAreaInset(edge: .bottom, spacing: 0) {
       VStack(spacing: 0) {
@@ -375,7 +368,7 @@ struct ProviderSettingsView: View {
         Text(
           "The saved configuration contains no login. If this app was restarted or the token expired, import a current file before sending."
         )
-        .font(.caption2).foregroundStyle(.orange)
+        .font(.caption2).foregroundStyle(ShellTheme.warning)
         .fixedSize(horizontal: false, vertical: true)
       }
     }
@@ -438,7 +431,7 @@ struct ProviderSettingsView: View {
       .font(.caption).foregroundStyle(ShellTheme.secondary)
       .fixedSize(horizontal: false, vertical: true)
       if let error = discovery.errorMessage {
-        Text(error).font(.caption).foregroundStyle(.orange)
+        Text(error).font(.caption).foregroundStyle(ShellTheme.warning)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("provider-model-discovery-error")
       }
@@ -522,7 +515,7 @@ struct ProviderSettingsView: View {
     VStack(alignment: .leading, spacing: 12) {
       if let errorMessage {
         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-          .foregroundStyle(.orange)
+          .foregroundStyle(ShellTheme.warning)
           .font(.system(size: 12))
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityIdentifier("provider-settings-error")

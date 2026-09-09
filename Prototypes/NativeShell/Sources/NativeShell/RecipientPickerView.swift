@@ -59,7 +59,7 @@ struct RecipientPickerView: View {
             }.padding(.horizontal, 12).frame(height: 49).contentShape(Rectangle())
           }.buttonStyle(.plain)
             .background(
-              index == store.highlightedRecipient ? Color(hex: 0x454545) : .clear,
+              index == store.highlightedRecipient ? ShellTheme.pickerHighlight : .clear,
               in: RoundedRectangle(cornerRadius: 9)
             )
             .disabled(store.pickerMode == .group && store.selectedRecipients.count >= 6)
@@ -70,9 +70,9 @@ struct RecipientPickerView: View {
             .foregroundStyle(ShellTheme.secondary).padding(20)
         }
       }
-      .padding(8).background(Color(hex: 0x2d2d2d), in: RoundedRectangle(cornerRadius: 17))
-      .overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(.white.opacity(0.11)))
-      .shadow(color: .black.opacity(0.3), radius: 12, y: 5)
+      .padding(8).background(ShellTheme.panel, in: RoundedRectangle(cornerRadius: 17))
+      .overlay(RoundedRectangle(cornerRadius: 17).strokeBorder(ShellTheme.outline))
+      .shadow(color: ShellTheme.menuShadow, radius: 12, y: 5)
       .frame(maxWidth: 660).padding(.horizontal, 30).padding(.top, 8)
 
       if store.pickerMode == .group {
@@ -99,7 +99,8 @@ struct RecipientPickerView: View {
               ? "Choose two to six bots. This group is saved on your Mac."
               : "Choose two to six bots. Group conversations are local previews.")
         )
-        .font(.system(size: 12)).foregroundStyle(error == nil ? ShellTheme.secondary : .orange)
+        .font(.system(size: 12))
+        .foregroundStyle(error == nil ? ShellTheme.secondary : ShellTheme.warning)
         .padding(.top, 8)
       }
       Spacer(minLength: 20)
@@ -122,7 +123,7 @@ struct RecipientPickerView: View {
     Button(action: action) {
       HStack(spacing: 13) {
         Image(systemName: symbol).font(.system(size: 17)).frame(width: 28, height: 28)
-          .foregroundStyle(ShellTheme.secondary).background(.white.opacity(0.05), in: Circle())
+          .foregroundStyle(ShellTheme.secondary).background(ShellTheme.decorativeFill, in: Circle())
         Text(title).font(.system(size: 16))
         Spacer()
       }.padding(.horizontal, 12).frame(height: 49).contentShape(Rectangle())
