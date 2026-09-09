@@ -9,7 +9,13 @@ extension PreviewWorkspace {
   ) async throws {
     isLoading = true
     defer { isLoading = false }
+    cancelExportSelection?()
+    // A selected-file write already in progress belongs to the old workspace. Let it
+    // finish before replacing that workspace; earlier capture/choice work is invalidated.
+    if isExportWriting { await exportTask?.value }
     replyContextGeneration += 1
+    exportStatus = nil
+    exportError = nil
     selectionRequest += 1
     replyJumpGeneration += 1
     isJumpingToReply = false

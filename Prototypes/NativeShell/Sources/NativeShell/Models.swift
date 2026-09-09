@@ -130,6 +130,12 @@ enum ComposerInputPolicy {
   @Published var storageError: String?
   @Published var isSaving = false
   @Published var isClosing = false
+  @Published var isExporting = false
+  @Published var exportStatus: String?
+  @Published var exportError: String?
+  var exportTask: Task<Void, Never>?
+  var isExportWriting = false
+  var cancelExportSelection: (() -> Void)?
   @Published var hasOlderMessages = false
   @Published var persistentSearchIDs: Set<UUID>?
   @Published var providers: [ProviderConfig] = []

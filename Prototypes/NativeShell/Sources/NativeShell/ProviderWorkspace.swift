@@ -243,6 +243,11 @@ extension PreviewWorkspace {
   }
 
   func prepareForClose() async throws {
+    cancelExportSelection?()
+    if let exportTask {
+      await exportTask.value
+      if exportError != nil { throw WorkspaceExportFlowError.failed }
+    }
     await profileEditorSaveTask?.value
     if isProfileSaving { await withCheckedContinuation { profileSaveWaiters.append($0) } }
     if isProviderSaving { await withCheckedContinuation { providerSaveWaiters.append($0) } }

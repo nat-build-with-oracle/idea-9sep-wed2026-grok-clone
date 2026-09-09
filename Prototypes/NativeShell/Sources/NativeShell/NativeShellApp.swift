@@ -88,6 +88,7 @@ import WorkspaceCore
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard !readyToQuit else { return .terminateNow }
     guard !preparingToQuit else { return .terminateCancel }
+    store.cancelExportSelection?()
     let recheckProfileAfterSave = store.isProfileSaving
     guard discardProfileChangesIfNeeded() else { return .terminateCancel }
     guard store.isPersistent else { return .terminateNow }
@@ -178,6 +179,12 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-export") {
+          try await verifyExportFlow(
+            repository: reopened, conversationID: groupID, botID: botID,
+            destination: directory.appendingPathComponent("workspace-export.json"))
+          showSettings()
+        }
         if arguments.contains("--verify-replies") {
           reopened = try await verifyReplyFlow(
             repository: reopened, url: url, conversationID: groupID, targetID: botID)
@@ -237,6 +244,57 @@ import WorkspaceCore
         NSApp.terminate(nil)
       }
     }
+  }
+
+  private func verifyExportFlow(
+    repository: CoreDataWorkspaceRepository, conversationID: UUID, botID: UUID, destination: URL
+  ) async throws {
+    let configuration = ProviderConfig(
+      name: "Export fixture", apiRoot: URL(string: "https://example.invalid/v1")!,
+      modelID: "fixture-model", credentialReference: "session-export-excluded-fixture")
+    try await repository.apply(.saveProvider(configuration))
+    let command = SendCommand(
+      conversationID: conversationID, targetBotID: botID, text: "Export fixture question")
+    try await repository.apply(.beginGeneration(command))
+    try await repository.apply(
+      .applyGenerationEvent(
+        GenerationEvent(
+          generationID: command.generationID, attemptID: command.attemptID,
+          sequence: 1, kind: .started)))
+    try await repository.apply(
+      .applyGenerationEvent(
+        GenerationEvent(
+          generationID: command.generationID, attemptID: command.attemptID,
+          sequence: 2, kind: .delta("Export fixture answer"))))
+    try await repository.apply(
+      .applyGenerationEvent(
+        GenerationEvent(
+          generationID: command.generationID, attemptID: command.attemptID,
+          sequence: 3, kind: .completed)))
+    store.selectedID = conversationID
+    store.draft = "สวัสดี — export includes this unsent draft"
+    try Data("Previous fixture export".utf8).write(to: destination)
+    guard
+      let task = store.performWorkspaceExport(
+        destination: SmokeWorkspaceExportDestination(url: destination))
+    else { throw WorkspaceError.invalidStore }
+    await task.value
+    let data = try Data(contentsOf: destination)
+    let document = try JSONDecoder().decode(WorkspaceExportDocument.self, from: data)
+    guard store.exportError == nil, store.exportStatus != nil,
+      document.formatVersion == 1, document.summary.botCount == 2,
+      document.summary.conversationCount == 3, document.messages.count == 2,
+      document.messages.last?.text == "Export fixture answer",
+      document.drafts.contains(where: {
+        $0.conversationID == conversationID
+          && $0.text == "สวัสดี — export includes this unsent draft"
+      }), document.providers.first?.id == configuration.id,
+      !String(decoding: data, as: UTF8.self).contains("session-export-excluded-fixture"),
+      !String(decoding: data, as: UTF8.self).contains("credentialReference")
+    else { throw WorkspaceError.invalidStore }
+    print(
+      "NATIVE_EXPORT_SMOKE=PASS offlineFixture=true regularFileReplaced=true conversations=3 messages=2 draftFlushed=true storedCredentialsExcluded=true nativeSavePanelSelectionTested=false"
+    )
   }
 
   private func verifyReplyFlow(
@@ -449,6 +507,7 @@ import WorkspaceCore
 
     let file = NSMenu()
     file.addItem(item("New Chat", #selector(newChat), "n"))
+    file.addItem(item("Export Workspace…", #selector(exportWorkspace), ""))
     file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", target: nil))
     menu.addItem(submenu("File", file))
 
@@ -488,6 +547,11 @@ import WorkspaceCore
 
   @objc private func newChat() { store.openPicker() }
   @objc private func settings() { store.openSettings() }
+  @objc private func exportWorkspace() {
+    guard store.canExportWorkspace else { return }
+    showSettings()
+    store.exportWorkspace()
+  }
 
   private func showSettings(discovery: ModelDiscoveryController? = nil) {
     guard store.isPersistent else {
@@ -565,28 +629,32 @@ import WorkspaceCore
   private func writeSnapshot(small: Bool, arguments: [String]) {
     let target =
       arguments.contains("--verify-profiles")
-      ? window?.attachedSheet : arguments.contains("--settings") ? settingsWindow : window
+      ? window?.attachedSheet
+      : arguments.contains("--settings") || arguments.contains("--verify-export")
+        ? settingsWindow : window
     guard let view = target?.contentView?.superview else { return }
     view.layoutSubtreeIfNeeded()
     guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--verify-profiles")
-      ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-      : arguments.contains("--verify-codex-fixture") || arguments.contains("--verify-codex-stdin")
-        ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-        : arguments.contains("--verify-provider")
-          ? (arguments.contains("--settings")
-            ? (arguments.contains("--router-models")
-              ? "router-model-settings" : "provider-settings")
-            : "provider-chat")
-          : arguments.contains("--verify-replies")
-            ? "reply-chat"
-            : arguments.contains("--verify-workspace")
-              ? "durable-workspace"
-              : arguments.contains("--group")
-                ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--verify-export")
+      ? "export-settings"
+      : arguments.contains("--verify-profiles")
+        ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+        : arguments.contains("--verify-codex-fixture") || arguments.contains("--verify-codex-stdin")
+          ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+          : arguments.contains("--verify-provider")
+            ? (arguments.contains("--settings")
+              ? (arguments.contains("--router-models")
+                ? "router-model-settings" : "provider-settings")
+              : "provider-chat")
+            : arguments.contains("--verify-replies")
+              ? "reply-chat"
+              : arguments.contains("--verify-workspace")
+                ? "durable-workspace"
+                : arguments.contains("--group")
+                  ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

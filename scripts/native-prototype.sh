@@ -38,7 +38,7 @@ NETWORK_ENTITLEMENT=""
 FILE_ENTITLEMENT=""
 if [[ "${NATIVE_WORKSPACE_APP:-0}" == "1" ]]; then
   NETWORK_ENTITLEMENT='<key>com.apple.security.network.client</key><true/>'
-  FILE_ENTITLEMENT='<key>com.apple.security.files.user-selected.read-only</key><true/>'
+  FILE_ENTITLEMENT='<key>com.apple.security.files.user-selected.read-write</key><true/>'
 fi
 cat > "$ENTITLEMENTS" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

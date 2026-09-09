@@ -90,6 +90,7 @@ struct ProviderSettingsView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 22) {
         introduction
+        WorkspaceExportSection(store: store)
         DisclosureGroup("Workspace preferences") {
           VStack(alignment: .leading, spacing: 10) {
             Toggle("Show hidden conversations", isOn: $store.showHidden)
