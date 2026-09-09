@@ -46,7 +46,8 @@ gates. [Apple's entitlement diagnostic](https://developer.apple.com/documentatio
 explains inspecting the built executable's entitlements.
 
 The durable app requests App Sandbox, **outgoing network client**, and
-**user-selected read-only files** for explicit Codex auth import;
+**user-selected read-write files** for explicit Codex auth import and
+[JSON workspace export](WORKSPACE-EXPORT.md);
 the sample-only bundle still has only App Sandbox. No incoming server, broad file
 access, or unprovisioned Keychain access-group entitlement is added. Credential
 entry is explicit; no real key or existing Keychain record is used by normal tests

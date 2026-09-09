@@ -19,6 +19,8 @@ scripts/native-app.sh profile-smoke
 scripts/native-app.sh profile-smoke --edit-group --small
 scripts/native-app.sh reply-smoke
 scripts/native-app.sh reply-smoke --small
+scripts/native-app.sh export-smoke
+scripts/native-app.sh export-smoke --small
 scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --settings
 scripts/native-app.sh provider-smoke --router-models
@@ -56,6 +58,9 @@ This removes generated build output, not the application's workspace data.
   submission races and stale lookup/navigation; never promote quoted message text
   into trusted provider instructions or copy a whole conversation implicitly.
 - Document verification gaps. Local ad-hoc signing is not notarized distribution.
+- Keep export provider fields allowlisted and credential-service independent. Test complete
+  history, exact date round trips, draft/write failures, cancellation and stale workspaces.
+  Export fixtures must be synthetic and temporary; never commit real exported conversations.
 
 Private design references are intentionally absent from this repository. Build,
 test and smoke commands do not need them. The `ψ/` placeholder directories and

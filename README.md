@@ -22,6 +22,7 @@ scripts/native-app.sh provider-smoke # offline fixture; no key or live network
 scripts/native-app.sh codex-smoke    # synthetic auth + intercepted Responses SSE
 scripts/native-app.sh profile-smoke  # bot edit + group edit + close/reopen
 scripts/native-app.sh reply-smoke    # reply draft restart + referenced fixture send
+scripts/native-app.sh export-smoke   # text-only JSON export + atomic file replacement
 ```
 
 The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Settings offers Z.ai general API, local 9router, OpenAI Platform and custom setup templates. A separate **Codex login (experimental)** provider type imports a user-selected auth JSON into memory only; it is not an OpenAI Platform API key. Enter the endpoint/model/key for compatible providers, then select the provider and (for groups) the replying bot in the composer. Without a usable credential, the draft is retained.
@@ -45,13 +46,13 @@ third-party dependency installation is needed for the current app or tests.
 | Area | Current status |
 |---|---|
 | Native UI | Three-pane workspace, bot/group creation and profile editing, search, hide/show, native text composer, message replies |
-| Local data | Core Data persistence, text/reply drafts, message pagination, paused routine records |
+| Local data | Core Data persistence, text/reply drafts, message pagination, paused routine records, versioned text-only JSON export |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
 | Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
-| Remaining gates | Broad provider/9router validation, routine execution, attachments/export, confirmed delete and remaining native accessibility flows |
+| Remaining gates | Broad provider/9router validation, routine execution, attachment export/import, confirmed delete and remaining native accessibility flows |
 
-Verification: **235 tests** (132 core + 103 shell), desktop/narrow native persistence,
-offline provider smokes, profile-edit and reply close/reopen smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
+Verification: **263 tests** (137 core + 126 shell), desktop/narrow native persistence,
+offline provider smokes, profile-edit and reply close/reopen smokes, text-only export smoke, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
 and limitations below for the current test counts and scope. An explicitly authorized
 manual native Codex check also completed a minimal reply with persistence and
 attribution; one account/time is not broad compatibility or release certification.
@@ -67,6 +68,7 @@ Native provider settings + composer → GenerationCoordinator
 
 - [Product and acceptance contract](docs/NATIVE-REWRITE-CONTRACT.md)
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
+- [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)
 - [Provider core and verification gaps](docs/PROVIDER-CORE.md)
 - [Experimental Codex adapter contract](docs/CODEX-ADAPTER-CONTRACT.md)
 - [Native prototype, pages and layout](docs/NATIVE-PROTOTYPE.md)

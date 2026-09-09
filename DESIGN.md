@@ -43,6 +43,11 @@ Three columns on wide desktop. Collapse inspector when sidebar + chat + inspecto
 Loading, empty searches, empty groups, sending, profile validation/conflict, unsaved-profile discard, provider error/offline, routine paused/running/failed, upload validation, API failures, and persistence failures must be explicit. Profile edits use a detached buffer tied to a stable bot/group identity: navigation cannot redirect a save, stale editable fields require an explicit reload, and Cancel/Escape/window close confirms before discarding dirty fields. Reply cards use intrinsic content height, a two-line excerpt, an explicit cancel action in the composer, and loading/unavailable states. Parent selection is conversation-scoped and does not send; jump-to-original must not redirect later navigation. Public sample conversations are synthetic project-planning examples, not copied user history or live service output.
 
 ## Content voice
+Export uses File/Settings and the native JSON Save Panel, not a custom path field.
+Disclose all saved/hidden content and secret-scrubbing limits before selection; separate
+busy, success-count and sanitized failure states. No implicit upload or automatic path.
+Unsaved profile/provider forms are not included. See [export contract](docs/WORKSPACE-EXPORT.md).
+
 Short, clear, calm. Use Bot, group chat, computer, routine. No fabricated success claims.
 
 ## Implementation constraints
