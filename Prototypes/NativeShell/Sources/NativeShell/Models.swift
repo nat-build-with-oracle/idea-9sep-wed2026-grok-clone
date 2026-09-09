@@ -118,6 +118,14 @@ enum ComposerInputPolicy {
   @Published var editTarget: ProfileEditTarget?
   @Published var profileEditorDirty = false
   @Published var isProfileSaving = false
+  @Published var botDeletionTarget: BotDeletionTarget?
+  @Published var botDeletionPlan: BotDeletionPlan?
+  @Published var botDeletionError: String?
+  @Published var isLoadingBotDeletion = false
+  @Published var isDeletingBot = false
+  var botDeletionRequest = 0
+  var botDeletionLoadTask: Task<Void, Never>?
+  var botDeletionTask: Task<Void, Never>?
   var profileEditorSaveTask: Task<Void, Never>?
   var profileSaveWaiters: [CheckedContinuation<Void, Never>] = []
   @Published var notice: String?

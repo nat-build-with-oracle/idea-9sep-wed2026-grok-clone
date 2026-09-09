@@ -9,11 +9,14 @@ extension PreviewWorkspace {
   ) async throws {
     isLoading = true
     defer { isLoading = false }
+    await botDeletionTask?.value
+    cancelBotDeletion()
     cancelExportSelection?()
     // A selected-file write already in progress belongs to the old workspace. Let it
     // finish before replacing that workspace; earlier capture/choice work is invalidated.
     if isExportWriting { await exportTask?.value }
     replyContextGeneration += 1
+    notice = nil
     exportStatus = nil
     exportError = nil
     selectionRequest += 1
@@ -91,7 +94,11 @@ extension PreviewWorkspace {
 
   func loadMessages(_ id: UUID) async throws {
     guard let repository else { return }
+    let context = replyContextGeneration
     let page = try await repository.messages(conversationID: id, limit: 100)
+    guard context == replyContextGeneration, conversations.contains(where: { $0.id == id }) else {
+      return
+    }
     messages[id] = page.messages.map(projectMessage)
     if selectedID == id {
       hasOlderMessages = page.hasMore
@@ -238,6 +245,11 @@ extension PreviewWorkspace {
   }
 
   func performSend() {
+    guard !isDeletingBot else { return }
+    if currentNeedsMembershipRepair {
+      notice = "Repair this group's membership before sending. Your draft is kept."
+      return
+    }
     guard isPersistent else {
       do { try saveLocalMessage() } catch { notice = error.localizedDescription }
       return

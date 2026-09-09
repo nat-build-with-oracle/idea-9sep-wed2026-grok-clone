@@ -89,6 +89,7 @@ import WorkspaceCore
     guard !readyToQuit else { return .terminateNow }
     guard !preparingToQuit else { return .terminateCancel }
     store.cancelExportSelection?()
+    store.cancelBotDeletion()
     let recheckProfileAfterSave = store.isProfileSaving
     guard discardProfileChangesIfNeeded() else { return .terminateCancel }
     guard store.isPersistent else { return .terminateNow }
@@ -179,6 +180,12 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-deletion") {
+          reopened = try await verifyBotDeletionFlow(
+            repository: reopened, url: url, botID: botID, otherBotID: secondID,
+            directConversationID: firstConversationID!, groupID: groupID, small: small,
+            arguments: arguments)
+        }
         if arguments.contains("--verify-export") {
           try await verifyExportFlow(
             repository: reopened, conversationID: groupID, botID: botID,
@@ -230,8 +237,10 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         writeSnapshot(small: small, arguments: arguments)
+        let finalSnapshot = try await reopened.snapshot()
         print(
-          "NATIVE_PERSISTENCE_SMOKE=PASS bots=2 conversations=3 pausedRoutines=1 restoredDrafts=1")
+          "NATIVE_PERSISTENCE_SMOKE=PASS bots=\(finalSnapshot.bots.count) conversations=\(finalSnapshot.conversations.count) pausedRoutines=\(finalSnapshot.routines.filter { !$0.enabled }.count) restoredDrafts=1"
+        )
         try await reopened.close()
         persistentRepository = nil
         store.repository = nil
@@ -244,6 +253,52 @@ import WorkspaceCore
         NSApp.terminate(nil)
       }
     }
+  }
+
+  private func verifyBotDeletionFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, botID: UUID, otherBotID: UUID,
+    directConversationID: UUID, groupID: UUID, small: Bool, arguments: [String]
+  ) async throws -> CoreDataWorkspaceRepository {
+    // All state is in verifyDurableWorkspace's synthetic temporary store, never the user's store.
+    try await verifyProviderFlow(
+      repository: repository, conversationID: groupID, targetID: botID, routerFixture: false)
+    let before = try await repository.snapshot()
+    store.selectedID = groupID
+    store.draft = "Keep this group draft after deleting one member"
+    await store.beginBotDeletion(botID)?.value
+    guard let plan = store.botDeletionPlan, plan.directConversationCount == 1,
+      plan.routineCount == 1, plan.affectedGroupCount == 1
+    else { throw WorkspaceError.invalidStore }
+    try await Task.sleep(for: .milliseconds(300))
+    guard window?.attachedSheet != nil else { throw WorkspaceError.invalidStore }
+    writeSnapshot(small: small, arguments: arguments + ["--deletion-confirmation"])
+    guard let deletion = store.confirmBotDeletion() else { throw WorkspaceError.invalidStore }
+    await deletion.value
+    guard store.botDeletionError == nil, store.botDeletionTarget == nil else {
+      throw WorkspaceError.invalidStore
+    }
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(reopened, displayName: "Deletion smoke workspace")
+    store.selectedID = groupID
+    try await store.loadMessages(groupID)
+    let snapshot = try await reopened.snapshot()
+    let page = try await reopened.messages(conversationID: groupID)
+    guard snapshot.bots.count == 1, snapshot.bots.first?.id == otherBotID,
+      snapshot.conversations.count == 2, snapshot.routines.isEmpty,
+      !snapshot.conversations.contains(where: { $0.id == directConversationID }),
+      snapshot.providers == before.providers,
+      snapshot.conversations.first(where: { $0.id == groupID })?.memberBotIDs == [otherBotID],
+      store.currentNeedsMembershipRepair, page.messages.count == 2,
+      page.messages.last?.speakerNameSnapshot == "Research Partner",
+      store.draft == "Keep this group draft after deleting one member"
+    else { throw WorkspaceError.invalidStore }
+    print(
+      "NATIVE_DELETION_SMOKE=PASS offlineFixture=true botDeleted=true directConversationDeleted=true ownedRoutineDeleted=true groupHistoryKept=true sharedProviderKept=true degradedGroupReadable=true restarted=true"
+    )
+    return reopened
   }
 
   private func verifyExportFlow(
@@ -581,6 +636,10 @@ import WorkspaceCore
   }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
+    if sender === window, store.botDeletionTarget != nil {
+      guard !store.isDeletingBot else { return false }
+      store.cancelBotDeletion()
+    }
     if sender === window, store.editTarget != nil {
       guard !store.isProfileSaving, discardProfileChangesIfNeeded() else { return false }
       store.editTarget = nil
@@ -628,7 +687,7 @@ import WorkspaceCore
 
   private func writeSnapshot(small: Bool, arguments: [String]) {
     let target =
-      arguments.contains("--verify-profiles")
+      arguments.contains("--verify-profiles") || arguments.contains("--deletion-confirmation")
       ? window?.attachedSheet
       : arguments.contains("--settings") || arguments.contains("--verify-export")
         ? settingsWindow : window
@@ -638,23 +697,28 @@ import WorkspaceCore
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--verify-export")
-      ? "export-settings"
-      : arguments.contains("--verify-profiles")
-        ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-        : arguments.contains("--verify-codex-fixture") || arguments.contains("--verify-codex-stdin")
-          ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-          : arguments.contains("--verify-provider")
-            ? (arguments.contains("--settings")
-              ? (arguments.contains("--router-models")
-                ? "router-model-settings" : "provider-settings")
-              : "provider-chat")
-            : arguments.contains("--verify-replies")
-              ? "reply-chat"
-              : arguments.contains("--verify-workspace")
-                ? "durable-workspace"
-                : arguments.contains("--group")
-                  ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--deletion-confirmation")
+      ? "delete-confirmation"
+      : arguments.contains("--verify-deletion")
+        ? "degraded-group"
+        : arguments.contains("--verify-export")
+          ? "export-settings"
+          : arguments.contains("--verify-profiles")
+            ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+            : arguments.contains("--verify-codex-fixture")
+              || arguments.contains("--verify-codex-stdin")
+              ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+              : arguments.contains("--verify-provider")
+                ? (arguments.contains("--settings")
+                  ? (arguments.contains("--router-models")
+                    ? "router-model-settings" : "provider-settings")
+                  : "provider-chat")
+                : arguments.contains("--verify-replies")
+                  ? "reply-chat"
+                  : arguments.contains("--verify-workspace")
+                    ? "durable-workspace"
+                    : arguments.contains("--group")
+                      ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

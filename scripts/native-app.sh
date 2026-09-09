@@ -8,10 +8,11 @@ if [[ "$MODE" == "test" ]]; then
   exec "$ROOT/scripts/native-prototype.sh" test
 fi
 export NATIVE_WORKSPACE_APP=1
-if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" ]]; then
+if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" ]]; then
   "$ROOT/scripts/native-prototype.sh" build
   VERIFY_ARGS=(--verify-workspace)
   VERIFY_MODELS=0
+  if [[ "$MODE" == "deletion-smoke" ]]; then VERIFY_ARGS+=(--verify-deletion); fi
   if [[ "$MODE" == "export-smoke" ]]; then VERIFY_ARGS+=(--verify-export); fi
   if [[ "$MODE" == "reply-smoke" ]]; then VERIFY_ARGS+=(--verify-replies); fi
   if [[ "$MODE" == "profile-smoke" ]]; then VERIFY_ARGS+=(--verify-profiles); fi
@@ -31,6 +32,7 @@ if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smo
   if [[ "$MODE" == "profile-smoke" ]]; then grep -q '^NATIVE_PROFILE_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "reply-smoke" ]]; then grep -q '^NATIVE_REPLY_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "export-smoke" ]]; then grep -q '^NATIVE_EXPORT_SMOKE=PASS ' <<< "$OUTPUT"; fi
+  if [[ "$MODE" == "deletion-smoke" ]]; then grep -q '^NATIVE_DELETION_SMOKE=PASS ' <<< "$OUTPUT"; fi
   exit
 fi
 exec "$ROOT/scripts/native-prototype.sh" "$MODE" --workspace "$@"

@@ -56,9 +56,14 @@ extension PreviewWorkspace {
 
   func refreshGeneration(_ conversationID: UUID) async {
     guard let repository else { return }
+    let context = replyContextGeneration
     do {
-      generations = try await repository.snapshot().generations
+      let latestGenerations = try await repository.snapshot().generations
       let page = try await repository.messages(conversationID: conversationID, limit: 100)
+      guard context == replyContextGeneration,
+        conversations.contains(where: { $0.id == conversationID })
+      else { return }
+      generations = latestGenerations
       // Keep older pages already loaded; update deltas by stable message identity.
       var existing = messages[conversationID] ?? []
       for item in page.messages {
@@ -71,12 +76,18 @@ extension PreviewWorkspace {
       }
       messages[conversationID] = existing
       await refreshReplyPreviews(in: conversationID)
-    } catch { storageError = Self.providerErrorMessage(error) }
+    } catch {
+      guard context == replyContextGeneration,
+        conversations.contains(where: { $0.id == conversationID })
+      else { return }
+      storageError = Self.providerErrorMessage(error)
+    }
   }
 
   @discardableResult
   func submitDraft() async throws -> UUID {
-    guard !isClosing, !isSubmitting else { throw ProviderSetupError.busy }
+    guard !isClosing, !isSubmitting, !isDeletingBot else { throw ProviderSetupError.busy }
+    guard !currentNeedsMembershipRepair else { throw WorkspaceError.invalidMembers }
     guard let coordinator, let configuration = selectedProvider else {
       throw ProviderSetupError.noProvider
     }
@@ -118,7 +129,7 @@ extension PreviewWorkspace {
   }
 
   func retryReply(_ id: UUID) async throws {
-    guard !isClosing, let coordinator, !pendingGenerationActions.contains(id) else {
+    guard !isClosing, !isDeletingBot, let coordinator, !pendingGenerationActions.contains(id) else {
       throw ProviderSetupError.busy
     }
     guard let configuration = selectedProvider else { throw ProviderSetupError.noProvider }
@@ -243,6 +254,12 @@ extension PreviewWorkspace {
   }
 
   func prepareForClose() async throws {
+    if let botDeletionTask {
+      await botDeletionTask.value
+      if botDeletionError != nil { throw WorkspaceError.storeUnavailable }
+    } else {
+      cancelBotDeletion()
+    }
     cancelExportSelection?()
     if let exportTask {
       await exportTask.value

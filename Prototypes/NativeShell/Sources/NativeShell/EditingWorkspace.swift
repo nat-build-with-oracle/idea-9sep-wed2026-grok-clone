@@ -3,7 +3,8 @@ import WorkspaceCore
 
 extension PreviewWorkspace {
   func beginEditing(_ conversation: PreviewConversation) {
-    guard !isClosing, !isLoading, !isSaving, !isProfileSaving, editTarget == nil, panel == nil,
+    guard !isClosing, !isLoading, !isSaving, !isProfileSaving, !isDeletingBot,
+      botDeletionTarget == nil, editTarget == nil, panel == nil,
       conversations.contains(where: { $0.id == conversation.id })
     else { return }
     switch conversation.kind {

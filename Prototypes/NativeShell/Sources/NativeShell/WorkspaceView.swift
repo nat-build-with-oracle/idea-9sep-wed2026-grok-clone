@@ -40,6 +40,7 @@ struct WorkspaceView: View {
     .ignoresSafeArea()
     .sheet(item: $store.panel) { panel in PrototypePanel(store: store, panel: panel) }
     .sheet(item: $store.editTarget) { target in ProfileEditorView(store: store, target: target) }
+    .sheet(item: $store.botDeletionTarget) { _ in BotDeletionView(store: store) }
     .onChange(of: store.search) { _, _ in Task { await store.searchPersistent() } }
     .onChange(of: store.showHidden) { _, _ in Task { await store.searchPersistent() } }
     .disabled(store.isLoading || store.isClosing)
@@ -68,7 +69,9 @@ struct WorkspaceView: View {
       }
     }
     .onExitCommand {
-      if store.editTarget != nil {
+      if store.botDeletionTarget != nil {
+        store.cancelBotDeletion()
+      } else if store.editTarget != nil {
         // The editor owns dirty-discard confirmation, including Escape.
       } else if store.panel != nil {
         store.panel = nil
@@ -250,6 +253,10 @@ private struct ConversationRow: View {
         Button(bot?.isHidden == true ? "Unhide conversation" : "Hide from sidebar") {
           Task { await store.performToggleHidden(conversation) }
         }
+        if let bot, store.isPersistent {
+          Button("Delete Bot…", role: .destructive) { store.beginBotDeletion(bot.id) }
+            .disabled(!store.canBeginBotDeletion)
+        }
       }
       Button("Copy conversation name") {
         NSPasteboard.general.clearContents()
@@ -404,6 +411,16 @@ private struct ConversationView: View {
 
   private var composer: some View {
     VStack(spacing: 8) {
+      if store.currentNeedsMembershipRepair, let conversation = store.current {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Group needs repair").font(.headline)
+          Text("History and drafts are kept. Choose at least two available members before sending.")
+            .font(.caption).fixedSize(horizontal: false, vertical: true)
+          Button("Edit Group…") { store.beginEditing(conversation) }
+            .disabled(store.isDeletingBot || store.editTarget != nil)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+          .accessibilityIdentifier("group-membership-repair")
+      }
       if store.isPersistent { providerControls }
       if let reply = store.currentReply, let conversation = store.current {
         ReplyPreviewView(
@@ -461,6 +478,7 @@ private struct ConversationView: View {
                 ? Color.gray : Color.white, in: Circle())
         }.buttonStyle(.plain).disabled(
           store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSubmitting
+            || store.isDeletingBot || store.currentNeedsMembershipRepair
         )
         .padding(.bottom, 1).help(
           store.isPersistent
@@ -528,11 +546,17 @@ private struct ConversationView: View {
 private struct GenerationStatusView: View {
   @ObservedObject var store: PreviewWorkspace
   let generation: Generation
+  private var speakerName: String {
+    store.bots.first { $0.id == generation.targetBotID }?.name
+      ?? store.messages[generation.conversationID]?.first {
+        $0.id == generation.assistantMessageID
+      }?.speakerName ?? "Deleted bot"
+  }
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
       HStack {
         Text(
-          "\(store.bots.first { $0.id == generation.targetBotID }?.name ?? "Bot") · \(generation.state.rawValue.capitalized)"
+          "\(speakerName) · \(generation.state.rawValue.capitalized)"
         )
         Spacer()
         if !generation.state.isTerminal {
@@ -543,7 +567,7 @@ private struct GenerationStatusView: View {
             .help(
               "Retry using the currently selected provider. The original user message and partial reply are retained."
             )
-            .disabled(store.selectedProvider == nil)
+            .disabled(store.selectedProvider == nil || !store.canRetry(generation))
             .accessibilityIdentifier("retry-\(generation.id)")
         }
       }
