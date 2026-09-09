@@ -25,3 +25,13 @@ xcuserdata/
 
 # Private third-party design references are not part of the open-source release.
 /docs/reference/
+
+# Private signing material and generated distribution bundles are not source.
+*.p12
+*.pem
+*.key
+*.provisionprofile
+*.mobileprovision
+*.xcarchive/
+*.app/
+*.dmg
