@@ -39,6 +39,7 @@ struct WorkspaceView: View {
     .preferredColorScheme(.dark)
     .ignoresSafeArea()
     .sheet(item: $store.panel) { panel in PrototypePanel(store: store, panel: panel) }
+    .sheet(item: $store.editTarget) { target in ProfileEditorView(store: store, target: target) }
     .onChange(of: store.search) { _, _ in Task { await store.searchPersistent() } }
     .onChange(of: store.showHidden) { _, _ in Task { await store.searchPersistent() } }
     .disabled(store.isLoading || store.isClosing)
@@ -67,7 +68,9 @@ struct WorkspaceView: View {
       }
     }
     .onExitCommand {
-      if store.panel != nil {
+      if store.editTarget != nil {
+        // The editor owns dirty-discard confirmation, including Escape.
+      } else if store.panel != nil {
         store.panel = nil
       } else if store.pickerMode != .closed {
         store.pickerMode = .closed
@@ -239,6 +242,10 @@ private struct ConversationRow: View {
     .buttonStyle(.plain).accessibilityLabel("Open \(conversation.title)")
     .accessibilityAddTraits(selected ? [.isSelected] : [])
     .contextMenu {
+      Button(conversation.kind == .direct ? "Edit Bot…" : "Edit Group…") {
+        store.beginEditing(conversation)
+      }
+      .disabled(store.editTarget != nil || store.isProfileSaving)
       if conversation.kind == .direct {
         Button(bot?.isHidden == true ? "Unhide conversation" : "Hide from sidebar") {
           Task { await store.performToggleHidden(conversation) }
@@ -287,6 +294,15 @@ private struct ConversationView: View {
       }
       Text(store.current?.title ?? "Bot Workspace").font(.system(size: 16, weight: .medium))
       Spacer()
+      if let conversation = store.current {
+        ShellIconButton(
+          symbol: "pencil", label: conversation.kind == .direct ? "Edit Bot" : "Edit Group"
+        ) {
+          store.beginEditing(conversation)
+        }
+        .accessibilityIdentifier("edit-conversation-profile")
+        .disabled(store.editTarget != nil || store.isProfileSaving)
+      }
       ShellIconButton(symbol: "square.and.arrow.up", label: "Copy conversation") {
         let text = store.currentMessages.map { $0.text }.joined(separator: "\n\n")
         NSPasteboard.general.clearContents()
@@ -573,6 +589,29 @@ private struct InspectorView: View {
       }.padding(.horizontal, 15).frame(height: 52)
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
+          if let conversation = store.current {
+            Button {
+              store.beginEditing(conversation)
+            } label: {
+              Label(
+                conversation.kind == .direct ? "Edit Bot profile" : "Edit Group members",
+                systemImage: "pencil")
+            }
+            .accessibilityIdentifier("inspector-edit-profile")
+            .disabled(store.editTarget != nil || store.isProfileSaving)
+            .padding(.bottom, 14)
+            if let bot = store.currentBot, !bot.description.isEmpty {
+              Text(bot.description).font(.system(size: 12)).foregroundStyle(ShellTheme.secondary)
+                .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
+            } else if conversation.kind == .group {
+              Text(
+                conversation.memberIDs.compactMap { id in store.bots.first { $0.id == id }?.name }
+                  .joined(separator: ", ")
+              )
+              .font(.system(size: 12)).foregroundStyle(ShellTheme.secondary)
+              .fixedSize(horizontal: false, vertical: true).padding(.bottom, 14)
+            }
+          }
           VStack(spacing: 11) {
             Image(systemName: "desktopcomputer").font(.system(size: 32, weight: .ultraLight))
               .foregroundStyle(ShellTheme.secondary)

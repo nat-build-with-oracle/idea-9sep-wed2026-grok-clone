@@ -244,6 +244,8 @@ extension PreviewWorkspace {
   }
 
   func prepareForClose() async throws {
+    await profileEditorSaveTask?.value
+    if isProfileSaving { await withCheckedContinuation { profileSaveWaiters.append($0) } }
     if isProviderSaving { await withCheckedContinuation { providerSaveWaiters.append($0) } }
     sendTask?.cancel()
     await sendTask?.value

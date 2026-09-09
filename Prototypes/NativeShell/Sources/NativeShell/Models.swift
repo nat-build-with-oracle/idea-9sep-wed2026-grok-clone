@@ -104,6 +104,11 @@ enum ComposerInputPolicy {
   @Published var inspectorPreferred = true
   @Published var sidebarVisible = true
   @Published var panel: Panel?
+  @Published var editTarget: ProfileEditTarget?
+  @Published var profileEditorDirty = false
+  @Published var isProfileSaving = false
+  var profileEditorSaveTask: Task<Void, Never>?
+  var profileSaveWaiters: [CheckedContinuation<Void, Never>] = []
   @Published var notice: String?
   @Published var name = "Demo User"
   @Published var searchFocusRequest = 0

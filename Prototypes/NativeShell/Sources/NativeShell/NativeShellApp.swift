@@ -48,6 +48,7 @@ import WorkspaceCore
     window.isReleasedWhenClosed = false
     window.contentView = NSHostingView(rootView: WorkspaceView(store: store))
     self.window = window
+    window.delegate = self
     store.openSettingsAction = { [weak self] in self?.showSettings() }
     installMenus()
     window.center()
@@ -85,8 +86,11 @@ import WorkspaceCore
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    guard store.isPersistent, !readyToQuit else { return .terminateNow }
+    guard !readyToQuit else { return .terminateNow }
     guard !preparingToQuit else { return .terminateCancel }
+    let recheckProfileAfterSave = store.isProfileSaving
+    guard discardProfileChangesIfNeeded() else { return .terminateCancel }
+    guard store.isPersistent else { return .terminateNow }
     guard discardProviderChangesIfNeeded() else { return .terminateCancel }
     preparingToQuit = true
     window?.makeFirstResponder(nil)
@@ -95,6 +99,12 @@ import WorkspaceCore
     // Cancel this request, flush asynchronously, then issue a prepared synchronous termination.
     Task {
       do {
+        await store.profileEditorSaveTask?.value
+        if recheckProfileAfterSave, !discardProfileChangesIfNeeded() {
+          preparingToQuit = false
+          store.isClosing = false
+          return
+        }
         try await store.prepareForClose()
         try await persistentRepository?.close()
         readyToQuit = true
@@ -155,7 +165,7 @@ import WorkspaceCore
           name: "Project team", members: [botID, secondID])
         try await store.flushDrafts()
         try await first.close()
-        let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+        var reopened = try await CoreDataWorkspaceRepository.open(at: url)
         persistentRepository = reopened
         try await store.connect(reopened, displayName: "Smoke workspace")
         let snapshot = try await reopened.snapshot()
@@ -168,6 +178,11 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-profiles") {
+          reopened = try await verifyProfileFlow(
+            repository: reopened, url: url,
+            botID: botID, groupID: groupID, showGroup: arguments.contains("--edit-group"))
+        }
         if arguments.contains("--verify-codex-fixture")
           || arguments.contains("--verify-codex-stdin")
         {
@@ -200,6 +215,9 @@ import WorkspaceCore
           }
         }
         try await Task.sleep(for: .milliseconds(300))
+        if arguments.contains("--verify-profiles"), window?.attachedSheet == nil {
+          throw WorkspaceError.invalidStore
+        }
         writeSnapshot(small: small, arguments: arguments)
         print(
           "NATIVE_PERSISTENCE_SMOKE=PASS bots=2 conversations=3 pausedRoutines=1 restoredDrafts=1")
@@ -218,6 +236,65 @@ import WorkspaceCore
   }
 
   /// Explicitly injected, offline fixtures, available only in the isolated smoke workspace.
+  private func verifyProfileFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, botID: UUID, groupID: UUID,
+    showGroup: Bool
+  ) async throws -> CoreDataWorkspaceRepository {
+    let before = try await repository.snapshot()
+    guard let originalBot = before.bots.first(where: { $0.id == botID }),
+      let originalGroup = before.conversations.first(where: { $0.id == groupID })
+    else {
+      throw WorkspaceError.invalidStore
+    }
+    let botEditor = ProfileEditorController(store: store, target: .bot(botID))
+    await botEditor.load()?.value
+    botEditor.setName("Research Partner Edited")
+    botEditor.setDescription("Compare sources and explain tradeoffs clearly.")
+    botEditor.setColor("violet")
+    botEditor.setShape(.drop)
+    await botEditor.save()?.value
+    guard botEditor.shouldDismiss, botEditor.errorMessage == nil else {
+      throw WorkspaceError.invalidStore
+    }
+    let groupEditor = ProfileEditorController(store: store, target: .group(groupID))
+    await groupEditor.load()?.value
+    groupEditor.setName("Edited project team")
+    groupEditor.moveMember(from: IndexSet(integer: 0), to: originalGroup.memberBotIDs.count)
+    await groupEditor.save()?.value
+    guard groupEditor.shouldDismiss, groupEditor.errorMessage == nil else {
+      throw WorkspaceError.invalidStore
+    }
+    store.profileEditorDirty = false
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(reopened, displayName: "Smoke workspace")
+    let snapshot = try await reopened.snapshot()
+    guard let bot = snapshot.bots.first(where: { $0.id == botID }),
+      let group = snapshot.conversations.first(where: { $0.id == groupID }),
+      bot.name == "Research Partner Edited",
+      bot.description == "Compare sources and explain tradeoffs clearly.",
+      bot.color == "violet", bot.shape == .drop, bot.createdAt == originalBot.createdAt,
+      group.title == "Edited project team",
+      group.memberBotIDs == Array(originalGroup.memberBotIDs.reversed()),
+      group.nextSequence == originalGroup.nextSequence,
+      snapshot.routines.count == before.routines.count,
+      snapshot.drafts == before.drafts, snapshot.bots.count == before.bots.count,
+      snapshot.conversations.count == before.conversations.count,
+      let displayed = store.conversations.first(where: {
+        showGroup ? $0.id == groupID : $0.kind == .direct && $0.memberIDs == [botID]
+      })
+    else { throw WorkspaceError.invalidStore }
+    store.selectedID = displayed.id
+    try await store.loadMessages(displayed.id)
+    store.beginEditing(displayed)
+    print(
+      "NATIVE_PROFILE_SMOKE=PASS botsEdited=1 groupsEdited=1 restarted=true identitiesStable=true draftsKept=true routinesKept=true offline=true"
+    )
+    return reopened
+  }
+
   private func verifyCodexFlow(
     repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID, live: Bool
   ) async throws {
@@ -380,6 +457,11 @@ import WorkspaceCore
   }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
+    if sender === window, store.editTarget != nil {
+      guard !store.isProfileSaving, discardProfileChangesIfNeeded() else { return false }
+      store.editTarget = nil
+      store.profileEditorDirty = false
+    }
     guard sender === settingsWindow else { return true }
     return !store.isProviderSaving && discardProviderChangesIfNeeded()
   }
@@ -402,6 +484,17 @@ import WorkspaceCore
     store.providerSettingsDirty = false
     return true
   }
+  private func discardProfileChangesIfNeeded() -> Bool {
+    guard store.profileEditorDirty, !store.isProfileSaving else { return true }
+    let alert = NSAlert()
+    alert.messageText = "Discard unsaved profile changes?"
+    alert.informativeText =
+      "The bot or group edits have not been saved. Conversation messages and drafts will be kept."
+    alert.addButton(withTitle: "Keep Editing")
+    alert.addButton(withTitle: "Discard Changes")
+    // Do not clear dirty state yet: another quit guard may still keep the app open.
+    return alert.runModal() == .alertSecondButtonReturn
+  }
   @objc private func search() {
     store.sidebarVisible = true
     store.searchFocusRequest += 1
@@ -410,23 +503,28 @@ import WorkspaceCore
   @objc private func toggleDetails() { store.inspectorPreferred.toggle() }
 
   private func writeSnapshot(small: Bool, arguments: [String]) {
-    let target = arguments.contains("--settings") ? settingsWindow : window
+    let target =
+      arguments.contains("--verify-profiles")
+      ? window?.attachedSheet : arguments.contains("--settings") ? settingsWindow : window
     guard let view = target?.contentView?.superview else { return }
     view.layoutSubtreeIfNeeded()
     guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--verify-codex-fixture") || arguments.contains("--verify-codex-stdin")
-      ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-      : arguments.contains("--verify-provider")
-        ? (arguments.contains("--settings")
-          ? (arguments.contains("--router-models") ? "router-model-settings" : "provider-settings")
-          : "provider-chat")
-        : arguments.contains("--verify-workspace")
-          ? "durable-workspace"
-          : arguments.contains("--group")
-            ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--verify-profiles")
+      ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+      : arguments.contains("--verify-codex-fixture") || arguments.contains("--verify-codex-stdin")
+        ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+        : arguments.contains("--verify-provider")
+          ? (arguments.contains("--settings")
+            ? (arguments.contains("--router-models")
+              ? "router-model-settings" : "provider-settings")
+            : "provider-chat")
+          : arguments.contains("--verify-workspace")
+            ? "durable-workspace"
+            : arguments.contains("--group")
+              ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {
