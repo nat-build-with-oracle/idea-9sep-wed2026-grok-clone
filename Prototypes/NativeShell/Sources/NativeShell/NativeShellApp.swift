@@ -178,6 +178,10 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-replies") {
+          reopened = try await verifyReplyFlow(
+            repository: reopened, url: url, conversationID: groupID, targetID: botID)
+        }
         if arguments.contains("--verify-profiles") {
           reopened = try await verifyProfileFlow(
             repository: reopened, url: url,
@@ -233,6 +237,62 @@ import WorkspaceCore
         NSApp.terminate(nil)
       }
     }
+  }
+
+  private func verifyReplyFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, conversationID: UUID, targetID: UUID
+  ) async throws -> CoreDataWorkspaceRepository {
+    let credentials = SessionAwareCredentialStore(persistent: SmokeCredentials())
+    let provider = SmokeReplyChatProvider()
+    try await store.connect(
+      repository, credentials: credentials, provider: provider, displayName: "Smoke workspace")
+    _ = try await store.saveProvider(
+      id: nil, name: "Offline reply fixture", apiRoot: "https://fixture.invalid/v1",
+      modelID: "fixture-text",
+      secret: "offline-reply-fixture", allowsLoopbackHTTP: false, credentialLifetime: .session)
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    store.draft = "Find a fictional source for a short planning draft."
+    _ = try await store.submitDraft()
+    await store.coordinator?.waitForIdle()
+    let firstPage = try await repository.messages(conversationID: conversationID)
+    guard let parent = firstPage.messages.last, parent.role == .assistant else {
+      throw WorkspaceError.invalidStore
+    }
+    await store.beginReply(to: parent.id, in: conversationID)
+    store.draft = SmokeReplyChatProvider.followUp
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(
+      reopened, credentials: credentials, provider: provider, displayName: "Smoke workspace")
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    try await store.loadMessages(conversationID)
+    guard store.draft == SmokeReplyChatProvider.followUp, store.currentReply?.id == parent.id,
+      store.currentReply?.speakerName == "Research Partner", store.currentReply?.isAvailable == true
+    else { throw WorkspaceError.invalidStore }
+    _ = try await store.submitDraft()
+    await store.coordinator?.waitForIdle()
+    let page = try await reopened.messages(conversationID: conversationID)
+    let snapshot = try await reopened.snapshot()
+    guard page.messages.count == 4,
+      page.messages.first(where: { $0.text == SmokeReplyChatProvider.followUp })?.replyToID
+        == parent.id,
+      snapshot.generations.count == 2, snapshot.generations.allSatisfy({ $0.state == .completed }),
+      store.draft.isEmpty, store.currentReply == nil,
+      snapshot.drafts.first(where: { $0.conversationID == conversationID })?.replyToID == nil,
+      let latest = page.messages.last
+    else { throw WorkspaceError.invalidStore }
+    await store.beginReply(to: latest.id, in: conversationID)
+    store.draft = "Keep this next follow-up as a local draft."
+    try await store.flushDrafts()
+    guard store.currentReply?.id == latest.id else { throw WorkspaceError.invalidStore }
+    print(
+      "NATIVE_REPLY_SMOKE=PASS offline=true restoredReplyDraft=true sentReference=true providerContext=true matchingDraftCleared=true nextDraftKept=true"
+    )
+    return reopened
   }
 
   /// Explicitly injected, offline fixtures, available only in the isolated smoke workspace.
@@ -521,10 +581,12 @@ import WorkspaceCore
             ? (arguments.contains("--router-models")
               ? "router-model-settings" : "provider-settings")
             : "provider-chat")
-          : arguments.contains("--verify-workspace")
-            ? "durable-workspace"
-            : arguments.contains("--group")
-              ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+          : arguments.contains("--verify-replies")
+            ? "reply-chat"
+            : arguments.contains("--verify-workspace")
+              ? "durable-workspace"
+              : arguments.contains("--group")
+                ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

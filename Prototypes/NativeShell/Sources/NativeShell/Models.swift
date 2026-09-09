@@ -42,15 +42,19 @@ struct PreviewMessage: Identifiable {
   let text: String
   let timestamp: String?
   let speakerName: String?
+  let replyToID: UUID?
+  let sequence: Int64?
   init(
     _ role: Role, _ text: String, timestamp: String? = nil, id: UUID = UUID(),
-    speakerName: String? = nil
+    speakerName: String? = nil, replyToID: UUID? = nil, sequence: Int64? = nil
   ) {
     self.id = id
     self.role = role
     self.text = text
     self.timestamp = timestamp
     self.speakerName = speakerName
+    self.replyToID = replyToID
+    self.sequence = sequence
   }
 }
 
@@ -94,6 +98,13 @@ enum ComposerInputPolicy {
   @Published var conversations: [PreviewConversation] = []
   @Published var messages: [UUID: [PreviewMessage]] = [:]
   @Published var drafts: [UUID: String] = [:]
+  @Published var draftReplyIDs: [UUID: UUID] = [:]
+  @Published var replyPreviews: [UUID: [UUID: ReplyPreview]] = [:]
+  @Published var transcriptJumpRequest: TranscriptJumpRequest?
+  @Published var isJumpingToReply = false
+  var replyContextGeneration = 0
+  var replyChoiceRequests: [UUID: Int] = [:]
+  var replyJumpGeneration = 0
   @Published var routines: [PreviewRoutine] = []
   @Published var selectedID: UUID?
   @Published var search = ""
@@ -274,8 +285,10 @@ enum ComposerInputPolicy {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !text.isEmpty else { return }
     messages[selectedID, default: []].append(
-      PreviewMessage(.user, text, timestamp: "Just now · preview only"))
+      PreviewMessage(
+        .user, text, timestamp: "Just now · preview only", replyToID: draftReplyIDs[selectedID]))
     drafts[selectedID] = ""
+    draftReplyIDs[selectedID] = nil
     notice = "Preview message only. No AI provider is connected; this session is not saved to disk."
   }
 

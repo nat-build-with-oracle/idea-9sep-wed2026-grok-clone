@@ -303,15 +303,6 @@ private struct ConversationView: View {
         .accessibilityIdentifier("edit-conversation-profile")
         .disabled(store.editTarget != nil || store.isProfileSaving)
       }
-      ShellIconButton(symbol: "square.and.arrow.up", label: "Copy conversation") {
-        let text = store.currentMessages.map { $0.text }.joined(separator: "\n\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        store.notice =
-          store.isPersistent
-          ? "Loaded conversation text copied."
-          : "Conversation copied. Sample content is not live data."
-      }
       ShellIconButton(symbol: "sidebar.right", label: "Toggle conversation details") {
         store.inspectorPreferred.toggle()
       }
@@ -329,14 +320,7 @@ private struct ConversationView: View {
                 .font(.system(size: 12))
             }
             ForEach(store.currentMessages) { message in
-              MessageBubble(message: message).id(message.id)
-              ForEach(
-                store.generations.filter {
-                  $0.userMessageID == message.id && $0.state != .completed
-                }
-              ) { generation in
-                GenerationStatusView(store: store, generation: generation)
-              }
+              messageRow(message, conversationID: conversation.id)
             }
             if store.currentMessages.isEmpty {
               VStack(spacing: 15) {
@@ -388,13 +372,51 @@ private struct ConversationView: View {
         .onChange(of: store.currentMessages.last?.text) { _, _ in
           if nearBottom { reader.scrollTo("bottom", anchor: .bottom) }
         }
+        .onChange(of: store.transcriptJumpRequest?.requestID) { _, _ in
+          guard let request = store.transcriptJumpRequest,
+            request.conversationID == conversation.id
+          else { return }
+          reader.scrollTo(request.messageID, anchor: .center)
+        }
       }
+    }
+  }
+
+  @ViewBuilder
+  private func messageRow(_ message: PreviewMessage, conversationID: UUID) -> some View {
+    MessageBubble(
+      message: message,
+      reference: store.replyPreview(for: message),
+      isJumpingToReply: store.isJumpingToReply,
+      onReply: { Task { await store.beginReply(to: message.id, in: conversationID) } },
+      onJumpToReference: { messageID in
+        Task { await store.jumpToReply(messageID: messageID, in: conversationID) }
+      }
+    ).id(message.id)
+    ForEach(
+      store.generations.filter {
+        $0.userMessageID == message.id && $0.state != .completed
+      }
+    ) { generation in
+      GenerationStatusView(store: store, generation: generation)
     }
   }
 
   private var composer: some View {
     VStack(spacing: 8) {
       if store.isPersistent { providerControls }
+      if let reply = store.currentReply, let conversation = store.current {
+        ReplyPreviewView(
+          presentation: ReplyPresentation(reply),
+          onOpen: reply.isAvailable
+            ? {
+              Task { await store.jumpToReply(messageID: reply.id, in: conversation.id) }
+            } : nil,
+          onCancel: { store.clearReply(in: conversation.id) },
+          isOpening: store.isJumpingToReply
+        )
+        .accessibilityIdentifier("composer-reply-preview")
+      }
       if let notice = store.notice {
         HStack(alignment: .top, spacing: 8) {
           Text(notice).font(.system(size: 12)).foregroundStyle(ShellTheme.secondary)
@@ -490,8 +512,10 @@ private struct ConversationView: View {
         Text("To: \(provider.apiRoot.absoluteString) · \(provider.modelID)")
           .font(.system(size: 11)).textSelection(.enabled)
           .accessibilityIdentifier("send-destination")
-        Text("Sends draft + up to 100 prior messages + bot description. No attachments.")
-          .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+        Text(
+          "Sends draft, bot description, up to 100 recent messages, and the original message if replying. No attachments."
+        )
+        .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
       } else {
         Text("No provider selected. Sending keeps your draft; nothing leaves this Mac.")
           .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
@@ -541,6 +565,10 @@ private struct BottomPreference: PreferenceKey {
 
 private struct MessageBubble: View {
   let message: PreviewMessage
+  let reference: ReplyPreview?
+  let isJumpingToReply: Bool
+  let onReply: () -> Void
+  let onJumpToReference: (UUID) -> Void
   var body: some View {
     VStack(spacing: 22) {
       if let timestamp = message.timestamp {
@@ -560,6 +588,20 @@ private struct MessageBubble: View {
               )
               .accessibilityLabel("Reply from \(speaker)")
             }
+            if let replyToID = message.replyToID {
+              let presentation =
+                reference.map {
+                  ReplyPresentation($0)
+                } ?? .loading
+              ReplyPreviewView(
+                presentation: presentation,
+                onOpen: presentation.state == .available
+                  ? { onJumpToReference(replyToID) } : nil,
+                isOpening: isJumpingToReply
+              )
+              .frame(maxWidth: 520, alignment: .leading)
+              .accessibilityIdentifier("reply-reference-\(message.id)")
+            }
             Text(message.text).font(.system(size: 16)).lineSpacing(4)
               .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
               .padding(.horizontal, 15).padding(.vertical, 11)
@@ -568,6 +610,19 @@ private struct MessageBubble: View {
                 in: RoundedRectangle(cornerRadius: 22)
               )
               .frame(maxWidth: 550, alignment: message.role == .user ? .trailing : .leading)
+            HStack(spacing: 12) {
+              Button("Reply", action: onReply)
+                .accessibilityLabel("Reply to message")
+                .accessibilityIdentifier("reply-message-\(message.id)")
+                .disabled(message.text.isEmpty)
+              Button("Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(message.text, forType: .string)
+              }
+              .accessibilityLabel("Copy message text")
+              .accessibilityIdentifier("copy-message-\(message.id)")
+            }
+            .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(ShellTheme.secondary)
           }
           if message.role != .user { Spacer(minLength: 40) }
         }.frame(maxWidth: .infinity)

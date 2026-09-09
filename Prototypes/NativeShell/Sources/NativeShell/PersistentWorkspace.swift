@@ -7,10 +7,27 @@ extension PreviewWorkspace {
     credentials: any CredentialStore = SessionAwareCredentialStore(),
     provider: any ChatProvider = ProviderRouter(), displayName: String? = nil
   ) async throws {
-    try await coordinator?.shutdown()
-    isPersistent = true
     isLoading = true
     defer { isLoading = false }
+    replyContextGeneration += 1
+    selectionRequest += 1
+    replyJumpGeneration += 1
+    isJumpingToReply = false
+    // An accepted old-workspace draft write must finish before any repository is replaced.
+    draftSaveTask?.cancel()
+    await draftSaveTask?.value
+    try await flushDrafts()
+    try await coordinator?.shutdown()
+    replyPreviews = [:]
+    transcriptJumpRequest = nil
+    isPersistent = true
+    drafts = [:]
+    draftReplyIDs = [:]
+    dirtyDrafts = []
+    draftVersions = [:]
+    messages = [:]
+    selectedID = nil
+    selectedTargetBotIDs = [:]
     self.repository = repository
     self.credentials = credentials
     self.chatProvider = provider
@@ -49,6 +66,7 @@ extension PreviewWorkspace {
     }
     for draft in snapshot.drafts where !dirtyDrafts.contains(draft.conversationID) {
       drafts[draft.conversationID] = draft.text
+      draftReplyIDs[draft.conversationID] = draft.replyToID
     }
     routines = snapshot.routines.map { routine in
       let minutes: Int
@@ -61,6 +79,7 @@ extension PreviewWorkspace {
         intervalMinutes: minutes, enabled: routine.enabled)
     }
     storageError = nil
+    if let selectedID { await refreshReplyPreviews(in: selectedID) }
     if !search.isEmpty { await searchPersistent() }
   }
 
@@ -72,6 +91,7 @@ extension PreviewWorkspace {
       hasOlderMessages = page.hasMore
       olderCursor = page.beforeSequence
     }
+    await refreshReplyPreviews(in: id, retryUnavailable: true)
   }
 
   func searchPersistent() async {
@@ -92,13 +112,12 @@ extension PreviewWorkspace {
       let page = try await repository.messages(
         conversationID: id, beforeSequence: before, limit: 100)
       guard id == selectedID else { return }
-      messages[id] = page.messages.map(projectMessage) + (messages[id] ?? [])
-      hasOlderMessages = page.hasMore
-      olderCursor = page.beforeSequence
+      mergeOlderMessages(page, in: id)
+      await refreshReplyPreviews(in: id)
     } catch { storageError = error.localizedDescription }
   }
 
-  private func projectMessage(_ message: Message) -> PreviewMessage {
+  func projectMessage(_ message: Message) -> PreviewMessage {
     let role: PreviewMessage.Role
     switch message.role {
     case .user: role = .user
@@ -108,7 +127,8 @@ extension PreviewWorkspace {
     return PreviewMessage(
       role, message.text,
       timestamp: message.createdAt.formatted(date: .abbreviated, time: .shortened), id: message.id,
-      speakerName: message.speakerNameSnapshot)
+      speakerName: message.speakerNameSnapshot, replyToID: message.replyToID,
+      sequence: message.sequence)
   }
 
   func scheduleDraftSave(_ id: UUID) {
@@ -145,7 +165,8 @@ extension PreviewWorkspace {
     while !dirtyDrafts.isEmpty {
       for id in Array(dirtyDrafts) {
         let version = draftVersions[id]
-        let draft = Draft(conversationID: id, text: drafts[id] ?? "")
+        let draft = Draft(
+          conversationID: id, text: drafts[id] ?? "", replyToID: draftReplyIDs[id])
         try await repository.apply(.saveDraft(draft))
         if version == draftVersions[id] { dirtyDrafts.remove(id) }
       }

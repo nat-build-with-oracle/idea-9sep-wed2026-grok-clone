@@ -62,12 +62,7 @@ extension PreviewWorkspace {
       // Keep older pages already loaded; update deltas by stable message identity.
       var existing = messages[conversationID] ?? []
       for item in page.messages {
-        let role: PreviewMessage.Role =
-          item.role == .user ? .user : item.role == .assistant ? .assistant : .event
-        let projected = PreviewMessage(
-          role, item.text,
-          timestamp: item.createdAt.formatted(date: .abbreviated, time: .shortened),
-          id: item.id, speakerName: item.speakerNameSnapshot)
+        let projected = projectMessage(item)
         if let index = existing.firstIndex(where: { $0.id == item.id }) {
           existing[index] = projected
         } else {
@@ -75,6 +70,7 @@ extension PreviewWorkspace {
         }
       }
       messages[conversationID] = existing
+      await refreshReplyPreviews(in: conversationID)
     } catch { storageError = Self.providerErrorMessage(error) }
   }
 
@@ -87,6 +83,7 @@ extension PreviewWorkspace {
     guard let conversationID = selectedID else { throw WorkspaceError.missingRecord }
     guard let target = selectedTargetBotID else { throw ProviderSetupError.targetRequired }
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    let replyToID = draftReplyIDs[conversationID]
     guard !text.isEmpty else { throw WorkspaceError.invalidDraft }
     let version = draftVersions[conversationID]
     isSubmitting = true
@@ -95,10 +92,12 @@ extension PreviewWorkspace {
     try Task.checkCancellation()
     guard !isClosing else { throw WorkspaceError.storeClosed }
     let id = try await coordinator.submit(
-      SendCommand(conversationID: conversationID, targetBotID: target, text: text),
+      SendCommand(
+        conversationID: conversationID, targetBotID: target, text: text, replyToID: replyToID),
       configuration: configuration)
     if draftVersions[conversationID] == version {
       drafts[conversationID] = ""
+      draftReplyIDs[conversationID] = nil
       dirtyDrafts.remove(conversationID)
     } else {
       // Even a new edit with identical text must survive the repository's matching-draft clear.

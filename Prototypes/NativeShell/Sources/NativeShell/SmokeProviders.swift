@@ -77,3 +77,17 @@ final class SmokeCodexURLProtocol: URLProtocol, @unchecked Sendable {
   }
   override func stopLoading() {}
 }
+
+/// Verifies the real native reply submission reaches the provider boundary with explicit context.
+struct SmokeReplyChatProvider: ChatProvider {
+  static let followUp = "Explain how this source helps our fictional project."
+  func stream(_ request: ChatRequest) -> AsyncThrowingStream<ChatEvent, Error> {
+    if request.turns.last?.content == Self.followUp {
+      guard request.turns.first?.content.contains("Reply context:") == true,
+        request.turns.filter({ $0.role == "assistant" && $0.content == SmokeChatProvider.reply })
+          .count == 1
+      else { return AsyncThrowingStream { $0.finish(throwing: ProviderError.invalidResponse) } }
+    }
+    return SmokeChatProvider().stream(request)
+  }
+}
