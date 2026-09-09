@@ -449,8 +449,12 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   }
   private func validateReply(_ id: UUID?, conversationID: UUID) throws {
     guard let id else { return }
-    let message: Message = try read("Message", id: id)
-    guard message.conversationID == conversationID else { throw WorkspaceError.invalidDraft }
+    guard let record = try find("Message", id: id.uuidString) else {
+      throw WorkspaceError.invalidDraft
+    }
+    let message = try decode(record, as: Message.self)
+    guard message.conversationID == conversationID, message.role != .event, !message.text.isEmpty
+    else { throw WorkspaceError.invalidDraft }
   }
   private func ensureIdentityAvailable(_ id: UUID) throws {
     for entity in ["Bot", "Conversation", "Message", "Generation", "Routine", "Provider"] {
