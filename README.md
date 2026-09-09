@@ -5,7 +5,7 @@ Built with **SwiftUI, AppKit and Core Data**, using only Apple frameworks.
 The repository name preserves its original [grok-clone idea capsule](PROPOSAL.md).
 
 **Experimental source release, not a finished AI client.** Bots, groups, drafts
-and paused routines persist locally. Native provider settings, streamed replies,
+and routines persist locally. Native provider settings, streamed replies,
 explicit group targeting, Stop and Retry are wired to the provider core and tested
 with offline fixtures. An experimental, fixed-origin Codex text adapter accepts an explicitly imported
 ChatGPT `auth.json` for this session only. Real Keychain/signing and broad provider
@@ -24,6 +24,7 @@ scripts/native-app.sh profile-smoke  # bot edit + group edit + close/reopen
 scripts/native-app.sh reply-smoke    # reply draft restart + referenced fixture send
 scripts/native-app.sh export-smoke   # text-only JSON export + atomic file replacement
 scripts/native-app.sh deletion-smoke # confirmed bot deletion + retained group/restart
+scripts/native-app.sh routine-smoke  # daily editor + offline run + pause/resume/history restart
 ```
 
 The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Settings offers Z.ai general API, local 9router, OpenAI Platform and custom setup templates. A separate **Codex login (experimental)** provider type imports a user-selected auth JSON into memory only; it is not an OpenAI Platform API key. Enter the endpoint/model/key for compatible providers, then select the provider and (for groups) the replying bot in the composer. Without a usable credential, the draft is retained.
@@ -50,11 +51,11 @@ third-party dependency installation is needed for the current app or tests.
 | Local data | Core Data v2 with tested v1 migration, text/reply drafts, message pagination, routine occurrence ledger, text-only JSON export v2 |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
 | Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
-| Routine core | Explicit provider bindings, run-now, catch-up/skip history, cancellation and DST logic tested offline; native routine controls/host scheduling still pending |
-| Remaining gates | Broad provider/9router validation, native routine execution controls, attachments and remaining native accessibility flows |
+| Routines | Native interval/daily editor, explicit owner/provider consent, Run Now, pause/resume, Stop/delete and history; launch/wake/30-second awake scheduling, offline tested |
+| Remaining gates | Broad provider/9router validation, attachments and remaining native accessibility flows |
 
-Verification: **337 tests** (197 core + 140 shell), desktop/narrow native persistence,
-offline provider smokes, profile-edit and reply close/reopen smokes, text-only export and confirmed deletion smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
+Verification: **364 tests** (199 core + 165 shell), desktop/narrow native persistence,
+offline provider smokes, profile-edit and reply close/reopen smokes, text-only export, confirmed deletion and routine editor/run/restart smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
 and limitations below for the current test counts and scope. An explicitly authorized
 manual native Codex check also completed a minimal reply with persistence and
 attribution; one account/time is not broad compatibility or release certification.
@@ -72,7 +73,7 @@ Native provider settings + composer → GenerationCoordinator
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
 - [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)
 - [Confirmed bot deletion and group repair](docs/BOT-DELETION.md)
-- [Routine execution core and remaining native controls](docs/ROUTINES.md)
+- [Routine execution, native controls and scheduling limits](docs/ROUTINES.md)
 - [Provider core and verification gaps](docs/PROVIDER-CORE.md)
 - [Experimental Codex adapter contract](docs/CODEX-ADAPTER-CONTRACT.md)
 - [Native prototype, pages and layout](docs/NATIVE-PROTOTYPE.md)

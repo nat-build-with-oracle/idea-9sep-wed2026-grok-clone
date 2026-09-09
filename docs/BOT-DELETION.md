@@ -30,7 +30,7 @@ Current Impact** loads a fresh plan. Export is a separate action: cancel first t
 
 The [routine occurrence ledger](ROUTINES.md) is persisted in schema v2. Confirmation
 includes owned history and active claims, even claims still waiting for credentials before a
-generation exists. Native routine execution controls remain pending. Attachment storage is
+generation exists. Native routine execution controls are connected with explicit consent and awake-only scheduling. Attachment storage is
 still unimplemented; future unreferenced attachment bytes must extend the cleanup contract.
 
 ## Transaction and concurrency contract

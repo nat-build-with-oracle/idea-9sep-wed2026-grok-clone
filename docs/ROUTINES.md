@@ -1,13 +1,13 @@
 # Routine execution contract and implementation
 
-Status: **core execution implemented; native routine controls and host scheduling integration are next**.
-This is progress toward R05/T10, not a claim that the native app now runs its saved routines.
-The current inspector still saves paused definitions and labels scheduling as disconnected.
+Status: **native routine editing, execution controls, history and awake lifecycle are implemented**.
+Verified with synthetic temporary stores and offline providers. This is not a claim of 24/7
+background service, live-provider certification, physical sleep testing, or complete accessibility coverage.
 
 ## Execution boundary
 
 ```text
-Explicit Run Now             Launch / wake / awake timer (host integration pending)
+Explicit Run Now             Launch / wake / 30-second awake timer
        |                                      |
        +------------ RoutineScheduler --------+
                             |
@@ -30,13 +30,14 @@ Explicit Run Now             Launch / wake / awake timer (host integration pendi
 ```
 
 - A routine explicitly belongs to one bot. Its output goes to that bot's direct conversation,
-  not an implicitly selected group. A future group editor must choose and disclose that owner.
+  not an implicitly selected group. The group editor requires an explicit owner and discloses it.
 - `RoutineProviderBinding` captures the provider ID, kind, API root, model and loopback policy.
   It contains no credential value or credential reference. Changes to the bound destination/model
   require new routine authorization; the composer selection cannot redirect an automatic run.
 - The dispatched input includes the captured routine prompt and the owner's recent direct-chat
   context (the same bounded 100-message provider context as interactive chat). Native enabling
-  controls must disclose this transmission before enabling automatic execution.
+  controls disclose and require authorization for the prompt, full API root/model and context.
+  Binding changes invalidate consent; Run Now separately confirms the immutable definition.
 - A run is claimed in one serialized repository transaction **before** credential lookup or
   transport. Its prompt/name/provider metadata is immutable even if the definition is edited.
 - A second active run or duplicate scheduled occurrence is rejected at the repository boundary.
@@ -63,7 +64,8 @@ Explicit Run Now             Launch / wake / awake timer (host integration pendi
   timestamps are clamped to creation time when the wall clock has moved backwards.
 - `RoutineScheduler` takes an injectable clock. The host must call reconcile on launch/wake and
   while awake, cancel/join accepted scheduling calls on workspace change/quit, and shut down the
-  shared generation coordinator. It contains no hidden timer, helper, login item or cloud service.
+  shared generation coordinator. The native host polls every 30 seconds while awake and observes
+  macOS sleep/wake notifications. There is no helper, login item or cloud service.
   **Nothing promises execution while the app is closed, the Mac is asleep, or the user is logged out.**
 
 ## Pause, Stop and deletion
@@ -72,7 +74,10 @@ Explicit Run Now             Launch / wake / awake timer (host integration pendi
 - Stop atomically cancels a claim and its generation, including the credential-read race before a
   generation exists. The coordinator also prevents a cancelled claim from entering transport later.
 - Deleting a routine requires no active run and deletes its run history, not its chat transcript.
-  Native confirmation must offer an explicit Stop-and-delete path when a run is active.
+  Native confirmation offers an explicit Stop-and-delete path when a run is active.
+  The definition and exact run-ID set are checked before pausing future claims, then rechecked
+  before final deletion. If the stop/delete sequence fails after pause, it remains paused and
+  shows an error; new history requires a new confirmation.
 - Bot deletion includes owned run-history counts and cancels claimed work before physical deletion.
   New run history changes the confirmation's destructive impact and requires a new review.
 - Restart marks unfinished claims and generations interrupted. It does not replay those requests.
@@ -98,10 +103,37 @@ No development run opens or migrates the user's real workspace, calls a paid pro
 an authentication file. The live Z.ai/9router/Codex compatibility limits remain those documented
 in [provider setup](PROVIDER-SETUP.md).
 
-R05 is **not complete** until the native editor, explicit provider/owner consent, visible history,
-Run Now/Pause/Resume/Stop/delete controls, lifecycle integration, native run smoke, and narrow-window
-verification are delivered. The broader [native rewrite contract](NATIVE-REWRITE-CONTRACT.md)
-also retains its attachment, accessibility, minimum-OS and distribution gates.
+## Native controls and verification
+
+- Use the inspector's **+** or the always-accessible header **Routines** menu in a narrow window.
+- The detached editor supports create/edit, numeric interval entry (5–525,600 minutes), daily
+  hour/minute, named timezone, explicit owner and provider. Editing an existing routine cannot
+  change its owner. Cancel/Escape/close/quit honor dirty and accepted-save state.
+- **Run Now** works while paused without moving the schedule. **Pause** does not implicitly Stop.
+  **Resume…** opens the editor to review/authorize automatic sends and starts at a future occurrence.
+- History shows the latest 100 records plus any active run (even after wall-clock rollback), typed
+  errors, skipped ranges, Stop, and a link to the owner's chat. Export retains all records.
+  Active-run discovery currently inspects that routine's ledger; very large history performance
+  has not been benchmarked.
+- The sample-only bundle cannot execute routines. Existing paused definitions are not enabled or
+  bound to the composer provider automatically.
+
+```sh
+scripts/native-app.sh routine-smoke
+scripts/native-app.sh routine-smoke --small
+```
+
+The smoke creates a daily routine through the native controller with an explicit group owner and
+provider, renders its editor, runs an offline reply into the owner's direct chat, verifies the
+group draft survives, resumes/pauses, closes/reopens, and renders restored history. These checks
+exercise real views/controllers/services, not physical mouse/keyboard automation. Additional tests
+cover consent drift, paused and blocked runs, catch-up/wake, Stop/partial text, exact deletion impact,
+shutdown joining, and active history beyond the chronological page limit. No real provider is called.
+
+R05's native functional path is delivered with this bounded evidence. Physical sleep/wake and
+VoiceOver/keyboard interaction on the minimum supported OS still need the broader manual matrix.
+The [native rewrite contract](NATIVE-REWRITE-CONTRACT.md) retains its attachment, accessibility,
+minimum-OS and distribution gates; none are waived by this routine milestone.
 
 ## Primary API references
 
