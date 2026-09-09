@@ -93,6 +93,12 @@ file or included context requires cancelling and reviewing a new disclosure. The
 fingerprint excludes only incidental new-command UUID/time, not semantic content or
 context identity. A caller cannot bypass this by omitting the optional consent argument.
 
+[Group rounds](GROUP-ROUNDS.md) add a mandatory ordered aggregate disclosure, including
+text-only rounds. It binds every target and request, not merely the first bot's file list.
+All members use the same captured history and file bytes, with each file sent once **per
+member request**; selecting three members can transmit the file three times to the
+displayed provider. Every target plan is compared before the first credential read.
+
 Preparation validates exact managed bytes, strict UTF-8, hash and conversation scope.
 The request has at most **32 unique files and 25 MiB total raw file bytes** across draft,
 up to 100 recent messages and any explicitly selected older reply. Limits fail visibly;

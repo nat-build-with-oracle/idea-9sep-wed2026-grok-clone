@@ -501,6 +501,9 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     case .beginGeneration(let command):
       try beginGeneration(command, clearMatchingDraft: true, routineRunID: nil)
 
+    case .beginGenerationRound(let command):
+      try beginGenerationRound(command)
+
     case .cancelGeneration(let id, let attemptID):
       var generation: Generation = try read("Generation", id: id)
       guard generation.attemptID == attemptID, !generation.state.isTerminal else { return }
@@ -508,6 +511,15 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       try put("Generation", value: generation)
       try updateRoutineRun(
         generationID: generation.id, status: .cancelled, at: Date(), error: .cancelled)
+
+    case .cancelGenerationRound(let userMessageID):
+      for var generation in try all("Generation", as: Generation.self)
+      where generation.userMessageID == userMessageID && generation.routineRunID == nil
+        && !generation.state.isTerminal
+      {
+        generation.state = .cancelled
+        try put("Generation", value: generation)
+      }
 
     case .applyGenerationEvent(let event):
       var generation: Generation = try read("Generation", id: event.generationID)
@@ -529,7 +541,8 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
           guard conversation.nextSequence < Int64.max else { throw WorkspaceError.invalidStore }
           message = Message(
             id: UUID(), conversationID: conversation.id, sequence: conversation.nextSequence,
-            role: .assistant, speakerBotID: bot.id, speakerNameSnapshot: bot.name, text: "",
+            role: .assistant, speakerBotID: bot.id,
+            speakerNameSnapshot: generation.targetSpeakerNameSnapshot ?? bot.name, text: "",
             createdAt: event.createdAt, replyToID: generation.userMessageID,
             attachmentIDs: [], generationID: generation.id)
           conversation.nextSequence += 1
@@ -808,6 +821,77 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     guard clearMatchingDraft, let record = try find("Draft", id: conversation.id.uuidString) else {
       return
     }
+    let draft = try decode(record, as: Draft.self)
+    if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
+      draft.replyToID == command.replyToID, draft.attachmentIDs == command.attachmentIDs
+    {
+      context.delete(record)
+    }
+  }
+
+  private func beginGenerationRound(_ command: SendRoundCommand) throws {
+    var conversation: Conversation = try read("Conversation", id: command.conversationID)
+    let text = command.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard (1...6).contains(command.targets.count) else { throw WorkspaceError.invalidMembers }
+    try validateAttachmentReferences(
+      command.attachmentIDs, conversationID: command.conversationID)
+    guard !text.isEmpty || !command.attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
+    if conversation.kind == .group {
+      try validateMembers(conversation.memberBotIDs, allowHidden: true)
+    }
+
+    let targetBotIDs = command.targets.map(\.targetBotID)
+    let generationIDs = command.targets.map(\.generationID)
+    let attemptIDs = command.targets.map(\.attemptID)
+    guard Set(targetBotIDs).count == targetBotIDs.count,
+      Set(targetBotIDs).isSubset(of: Set(conversation.memberBotIDs))
+    else { throw WorkspaceError.invalidMembers }
+    let allCommandIDs = [command.userMessageID] + generationIDs + attemptIDs
+    guard Set(allCommandIDs).count == allCommandIDs.count else {
+      throw WorkspaceError.identityConflict
+    }
+
+    var bots = [UUID: Bot]()
+    let reservedGenerationIDs = Set(
+      try all("RoutineRun", as: RoutineRun.self).compactMap(\.generationID))
+    guard !reservedGenerationIDs.contains(command.userMessageID) else {
+      throw WorkspaceError.identityConflict
+    }
+    for target in command.targets {
+      guard let record = try find("Bot", id: target.targetBotID.uuidString) else {
+        throw WorkspaceError.invalidMembers
+      }
+      bots[target.targetBotID] = try decode(record, as: Bot.self)
+      guard !reservedGenerationIDs.contains(target.generationID) else {
+        throw WorkspaceError.identityConflict
+      }
+    }
+    try ensureIdentityAvailable(command.userMessageID)
+    for id in generationIDs { try ensureIdentityAvailable(id) }
+    try validateReply(command.replyToID, conversationID: conversation.id)
+    guard conversation.nextSequence < Int64.max else { throw WorkspaceError.invalidStore }
+
+    let message = Message(
+      id: command.userMessageID, conversationID: conversation.id,
+      sequence: conversation.nextSequence, role: .user, speakerBotID: nil,
+      speakerNameSnapshot: nil, text: text, createdAt: command.createdAt,
+      replyToID: command.replyToID, attachmentIDs: command.attachmentIDs,
+      generationID: command.targets.count == 1 ? command.targets[0].generationID : nil)
+    let generations = try command.targets.enumerated().map { index, target in
+      Generation(
+        id: target.generationID, conversationID: conversation.id,
+        userMessageID: command.userMessageID, attemptID: target.attemptID,
+        targetBotID: target.targetBotID, state: .queued, lastEventSequence: 0, error: nil,
+        routineRunID: nil, roundIndex: index,
+        targetSpeakerNameSnapshot: try DomainValidation.name(
+          bots[target.targetBotID]?.name ?? ""))
+    }
+    conversation.nextSequence += 1
+    try put("Message", value: message)
+    for generation in generations { try put("Generation", value: generation) }
+    try put("Conversation", value: conversation)
+
+    guard let record = try find("Draft", id: conversation.id.uuidString) else { return }
     let draft = try decode(record, as: Draft.self)
     if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
       draft.replyToID == command.replyToID, draft.attachmentIDs == command.attachmentIDs

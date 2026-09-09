@@ -36,6 +36,7 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
   case attachmentTransmissionUnavailable
   case attachmentConsentRequired, attachmentConsentChanged, attachmentInputLimit,
     attachmentRoleUnsupported
+  case roundConsentChanged, roundInProgress
   case keychain(Int32)
   case invalidResponse, streamEnded
   case http(Int)
@@ -43,6 +44,10 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
     storageFailure
   public var errorDescription: String? {
     switch self {
+    case .roundConsentChanged:
+      "The round's recipients, order, conversation, files, provider, or model changed. Review the updated round before sending. Nothing was sent."
+    case .roundInProgress:
+      "Finish or Stop the round before retrying an individual member. Other members will not be resent."
     case .attachmentConsentRequired:
       "Review and approve the exact files, provider, model, and conversation before sending. No files or message were sent."
     case .attachmentConsentChanged:

@@ -16,6 +16,7 @@ enum AttachmentWorkspaceError: Error, LocalizedError {
 struct AttachmentConfirmationTarget: Identifiable {
   enum Action {
     case send(SendCommand, draftVersion: Int?)
+    case round(SendRoundCommand, RoundTransmissionPlan, draftVersion: Int?)
     case retry(UUID)
   }
 
@@ -25,6 +26,9 @@ struct AttachmentConfirmationTarget: Identifiable {
   let context: Int
   let conversation: String
   let targetBot: String
+  let targetBots: [String]
+  let requestCount: Int
+  let isRound: Bool
 }
 
 extension PreviewWorkspace {
@@ -227,30 +231,47 @@ extension PreviewWorkspace {
     let captured = try captureDraftSubmission()
     guard let coordinator else { throw ProviderSetupError.noProvider }
     try await flushDrafts()
-    let plan = try await coordinator.attachmentTransmissionPlan(
-      for: captured.command, configuration: captured.configuration)
-    try Task.checkCancellation()
-    guard !isClosing, captured.context == replyContextGeneration else {
-      throw AttachmentWorkspaceError.changed
-    }
-    if let plan {
-      guard selectedID == plan.conversationID, selectedProvider == captured.configuration,
-        selectedTargetBotID == plan.targetBotID,
-        draftVersions[plan.conversationID] == captured.version
+    switch captured.command {
+    case .single(let command):
+      let plan = try await coordinator.attachmentTransmissionPlan(
+        for: command, configuration: captured.configuration)
+      try Task.checkCancellation()
+      guard !isClosing, captured.context == replyContextGeneration else {
+        throw AttachmentWorkspaceError.changed
+      }
+      if let plan {
+        guard selectedID == plan.conversationID, selectedProvider == captured.configuration,
+          selectedTargetBotID == plan.targetBotID,
+          draftVersions[plan.conversationID] == captured.version
+        else { throw AttachmentWorkspaceError.changed }
+        showAttachmentConfirmation(
+          plan, action: .send(command, draftVersion: captured.version),
+          context: captured.context)
+      } else {
+        _ = try await submitCapturedDraft(
+          command, configuration: captured.configuration, version: captured.version,
+          context: captured.context, attachmentConsent: nil)
+      }
+    case .round(let command):
+      let plan = try await coordinator.roundTransmissionPlan(
+        for: command, configuration: captured.configuration)
+      try Task.checkCancellation()
+      guard !isClosing, captured.context == replyContextGeneration,
+        selectedID == plan.conversationID, selectedProvider == plan.provider,
+        selectedTargetBotIDsForCurrent == plan.targetBotIDs,
+        draftVersions[plan.conversationID] == captured.version,
+        let first = plan.transmissions.first
       else { throw AttachmentWorkspaceError.changed }
       showAttachmentConfirmation(
-        plan, action: .send(captured.command, draftVersion: captured.version),
+        first, action: .round(command, plan, draftVersion: captured.version),
         context: captured.context)
-    } else {
-      _ = try await submitCapturedDraft(
-        captured.command, configuration: captured.configuration, version: captured.version,
-        context: captured.context, attachmentConsent: nil)
     }
   }
 
   func performRetry(_ generationID: UUID) {
     guard sendTask == nil, attachmentConfirmationTarget == nil, !isClosing, !isAttachingFiles,
-      !isDeletingBot, let coordinator, let configuration = selectedProvider
+      !isDeletingBot, !roundHasUnfinishedSiblings(of: generationID),
+      let coordinator, let configuration = selectedProvider
     else { return }
     let context = replyContextGeneration
     sendTask = Task {
@@ -276,12 +297,26 @@ extension PreviewWorkspace {
   private func showAttachmentConfirmation(
     _ plan: AttachmentTransmissionPlan, action: AttachmentConfirmationTarget.Action, context: Int
   ) {
+    let targetIDs: [UUID]
+    let isRound: Bool
+    switch action {
+    case .round(_, let round, _):
+      targetIDs = round.targetBotIDs
+      isRound = true
+    default:
+      targetIDs = [plan.targetBotID]
+      isRound = false
+    }
+    let names = targetIDs.map { id in
+      bots.first(where: { $0.id == id })?.name ?? "Deleted bot"
+    }
     attachmentConfirmationError = nil
     attachmentConfirmationTarget = AttachmentConfirmationTarget(
       plan: plan, action: action, context: context,
       conversation: conversations.first(where: { $0.id == plan.conversationID })?.title
         ?? "Conversation",
-      targetBot: bots.first(where: { $0.id == plan.targetBotID })?.name ?? "Selected bot")
+      targetBot: names.joined(separator: ", "), targetBots: names,
+      requestCount: targetIDs.count, isRound: isRound)
   }
 
   func cancelAttachmentConfirmation() {
@@ -307,7 +342,10 @@ extension PreviewWorkspace {
       do {
         guard target.context == replyContextGeneration, selectedID == target.plan.conversationID,
           selectedProvider == target.plan.provider
-        else { throw ProviderError.attachmentConsentChanged }
+        else {
+          throw target.isRound
+            ? ProviderError.roundConsentChanged : ProviderError.attachmentConsentChanged
+        }
         switch target.action {
         case .send(let command, let version):
           guard selectedTargetBotID == command.targetBotID,
@@ -316,6 +354,13 @@ extension PreviewWorkspace {
           _ = try await submitCapturedDraft(
             command, configuration: target.plan.provider, version: version, context: target.context,
             attachmentConsent: target.plan)
+        case .round(let command, let plan, let version):
+          guard selectedTargetBotIDsForCurrent == plan.targetBotIDs,
+            draftVersions[command.conversationID] == version
+          else { throw ProviderError.roundConsentChanged }
+          _ = try await submitCapturedRound(
+            command, configuration: plan.provider, version: version, context: target.context,
+            consent: plan)
         case .retry(let generationID):
           try await retryReply(generationID, attachmentConsent: target.plan)
         }

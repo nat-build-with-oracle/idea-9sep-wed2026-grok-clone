@@ -7,6 +7,8 @@ public actor GenerationCoordinator {
     let conversationID: UUID
     let bot: UInt64
     let conversation: UInt64
+    var userMessageID: UUID? = nil
+    var round: UInt64 = 0
   }
 
   private struct Job: Sendable {
@@ -30,6 +32,10 @@ public actor GenerationCoordinator {
   private var activeConversations: Set<UUID> = []
   private var botEpochs: [UUID: UInt64] = [:]
   private var conversationEpochs: [UUID: UInt64] = [:]
+  private var roundEpochs: [UUID: UInt64] = [:]
+  private var stoppingRounds: Set<UUID> = []
+  /// Failed Stop saves remain recoverable without ever putting the removed jobs back in the pump.
+  private var roundsAwaitingCancellation: Set<UUID> = []
   private var blockedBots: Set<UUID> = []
   private var blockedConversations: Set<UUID> = []
   private var pumpSuspensionCount = 0
@@ -55,7 +61,8 @@ public actor GenerationCoordinator {
     for command: SendCommand, configuration: ProviderConfig
   ) async throws -> AttachmentTransmissionPlan? {
     let epoch = try captureEpoch(
-      botID: command.targetBotID, conversationID: command.conversationID)
+      botID: command.targetBotID, conversationID: command.conversationID,
+      userMessageID: command.userMessageID)
     return try await prepareTransmission(
       configuration: configuration, conversationID: command.conversationID,
       targetBotID: command.targetBotID, beforeSequence: nil, newText: command.text,
@@ -69,7 +76,8 @@ public actor GenerationCoordinator {
     attachmentConsent: AttachmentTransmissionPlan? = nil
   ) async throws -> UUID {
     let epoch = try captureEpoch(
-      botID: command.targetBotID, conversationID: command.conversationID)
+      botID: command.targetBotID, conversationID: command.conversationID,
+      userMessageID: command.userMessageID)
     let prepared = try await prepareTransmission(
       configuration: configuration, conversationID: command.conversationID,
       targetBotID: command.targetBotID, beforeSequence: nil, newText: command.text,
@@ -96,6 +104,93 @@ public actor GenerationCoordinator {
     pump()
     await onChange(command.conversationID)
     return command.generationID
+  }
+
+  public func roundTransmissionPlan(
+    for command: SendRoundCommand, configuration: ProviderConfig
+  ) async throws -> RoundTransmissionPlan {
+    try await prepareRound(command, configuration: configuration).plan
+  }
+
+  /// Every selected member receives the same pre-round transcript, not earlier siblings' output.
+  /// The complete ordered disclosure is checked before the first credential read or save.
+  public func submitRound(
+    _ command: SendRoundCommand, configuration: ProviderConfig, consent: RoundTransmissionPlan
+  ) async throws -> [UUID] {
+    let prepared = try await prepareRound(command, configuration: configuration)
+    guard prepared.plan == consent else { throw ProviderError.roundConsentChanged }
+    var requests: [ChatRequest] = []
+    for (transmission, epoch) in zip(prepared.transmissions, prepared.epochs) {
+      try prepared.epochs.forEach(requireCurrent)
+      requests.append(try await authorize(transmission, configuration: configuration, epoch: epoch))
+    }
+    try Task.checkCancellation()
+    try prepared.epochs.forEach(requireCurrent)
+    // A mutation during capture/authorization must not silently change the accepted context,
+    // membership or name snapshots. Failure leaves the draft and makes zero provider calls.
+    try await repository.apply(
+      .beginGenerationRound(command), expectedRevision: prepared.revision)
+    do {
+      try Task.checkCancellation()
+      try prepared.epochs.forEach(requireCurrent)
+    } catch {
+      roundsAwaitingCancellation.insert(command.userMessageID)
+      try await repository.apply(.cancelGenerationRound(userMessageID: command.userMessageID))
+      roundsAwaitingCancellation.remove(command.userMessageID)
+      throw error
+    }
+    // No suspension in this loop: another same-conversation send cannot split this round.
+    for (index, target) in command.targets.enumerated() {
+      pending.append(
+        Job(
+          generationID: target.generationID, attemptID: target.attemptID,
+          conversationID: command.conversationID, userMessageID: command.userMessageID,
+          targetBotID: target.targetBotID, request: requests[index], epoch: prepared.epochs[index],
+          routineRunID: nil))
+    }
+    pump()
+    await onChange(command.conversationID)
+    return command.targets.map(\.generationID)
+  }
+
+  private struct PreparedRound: Sendable {
+    let plan: RoundTransmissionPlan
+    let transmissions: [PreparedAttachmentTransmission]
+    let epochs: [OperationEpoch]
+    let revision: Int64
+  }
+
+  private func prepareRound(_ command: SendRoundCommand, configuration: ProviderConfig)
+    async throws -> PreparedRound
+  {
+    guard
+      !command.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        || !command.attachmentIDs.isEmpty
+    else { throw WorkspaceError.invalidDraft }
+    guard (1...6).contains(command.targets.count),
+      Set(command.targets.map(\.targetBotID)).count == command.targets.count
+    else { throw WorkspaceError.invalidMembers }
+    let epochs = try command.targets.map {
+      try captureEpoch(
+        botID: $0.targetBotID, conversationID: command.conversationID,
+        userMessageID: command.userMessageID)
+    }
+    let captured = try await captureTransmission(
+      configuration: configuration, conversationID: command.conversationID, epochs: epochs,
+      beforeSequence: nil, newAttachmentIDs: command.attachmentIDs, replyToID: command.replyToID,
+      allowsAttachments: true)
+    let transmissions = try captured.bots.map {
+      try makeTransmission(
+        captured: captured, bot: $0, configuration: configuration,
+        conversationID: command.conversationID, newText: command.text,
+        newAttachmentIDs: command.attachmentIDs, replyToID: command.replyToID,
+        retryGenerationID: nil, includeTextOnlyPlan: true)
+    }
+    try epochs.forEach(requireCurrent)
+    return PreparedRound(
+      plan: RoundTransmissionPlan(
+        userMessageID: command.userMessageID, transmissions: transmissions.compactMap(\.plan)),
+      transmissions: transmissions, epochs: epochs, revision: captured.revision)
   }
 
   public func retryAttachmentTransmissionPlan(
@@ -152,6 +247,7 @@ public actor GenerationCoordinator {
     // maps first so a deletion that starts and finishes during that suspension is still detectable.
     let capturedBotEpochs = botEpochs
     let capturedConversationEpochs = conversationEpochs
+    let capturedRoundEpochs = roundEpochs
     let snapshot = try await repository.snapshot()
     guard let generation = snapshot.generations.first(where: { $0.id == generationID }),
       [.failed, .cancelled, .interrupted].contains(generation.state), active[generationID] == nil
@@ -159,10 +255,20 @@ public actor GenerationCoordinator {
       throw WorkspaceError.identityConflict
     }
     guard generation.routineRunID == nil else { throw WorkspaceError.invalidRoutine }
+    // Finish or Stop the bounded round before retrying a member. Preparation must not compete
+    // with Stop while another explicitly approved sibling still has an active/queued request.
+    guard
+      !snapshot.generations.contains(where: {
+        $0.userMessageID == generation.userMessageID && $0.id != generation.id
+          && !$0.state.isTerminal
+      })
+    else { throw ProviderError.roundInProgress }
     let epoch = OperationEpoch(
       botID: generation.targetBotID, conversationID: generation.conversationID,
       bot: capturedBotEpochs[generation.targetBotID, default: 0],
-      conversation: capturedConversationEpochs[generation.conversationID, default: 0])
+      conversation: capturedConversationEpochs[generation.conversationID, default: 0],
+      userMessageID: generation.userMessageID,
+      round: capturedRoundEpochs[generation.userMessageID, default: 0])
     try requireCurrent(epoch)
     let message = try await repository.message(id: generation.userMessageID)
     try requireCurrent(epoch)
@@ -290,6 +396,7 @@ public actor GenerationCoordinator {
     shuttingDown = true
     let ids = Set(pending.map(\.generationID)).union(active.keys)
     do {
+      for id in roundsAwaitingCancellation { try await cancelRound(userMessageID: id) }
       for id in ids { try await cancel(id) }
       await waitForIdle()
     } catch {
@@ -300,6 +407,41 @@ public actor GenerationCoordinator {
       for task in running { await task.value }
       throw error
     }
+  }
+
+  /// Stops a complete ordinary round. Invalidate and stop transport before the first await, so a
+  /// slow/failing save or a concurrent completion cannot start a queued sibling. The repository
+  /// owns the terminal-state guard and preserves every completed reply.
+  public func cancelRound(userMessageID: UUID) async throws {
+    guard stoppingRounds.insert(userMessageID).inserted else {
+      throw WorkspaceError.identityConflict
+    }
+    pumpSuspensionCount += 1
+    roundEpochs[userMessageID, default: 0] &+= 1
+    roundsAwaitingCancellation.insert(userMessageID)
+    let jobs =
+      pending.filter { $0.userMessageID == userMessageID && $0.routineRunID == nil }
+      + activeJobs.values.filter { $0.userMessageID == userMessageID && $0.routineRunID == nil }
+    pending.removeAll { $0.userMessageID == userMessageID && $0.routineRunID == nil }
+    let running = jobs.compactMap { active[$0.generationID] }
+    for task in running { task.cancel() }
+    defer {
+      stoppingRounds.remove(userMessageID)
+      pumpSuspensionCount -= 1
+      pump()
+    }
+    var failure: (any Error)?
+    do {
+      try await repository.apply(.cancelGenerationRound(userMessageID: userMessageID))
+      roundsAwaitingCancellation.remove(userMessageID)
+    } catch { failure = error }
+    for task in running { await task.value }
+    var conversationID = jobs.first?.conversationID
+    if conversationID == nil {
+      conversationID = try? await repository.message(id: userMessageID).conversationID
+    }
+    if let conversationID { await onChange(conversationID) }
+    if let failure { throw failure }
   }
 
   public func waitForIdle() async {
@@ -421,28 +563,56 @@ public actor GenerationCoordinator {
     try await repository.apply(.deleteBot(expected: plan))
   }
 
+  private struct CapturedTransmission: Sendable {
+    let revision: Int64
+    let bots: [Bot]
+    let contextMessages: [Message]
+    let replyTarget: Message?
+    let contents: [UUID: AttachmentContent]
+    let orderedAttachments: [Attachment]
+  }
+
   private func prepareTransmission(
     configuration: ProviderConfig, conversationID: UUID, targetBotID: UUID,
     beforeSequence: Int64?, newText: String?, newAttachmentIDs: [UUID], replyToID: UUID?,
     retryGenerationID: UUID?, epoch: OperationEpoch, allowsAttachments: Bool
   ) async throws -> PreparedAttachmentTransmission {
+    let captured = try await captureTransmission(
+      configuration: configuration, conversationID: conversationID, epochs: [epoch],
+      beforeSequence: beforeSequence, newAttachmentIDs: newAttachmentIDs,
+      replyToID: replyToID, allowsAttachments: allowsAttachments)
+    return try makeTransmission(
+      captured: captured, bot: captured.bots[0], configuration: configuration,
+      conversationID: conversationID, newText: newText, newAttachmentIDs: newAttachmentIDs,
+      replyToID: replyToID, retryGenerationID: retryGenerationID)
+  }
+
+  /// Reads history and each attachment exactly once; every target derives from this same capture.
+  private func captureTransmission(
+    configuration: ProviderConfig, conversationID: UUID, epochs: [OperationEpoch],
+    beforeSequence: Int64?, newAttachmentIDs: [UUID], replyToID: UUID?, allowsAttachments: Bool
+  ) async throws -> CapturedTransmission {
     try Task.checkCancellation()
     try AttachmentValidation.orderedUnique(newAttachmentIDs)
     let snapshot = try await repository.snapshot()
-    try requireCurrent(epoch)
+    try epochs.forEach(requireCurrent)
     guard snapshot.providers.contains(configuration),
-      let bot = snapshot.bots.first(where: { $0.id == targetBotID }),
-      let conversation = snapshot.conversations.first(where: { $0.id == conversationID }),
-      conversation.memberBotIDs.contains(targetBotID)
+      let conversation = snapshot.conversations.first(where: { $0.id == conversationID })
     else { throw WorkspaceError.invalidProvider }
     if conversation.kind == .group, !(2...6).contains(conversation.memberBotIDs.count) {
       throw WorkspaceError.invalidMembers
     }
+    let bots = try epochs.map { epoch in
+      guard conversation.memberBotIDs.contains(epoch.botID),
+        let bot = snapshot.bots.first(where: { $0.id == epoch.botID })
+      else { throw WorkspaceError.invalidProvider }
+      return bot
+    }
     let replyTarget = try await loadReplyTarget(id: replyToID, conversationID: conversationID)
-    try requireCurrent(epoch)
+    try epochs.forEach(requireCurrent)
     let page = try await repository.messages(
       conversationID: conversationID, beforeSequence: beforeSequence, limit: 100)
-    try requireCurrent(epoch)
+    try epochs.forEach(requireCurrent)
     var contextMessages = page.messages.filter {
       $0.role != .event && (!$0.text.isEmpty || !$0.attachmentIDs.isEmpty)
     }
@@ -471,7 +641,7 @@ public actor GenerationCoordinator {
     for id in uniqueAttachmentIDs {
       try Task.checkCancellation()
       let content = try await repository.attachmentContent(id: id)
-      try requireCurrent(epoch)
+      try epochs.forEach(requireCurrent)
       guard content.attachment.id == id,
         content.attachment.conversationID == conversationID
       else { throw AttachmentError.foreignAttachment }
@@ -483,6 +653,21 @@ public actor GenerationCoordinator {
       orderedAttachments.append(content.attachment)
     }
 
+    return CapturedTransmission(
+      revision: snapshot.revision, bots: bots, contextMessages: contextMessages,
+      replyTarget: replyTarget, contents: contents, orderedAttachments: orderedAttachments)
+  }
+
+  private func makeTransmission(
+    captured: CapturedTransmission, bot: Bot, configuration: ProviderConfig,
+    conversationID: UUID, newText: String?, newAttachmentIDs: [UUID], replyToID: UUID?,
+    retryGenerationID: UUID?, includeTextOnlyPlan: Bool = false
+  ) throws -> PreparedAttachmentTransmission {
+    let contextMessages = captured.contextMessages
+    let replyTarget = captured.replyTarget
+    let contents = captured.contents
+    let orderedAttachments = captured.orderedAttachments
+    let targetBotID = bot.id
     var system = "You are \(bot.name).\n\(bot.description)"
     if !orderedAttachments.isEmpty {
       system += "\n\n\(AttachmentTransmission.systemDisclosure)"
@@ -509,9 +694,8 @@ public actor GenerationCoordinator {
         transmitted: &transmitted)
       turns.append(ChatTurn(role: "user", content: content))
     }
-    try requireCurrent(epoch)
     let plan: AttachmentTransmissionPlan?
-    if orderedAttachments.isEmpty {
+    if orderedAttachments.isEmpty && !includeTextOnlyPlan {
       plan = nil
     } else {
       plan = AttachmentTransmissionPlan(
@@ -555,14 +739,19 @@ public actor GenerationCoordinator {
     return request
   }
 
-  private func captureEpoch(botID: UUID, conversationID: UUID) throws -> OperationEpoch {
+  private func captureEpoch(
+    botID: UUID, conversationID: UUID, userMessageID: UUID? = nil
+  ) throws -> OperationEpoch {
     guard !shuttingDown else { throw WorkspaceError.storeClosed }
     guard !blockedBots.contains(botID), !blockedConversations.contains(conversationID) else {
       throw WorkspaceError.missingRecord
     }
-    return OperationEpoch(
+    let epoch = OperationEpoch(
       botID: botID, conversationID: conversationID, bot: botEpochs[botID, default: 0],
-      conversation: conversationEpochs[conversationID, default: 0])
+      conversation: conversationEpochs[conversationID, default: 0], userMessageID: userMessageID,
+      round: userMessageID.map { roundEpochs[$0, default: 0] } ?? 0)
+    try requireCurrent(epoch)
+    return epoch
   }
 
   private func requireCurrent(_ epoch: OperationEpoch) throws {
@@ -571,6 +760,11 @@ public actor GenerationCoordinator {
       botEpochs[epoch.botID, default: 0] == epoch.bot,
       conversationEpochs[epoch.conversationID, default: 0] == epoch.conversation
     else { throw WorkspaceError.missingRecord }
+    if let id = epoch.userMessageID {
+      guard roundEpochs[id, default: 0] == epoch.round,
+        !stoppingRounds.contains(id), !roundsAwaitingCancellation.contains(id)
+      else { throw ProviderError.cancelled }
+    }
   }
 
   private func requireRoutineNotCancelled(_ runID: UUID) throws {
@@ -586,6 +780,10 @@ public actor GenerationCoordinator {
     !blockedBots.contains(epoch.botID) && !blockedConversations.contains(epoch.conversationID)
       && botEpochs[epoch.botID, default: 0] == epoch.bot
       && conversationEpochs[epoch.conversationID, default: 0] == epoch.conversation
+      && (epoch.userMessageID.map {
+        roundEpochs[$0, default: 0] == epoch.round && !stoppingRounds.contains($0)
+          && !roundsAwaitingCancellation.contains($0)
+      } ?? true)
   }
 
   private func loadReplyTarget(id: UUID?, conversationID: UUID) async throws -> Message? {
@@ -642,7 +840,7 @@ public actor GenerationCoordinator {
       if !completed { throw ProviderError.streamEnded }
     } catch {
       if !isCurrent(job.epoch) {
-        // Coordinated deletion owns persistence for invalidated jobs. Late provider events must not
+        // Coordinated deletion/round Stop owns persistence for invalidated jobs. Late events must not
         // recreate deleted records or turn accepted cancellation into a misleading storage alert.
       } else if Task.isCancelled || (error as? ProviderError) == .cancelled {
         do {

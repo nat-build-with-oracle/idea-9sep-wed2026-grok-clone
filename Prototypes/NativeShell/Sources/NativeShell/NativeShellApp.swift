@@ -304,6 +304,11 @@ import WorkspaceCore
             repository: reopened, url: url,
             botID: botID, groupID: groupID, showGroup: arguments.contains("--edit-group"))
         }
+        if arguments.contains("--verify-group-rounds") {
+          try await verifyGroupRoundFlow(
+            repository: reopened, conversationID: groupID,
+            orderedTargetIDs: [secondID, botID], small: small, arguments: arguments)
+        }
         if arguments.contains("--verify-codex-fixture")
           || arguments.contains("--verify-codex-stdin")
         {
@@ -527,7 +532,7 @@ import WorkspaceCore
     persistentRepository = reopened
     try await store.connect(reopened, displayName: "Appearance smoke workspace")
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     try await store.loadMessages(conversationID)
     let after = try await reopened.snapshot()
     guard after.bots == baseline.bots, after.providers == baseline.providers,
@@ -558,7 +563,7 @@ import WorkspaceCore
       repository, credentials: credentials, provider: provider,
       displayName: "Attachment smoke workspace")
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     try await store.loadMessages(conversationID)
 
     let body = "Synthetic attachment body — สวัสดี\nSecond line."
@@ -590,7 +595,7 @@ import WorkspaceCore
       reopened, credentials: credentials, provider: provider,
       displayName: "Attachment smoke workspace")
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     try await store.loadMessages(conversationID)
     await store.refreshAttachmentMetadata(in: conversationID, retryUnavailable: true)
     guard store.currentDraftAttachmentIDs == [attachmentID],
@@ -768,7 +773,7 @@ import WorkspaceCore
       modelID: "fixture-text",
       secret: "offline-reply-fixture", allowsLoopbackHTTP: false, credentialLifetime: .session)
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     store.draft = "Find a fictional source for a short planning draft."
     _ = try await store.submitDraft()
     await store.coordinator?.waitForIdle()
@@ -785,7 +790,7 @@ import WorkspaceCore
     try await store.connect(
       reopened, credentials: credentials, provider: provider, displayName: "Smoke workspace")
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     try await store.loadMessages(conversationID)
     guard store.draft == SmokeReplyChatProvider.followUp, store.currentReply?.id == parent.id,
       store.currentReply?.speakerName == "Research Partner", store.currentReply?.isAvailable == true
@@ -1016,7 +1021,7 @@ import WorkspaceCore
       modelID: live ? "gpt-5.6-luna" : "offline-model", secret: "", allowsLoopbackHTTP: false,
       credentialLifetime: .session, kind: .codexResponses, codexCredential: credential)
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     store.draft = "Reply with only READY. This is a text-only compatibility check."
     _ = try await store.submitDraft()
     await store.coordinator?.waitForIdle()
@@ -1048,7 +1053,7 @@ import WorkspaceCore
       allowsLoopbackHTTP: routerFixture,
       credentialLifetime: .session)
     store.selectedID = conversationID
-    store.selectedTargetBotIDs[conversationID] = targetID
+    store.selectedTargetBotIDs[conversationID] = [targetID]
     store.draft = "Summarize this fictional project."
     store.performSend()
     await store.sendTask?.value
@@ -1062,6 +1067,91 @@ import WorkspaceCore
     else { throw WorkspaceError.invalidStore }
     print(
       "NATIVE_PROVIDER_SMOKE=PASS offlineFixture=true userMessages=1 assistantMessages=1 attributed=true completed=true"
+    )
+  }
+
+  /// Offline, isolated exercise of the native ordered-recipient disclosure and send path.
+  /// It leaves a second reviewed round visible so the normal snapshot captures the minimum UI.
+  private func verifyGroupRoundFlow(
+    repository: CoreDataWorkspaceRepository, conversationID: UUID, orderedTargetIDs: [UUID],
+    small: Bool, arguments: [String]
+  ) async throws {
+    try await store.connect(
+      repository, credentials: SessionAwareCredentialStore(persistent: SmokeCredentials()),
+      provider: SmokeChatProvider(), displayName: "Smoke workspace")
+    _ = try await store.saveProvider(
+      id: nil, name: "Offline group fixture", apiRoot: "https://fixture.invalid/v1",
+      modelID: "smoke-round", secret: "offline-fixture-credential",
+      allowsLoopbackHTTP: false, credentialLifetime: .session)
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = orderedTargetIDs
+    store.draft = "Review this fictional launch plan in order."
+    store.performSend()
+    await store.sendTask?.value
+    guard let disclosure = store.attachmentConfirmationTarget,
+      disclosure.isRound, disclosure.requestCount == 2,
+      disclosure.targetBots == ["Writing Partner", "Research Partner"]
+    else { throw WorkspaceError.invalidStore }
+    guard let accepted = store.confirmAttachmentSend() else { throw WorkspaceError.invalidStore }
+    await accepted.value
+    await store.coordinator?.waitForIdle()
+
+    let snapshot = try await repository.snapshot()
+    let page = try await repository.messages(conversationID: conversationID)
+    let generations = snapshot.generations.filter { $0.roundIndex != nil }.sorted {
+      $0.roundIndex! < $1.roundIndex!
+    }
+    let userMessages = page.messages.filter { $0.role == .user }
+    let replies = page.messages.filter { $0.role == .assistant }
+    guard generations.count == 2,
+      generations.map(\.targetBotID) == orderedTargetIDs,
+      generations.allSatisfy({ $0.state == .completed }), userMessages.count == 1,
+      replies.map(\.speakerBotID) == orderedTargetIDs,
+      replies.map(\.speakerNameSnapshot) == ["Writing Partner", "Research Partner"]
+    else { throw WorkspaceError.invalidStore }
+
+    let longNames = [
+      "Architecture & Safety — กรุงเทพมหานคร",
+      "ข้อมูลและหลักฐาน — Data Evidence Reviewer",
+      "Release Reliability — naïve café audit 🔎",
+      "การเข้าถึงและประสบการณ์ผู้ใช้ — Accessibility",
+      "Privacy Boundary Reviewer — München & Zürich",
+      "Final Synthesis Partner — 東京・กรุงเทพฯ",
+    ]
+    var displayTargets: [UUID] = []
+    for (index, name) in longNames.enumerated() {
+      displayTargets.append(
+        try await store.performCreateBot(
+          name: name, description: "Offline group disclosure fixture \(index + 1)",
+          color: index.isMultiple(of: 2) ? "blue" : "magenta",
+          shape: index.isMultiple(of: 2) ? .circle : .square))
+    }
+    let displayConversation = try await store.performCreateGroup(
+      name: "International six-member review board", members: displayTargets)
+    store.selectedTargetBotIDs[displayConversation] = displayTargets
+    store.draft = "A six-member round is staged only for this native disclosure snapshot."
+    let originalAppearance = store.preferences.appearance
+    for appearance in [WorkspaceAppearance.light, .dark] {
+      store.preferences.appearance = appearance
+      try await Task.sleep(for: .milliseconds(100))
+      writeSnapshot(
+        small: small,
+        arguments: arguments + [
+          "--group-composer",
+          appearance == .light ? "--group-composer-light" : "--group-composer-dark",
+        ])
+    }
+    store.preferences.appearance = originalAppearance
+    store.performSend()
+    await store.sendTask?.value
+    guard store.attachmentConfirmationTarget?.isRound == true,
+      store.attachmentConfirmationTarget?.requestCount == 6,
+      store.attachmentConfirmationTarget?.targetBots == longNames
+    else {
+      throw WorkspaceError.invalidStore
+    }
+    print(
+      "NATIVE_GROUP_ROUND_SMOKE=PASS offlineFixture=true orderedTargets=2 separateRequests=2 oneUserMessage=true attributedReplies=2 explicitConfirmation=true stopPreservesCompletedCoveredByTests=true renderedDisclosureRecipients=6 minimumComposerLightDark=true physicalInputTested=false"
     )
   }
 
@@ -1228,13 +1318,17 @@ import WorkspaceCore
   @objc private func toggleDetails() { store.inspectorPreferred.toggle() }
 
   private func writeSnapshot(small: Bool, arguments: [String]) {
+    let groupComposer = arguments.contains("--group-composer")
     let target =
-      arguments.contains("--verify-profiles") || arguments.contains("--deletion-confirmation")
+      groupComposer
+      ? window
+      : arguments.contains("--verify-profiles") || arguments.contains("--deletion-confirmation")
         || arguments.contains("--verify-routines")
         || arguments.contains("--attachment-confirmation")
-      ? window?.attachedSheet
-      : arguments.contains("--settings") || arguments.contains("--verify-export")
-        ? settingsWindow : window
+        || arguments.contains("--verify-group-rounds")
+        ? window?.attachedSheet
+        : arguments.contains("--settings") || arguments.contains("--verify-export")
+          ? settingsWindow : window
     guard let view = target?.contentView?.superview else { return }
     view.layoutSubtreeIfNeeded()
     guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
@@ -1242,36 +1336,41 @@ import WorkspaceCore
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let appearanceState = arguments.last { $0.hasPrefix("--appearance-") }
     let state =
-      arguments.last(where: { $0.hasPrefix("--unread-") }).map { String($0.dropFirst(2)) }
-      ?? appearanceState.map {
-        String($0.dropFirst(2)) + (arguments.contains("--settings") ? "-settings" : "-workspace")
-      }
-      ?? (arguments.contains("--attachment-confirmation")
-        ? "attachment-confirmation"
-        : arguments.contains("--verify-routines")
-          ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
-          : arguments.contains("--deletion-confirmation")
-            ? "delete-confirmation"
-            : arguments.contains("--verify-deletion")
-              ? "degraded-group"
-              : arguments.contains("--verify-export")
-                ? "export-settings"
-                : arguments.contains("--verify-profiles")
-                  ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-                  : arguments.contains("--verify-codex-fixture")
-                    || arguments.contains("--verify-codex-stdin")
-                    ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-                    : arguments.contains("--verify-provider")
-                      ? (arguments.contains("--settings")
-                        ? (arguments.contains("--router-models")
-                          ? "router-model-settings" : "provider-settings")
-                        : "provider-chat")
-                      : arguments.contains("--verify-replies")
-                        ? "reply-chat"
-                        : arguments.contains("--verify-workspace")
-                          ? "durable-workspace"
-                          : arguments.contains("--group")
-                            ? "group" : arguments.contains("--picker") ? "picker" : "chat")
+      groupComposer
+      ? (arguments.contains("--group-composer-light")
+        ? "group-composer-light" : "group-composer-dark")
+      : arguments.last(where: { $0.hasPrefix("--unread-") }).map { String($0.dropFirst(2)) }
+        ?? appearanceState.map {
+          String($0.dropFirst(2)) + (arguments.contains("--settings") ? "-settings" : "-workspace")
+        }
+        ?? (arguments.contains("--attachment-confirmation")
+          ? "attachment-confirmation"
+          : arguments.contains("--verify-group-rounds")
+            ? "group-round-confirmation"
+            : arguments.contains("--verify-routines")
+              ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
+              : arguments.contains("--deletion-confirmation")
+                ? "delete-confirmation"
+                : arguments.contains("--verify-deletion")
+                  ? "degraded-group"
+                  : arguments.contains("--verify-export")
+                    ? "export-settings"
+                    : arguments.contains("--verify-profiles")
+                      ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+                      : arguments.contains("--verify-codex-fixture")
+                        || arguments.contains("--verify-codex-stdin")
+                        ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+                        : arguments.contains("--verify-provider")
+                          ? (arguments.contains("--settings")
+                            ? (arguments.contains("--router-models")
+                              ? "router-model-settings" : "provider-settings")
+                            : "provider-chat")
+                          : arguments.contains("--verify-replies")
+                            ? "reply-chat"
+                            : arguments.contains("--verify-workspace")
+                              ? "durable-workspace"
+                              : arguments.contains("--group")
+                                ? "group" : arguments.contains("--picker") ? "picker" : "chat")
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

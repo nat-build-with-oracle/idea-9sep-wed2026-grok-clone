@@ -32,7 +32,7 @@ import XCTest
     await f.store.beginBotDeletion(f.botID)?.value
     f.store.selectedID = f.groupID
     f.store.draft = "Keep the group draft"
-    f.store.selectedTargetBotIDs[f.groupID] = f.botID
+    f.store.selectedTargetBotIDs[f.groupID] = [f.botID]
     let task = try XCTUnwrap(f.store.confirmBotDeletion())
     XCTAssertNil(f.store.confirmBotDeletion())
     await task.value

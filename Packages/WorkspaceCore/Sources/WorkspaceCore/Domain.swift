@@ -109,6 +109,10 @@ public struct Generation: Codable, Sendable, Equatable, Identifiable {
   public var assistantMessageID: UUID? = nil
   /// Durable provenance for routine-created generations. Legacy and ordinary generations are nil.
   public var routineRunID: UUID? = nil
+  /// Stable position within an explicitly ordered multi-bot round. Legacy generations are nil.
+  public var roundIndex: Int? = nil
+  /// Bot-name attribution captured when the round is committed, before transport begins.
+  public var targetSpeakerNameSnapshot: String? = nil
 }
 
 public struct Routine: Codable, Sendable, Equatable, Identifiable {

@@ -81,7 +81,7 @@ import XCTest
     let second = try await bot(workspace, "Second")
     let third = try await bot(workspace, "Third")
     let group = try await workspace.performCreateGroup(name: "Together", members: [first, second])
-    workspace.selectedTargetBotIDs[group] = first
+    workspace.selectedTargetBotIDs[group] = [first]
     let expected = try await workspace.loadProfile(for: .group(group))
     let command = SendCommand(conversationID: group, targetBotID: first, text: "Previous question")
     try await repository.apply(.beginGeneration(command))

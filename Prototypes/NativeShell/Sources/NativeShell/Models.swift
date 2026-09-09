@@ -202,7 +202,9 @@ enum ComposerInputPolicy {
   @Published var persistentSearchIDs: Set<UUID>?
   @Published var providers: [ProviderConfig] = []
   @Published var selectedProviderID: UUID?
-  @Published var selectedTargetBotIDs: [UUID: UUID] = [:]
+  /// Explicit group reply targets in user-selected order. Direct conversations
+  /// derive their sole target from membership and do not use this storage.
+  @Published var selectedTargetBotIDs: [UUID: [UUID]] = [:]
   @Published var generations: [Generation] = []
   @Published var isSubmitting = false
   @Published var isProviderSaving = false

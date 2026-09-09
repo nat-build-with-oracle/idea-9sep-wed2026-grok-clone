@@ -23,12 +23,20 @@ extension PreviewWorkspace {
   func canRetry(_ generation: Generation) -> Bool {
     guard !isDeletingBot, !isClosing, !isAttachingFiles, attachmentConfirmationTarget == nil,
       generation.routineRunID == nil,
+      !roundHasUnfinishedSiblings(of: generation.id),
       let conversation = conversations.first(where: { $0.id == generation.conversationID }),
       conversation.memberIDs.contains(generation.targetBotID),
       bots.contains(where: { $0.id == generation.targetBotID })
     else { return false }
     return conversation.kind != .group
       || conversation.memberIDs.filter { id in bots.contains { $0.id == id } }.count >= 2
+  }
+
+  func roundHasUnfinishedSiblings(of generationID: UUID) -> Bool {
+    guard let generation = generations.first(where: { $0.id == generationID }) else { return false }
+    return generations.contains {
+      $0.userMessageID == generation.userMessageID && $0.id != generationID && !$0.state.isTerminal
+    }
   }
 
   @discardableResult
@@ -157,8 +165,9 @@ extension PreviewWorkspace {
       replyPreviews[id] = nil
       selectedTargetBotIDs[id] = nil
     }
-    for (id, target) in selectedTargetBotIDs where target == plan.botID {
-      selectedTargetBotIDs[id] = nil
+    for (id, targets) in selectedTargetBotIDs where targets.contains(plan.botID) {
+      let retained = targets.filter { $0 != plan.botID }
+      selectedTargetBotIDs[id] = retained.isEmpty ? nil : retained
     }
     generations.removeAll { removed.contains($0.conversationID) }
     routines.removeAll { $0.botID == plan.botID }

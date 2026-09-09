@@ -51,6 +51,13 @@ Background chats and scrolled-back transcripts retain their unread state; hiding
 never changes read state. Read
 status persistence errors have a separate retry action, never an optimistic badge clear.
 
+Group recipient controls preserve explicit selection order and provide move/remove actions.
+The bounded recipient list scrolls rather than hiding the composer. Multiple targets open
+one confirmation with full ordered names, destination/model, separate-request count, frozen
+pre-round context and files. Each member has an attributed status; Stop round preserves
+completed replies and stops remaining members. Provider errors remain per-member and do
+not silently retry. Mention-driven selection remains open; see [group contract](docs/GROUP-ROUNDS.md).
+
 Loading, empty searches, empty groups, sending, profile validation/conflict, unsaved-profile discard, provider error/offline, routine paused/running/failed, upload validation, API failures, and persistence failures must be explicit. Profile edits use a detached buffer tied to a stable bot/group identity: navigation cannot redirect a save, stale editable fields require an explicit reload, and Cancel/Escape/window close confirms before discarding dirty fields. Reply cards use intrinsic content height, a two-line excerpt, an explicit cancel action in the composer, and loading/unavailable states. Parent selection is conversation-scoped and does not send; jump-to-original must not redirect later navigation. Public sample conversations are synthetic project-planning examples, not copied user history or live service output.
 
 Appearance/layout settings use a detached edit buffer with Save/Cancel and a dirty-close warning; Save applies to the workspace, Settings and sheets without discarding provider forms, drafts or selections. AppKit may commit active marked text during an appearance transition; do not recreate composition based only on unchanged text. Physical IME/automatic-appearance integration remains a validation gate (docs/APPEARANCE.md). Dragged divider widths persist when adjusted. Follow System removes app/window overrides and follows the effective OS appearance. Tests/smokes inject isolated preference storage and never change the user's normal preferences.

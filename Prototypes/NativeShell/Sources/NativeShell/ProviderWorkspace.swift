@@ -7,7 +7,7 @@ enum ProviderSetupError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .noProvider: "Choose a provider in Settings before sending. Your draft is kept."
-    case .targetRequired: "Choose which bot should reply to this group message."
+    case .targetRequired: "Choose one or more bots to reply to this group message."
     case .busy: "Wait for the current save to finish, then try again."
     case .changedDestination:
       "The destination changed. Re-enter the key to authorize its use with this API root."
@@ -21,15 +21,50 @@ enum ProviderSetupError: Error, LocalizedError {
   }
 }
 
+enum CapturedDraftCommand {
+  case single(SendCommand)
+  case round(SendRoundCommand)
+}
+
 extension PreviewWorkspace {
   var selectedProvider: ProviderConfig? { providers.first { $0.id == selectedProviderID } }
-  var selectedTargetBotID: UUID? {
-    guard let current else { return nil }
-    if current.kind == .direct { return current.memberIDs.first }
-    guard let target = selectedTargetBotIDs[current.id], current.memberIDs.contains(target) else {
-      return nil
+  var selectedTargetBotIDsForCurrent: [UUID] {
+    guard let current else { return [] }
+    if current.kind == .direct { return Array(current.memberIDs.prefix(1)) }
+    let members = Set(current.memberIDs)
+    let selected = selectedTargetBotIDs[current.id] ?? []
+    guard Set(selected).count == selected.count, selected.allSatisfy(members.contains) else {
+      return []
     }
-    return target
+    return selected
+  }
+  var selectedTargetBotID: UUID? {
+    let targets = selectedTargetBotIDsForCurrent
+    return targets.count == 1 ? targets[0] : nil
+  }
+
+  func toggleGroupTarget(_ botID: UUID, in conversationID: UUID) {
+    guard
+      let conversation = conversations.first(where: { $0.id == conversationID }),
+      conversation.kind == .group, conversation.memberIDs.contains(botID)
+    else { return }
+    var targets = selectedTargetBotIDs[conversationID] ?? []
+    if let index = targets.firstIndex(of: botID) {
+      targets.remove(at: index)
+    } else {
+      targets.append(botID)
+    }
+    selectedTargetBotIDs[conversationID] = targets.isEmpty ? nil : targets
+  }
+
+  func moveGroupTarget(_ botID: UUID, in conversationID: UUID, offset: Int) {
+    guard var targets = selectedTargetBotIDs[conversationID],
+      let index = targets.firstIndex(of: botID)
+    else { return }
+    let destination = index + offset
+    guard targets.indices.contains(destination) else { return }
+    targets.swapAt(index, destination)
+    selectedTargetBotIDs[conversationID] = targets
   }
 
   func openSettings() {
@@ -96,13 +131,19 @@ extension PreviewWorkspace {
   @discardableResult
   func submitDraft(attachmentConsent: AttachmentTransmissionPlan? = nil) async throws -> UUID {
     let captured = try captureDraftSubmission()
-    return try await submitCapturedDraft(
-      captured.command, configuration: captured.configuration, version: captured.version,
-      context: captured.context, attachmentConsent: attachmentConsent)
+    switch captured.command {
+    case .single(let command):
+      return try await submitCapturedDraft(
+        command, configuration: captured.configuration, version: captured.version,
+        context: captured.context, attachmentConsent: attachmentConsent)
+    case .round:
+      // Multi-target sends must pass through the explicit ordered disclosure UI.
+      throw ProviderError.roundConsentChanged
+    }
   }
 
   func captureDraftSubmission() throws -> (
-    command: SendCommand, configuration: ProviderConfig, version: Int?, context: Int
+    command: CapturedDraftCommand, configuration: ProviderConfig, version: Int?, context: Int
   ) {
     guard !isClosing, !isSubmitting, !isDeletingBot, !isAttachingFiles else {
       throw ProviderSetupError.busy
@@ -112,14 +153,22 @@ extension PreviewWorkspace {
       throw ProviderSetupError.noProvider
     }
     guard let conversationID = selectedID else { throw WorkspaceError.missingRecord }
-    guard let target = selectedTargetBotID else { throw ProviderSetupError.targetRequired }
+    let targets = selectedTargetBotIDsForCurrent
+    guard !targets.isEmpty else { throw ProviderSetupError.targetRequired }
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     let attachmentIDs = draftAttachmentIDs[conversationID] ?? []
     guard !text.isEmpty || !attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
     return (
-      SendCommand(
-        conversationID: conversationID, targetBotID: target, text: text,
-        replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs),
+      targets.count == 1
+        ? .single(
+          SendCommand(
+            conversationID: conversationID, targetBotID: targets[0], text: text,
+            replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs))
+        : .round(
+          SendRoundCommand(
+            conversationID: conversationID,
+            targets: targets.map { SendRoundCommand.Target(targetBotID: $0) }, text: text,
+            replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs)),
       configuration, draftVersions[conversationID], replyContextGeneration
     )
   }
@@ -155,13 +204,50 @@ extension PreviewWorkspace {
     return id
   }
 
+  @discardableResult
+  func submitCapturedRound(
+    _ command: SendRoundCommand, configuration: ProviderConfig, version: Int?, context: Int,
+    consent: RoundTransmissionPlan
+  ) async throws -> [UUID] {
+    guard let coordinator, !isClosing, !isSubmitting, !isDeletingBot,
+      context == replyContextGeneration
+    else { throw ProviderSetupError.busy }
+    isSubmitting = true
+    defer { isSubmitting = false }
+    try await flushDrafts()
+    try Task.checkCancellation()
+    guard !isClosing, context == replyContextGeneration else { throw WorkspaceError.storeClosed }
+    let ids = try await coordinator.submitRound(
+      command, configuration: configuration, consent: consent)
+    guard context == replyContextGeneration else { return ids }
+    let conversationID = command.conversationID
+    if draftVersions[conversationID] == version {
+      drafts[conversationID] = ""
+      draftReplyIDs[conversationID] = nil
+      draftAttachmentIDs[conversationID] = []
+      dirtyDrafts.remove(conversationID)
+    } else {
+      scheduleDraftSave(conversationID)
+    }
+    notice = nil
+    await refreshGeneration(conversationID)
+    return ids
+  }
+
   func cancelReply(_ id: UUID) async throws {
-    guard let coordinator, !pendingGenerationActions.contains(id) else {
+    guard let coordinator, let generation = generations.first(where: { $0.id == id }) else {
       throw ProviderSetupError.busy
     }
-    pendingGenerationActions.insert(id)
-    defer { pendingGenerationActions.remove(id) }
-    if let runID = generations.first(where: { $0.id == id })?.routineRunID {
+    let siblings = generations.filter { $0.userMessageID == generation.userMessageID }
+    let actionIDs = siblings.count > 1 ? Set(siblings.map(\.id)) : Set([id])
+    guard pendingGenerationActions.isDisjoint(with: actionIDs) else {
+      throw ProviderSetupError.busy
+    }
+    pendingGenerationActions.formUnion(actionIDs)
+    defer { pendingGenerationActions.subtract(actionIDs) }
+    if siblings.count > 1 {
+      try await coordinator.cancelRound(userMessageID: generation.userMessageID)
+    } else if let runID = generation.routineRunID {
       try await coordinator.cancelRoutine(runID)
     } else {
       try await coordinator.cancel(id)
@@ -169,6 +255,7 @@ extension PreviewWorkspace {
   }
 
   func retryReply(_ id: UUID, attachmentConsent: AttachmentTransmissionPlan? = nil) async throws {
+    guard !roundHasUnfinishedSiblings(of: id) else { throw ProviderError.roundInProgress }
     guard !isClosing, !isDeletingBot, let coordinator, !pendingGenerationActions.contains(id) else {
       throw ProviderSetupError.busy
     }

@@ -419,10 +419,251 @@ final class ProviderWorkspaceTests: XCTestCase {
     XCTAssertTrue(generations.allSatisfy { $0.state == .cancelled })
   }
 
+  func testGroupTargetSelectionPreservesExplicitOrderAndNeverProjectsMultipleAsSingle() async throws
+  {
+    let (repository, _) = try await openRepository()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(
+      repository, credentials: RecordingCredentialStore(), provider: ScriptedProvider())
+    _ = try await saveFixtureProvider(in: workspace)
+    let first = try await workspace.performCreateBot(
+      name: "First analyst", description: "", color: "green", shape: .circle)
+    let second = try await workspace.performCreateBot(
+      name: "Second analyst", description: "", color: "blue", shape: .square)
+    let third = try await workspace.performCreateBot(
+      name: "Third analyst", description: "", color: "orange", shape: .circle)
+    let group = try await workspace.performCreateGroup(
+      name: "Review board", members: [first, second, third])
+
+    workspace.toggleGroupTarget(second, in: group)
+    XCTAssertEqual(workspace.selectedTargetBotID, second)
+    workspace.toggleGroupTarget(first, in: group)
+    XCTAssertEqual(workspace.selectedTargetBotIDsForCurrent, [second, first])
+    XCTAssertNil(workspace.selectedTargetBotID)
+    workspace.moveGroupTarget(first, in: group, offset: -1)
+    XCTAssertEqual(workspace.selectedTargetBotIDsForCurrent, [first, second])
+    workspace.toggleGroupTarget(first, in: group)
+    XCTAssertEqual(workspace.selectedTargetBotIDsForCurrent, [second])
+    workspace.selectedTargetBotIDs[group] = [second, second]
+    XCTAssertTrue(workspace.selectedTargetBotIDsForCurrent.isEmpty)
+    workspace.draft = "Do not retarget"
+    XCTAssertThrowsError(try workspace.captureDraftSubmission()) {
+      XCTAssertEqual($0 as? ProviderSetupError, .targetRequired)
+    }
+  }
+
+  func testGroupRoundRequiresConfirmationAndPersistsOneUserWithOrderedAttributedReplies()
+    async throws
+  {
+    let (repository, _) = try await openRepository()
+    let credentials = RecordingCredentialStore()
+    let provider = ScriptedProvider()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(repository, credentials: credentials, provider: provider)
+    _ = try await saveFixtureProvider(in: workspace)
+    let first = try await workspace.performCreateBot(
+      name: "Research Partner", description: "First", color: "green", shape: .circle)
+    let second = try await workspace.performCreateBot(
+      name: "Risk Reviewer", description: "Second", color: "blue", shape: .square)
+    let group = try await workspace.performCreateGroup(name: "Team", members: [first, second])
+    workspace.selectedTargetBotIDs[group] = [second, first]
+    workspace.draft = "Review this proposal"
+    workspace.draftSaveTask?.cancel()
+
+    try await workspace.prepareSendOrConfirmAttachments()
+    let disclosure = try XCTUnwrap(workspace.attachmentConfirmationTarget)
+    XCTAssertTrue(disclosure.isRound)
+    XCTAssertEqual(disclosure.targetBots, ["Risk Reviewer", "Research Partner"])
+    XCTAssertEqual(disclosure.requestCount, 2)
+    XCTAssertEqual(provider.callCount, 0)
+
+    var starts = provider.starts.makeAsyncIterator()
+    let accepted = try XCTUnwrap(workspace.confirmAttachmentSend())
+    XCTAssertNil(workspace.confirmAttachmentSend(), "Confirmation must be claimed synchronously")
+    await accepted.value
+    XCTAssertNil(workspace.attachmentConfirmationError)
+    XCTAssertEqual(workspace.draft, "")
+
+    let firstStart = await starts.next()
+    XCTAssertEqual(firstStart, 0)
+    provider.send(.text("Risk response"), to: 0)
+    provider.send(.finished, to: 0, finish: true)
+    let secondStart = await starts.next()
+    XCTAssertEqual(secondStart, 1)
+    provider.send(.text("Research response"), to: 1)
+    provider.send(.finished, to: 1, finish: true)
+    await workspace.coordinator?.waitForIdle()
+
+    let page = try await repository.messages(conversationID: group)
+    let snapshot = try await repository.snapshot()
+    XCTAssertEqual(page.messages.filter { $0.role == .user }.map(\.text), ["Review this proposal"])
+    let replies = page.messages.filter { $0.role == .assistant }
+    XCTAssertEqual(replies.map(\.speakerBotID), [second, first])
+    XCTAssertEqual(replies.map(\.speakerNameSnapshot), ["Risk Reviewer", "Research Partner"])
+    XCTAssertEqual(
+      snapshot.generations.sorted { $0.roundIndex! < $1.roundIndex! }.map(\.state),
+      [.completed, .completed])
+  }
+
+  func testChangedGroupTargetsInvalidateReviewedRoundBeforeTransport() async throws {
+    let (repository, _) = try await openRepository()
+    let provider = ScriptedProvider()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(
+      repository, credentials: RecordingCredentialStore(), provider: provider)
+    _ = try await saveFixtureProvider(in: workspace)
+    let first = try await workspace.performCreateBot(
+      name: "First", description: "", color: "green", shape: .circle)
+    let second = try await workspace.performCreateBot(
+      name: "Second", description: "", color: "blue", shape: .square)
+    let group = try await workspace.performCreateGroup(name: "Team", members: [first, second])
+    workspace.selectedTargetBotIDs[group] = [first, second]
+    workspace.draft = "Review"
+    workspace.draftSaveTask?.cancel()
+    try await workspace.prepareSendOrConfirmAttachments()
+
+    workspace.selectedTargetBotIDs[group] = [second, first]
+    let task = try XCTUnwrap(workspace.confirmAttachmentSend())
+    await task.value
+    XCTAssertNotNil(workspace.attachmentConfirmationTarget)
+    XCTAssertEqual(provider.callCount, 0)
+    XCTAssertEqual(workspace.draft, "Review")
+    XCTAssertTrue(workspace.attachmentConfirmationError?.contains("changed") == true)
+  }
+
+  func testChangedRoundDraftAndProviderEachRequireFreshReviewBeforeTransport() async throws {
+    let (repository, _) = try await openRepository()
+    let provider = ScriptedProvider()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(
+      repository, credentials: RecordingCredentialStore(), provider: provider)
+    let providerID = try await saveFixtureProvider(in: workspace)
+    let first = try await workspace.performCreateBot(
+      name: "First", description: "", color: "green", shape: .circle)
+    let second = try await workspace.performCreateBot(
+      name: "Second", description: "", color: "blue", shape: .square)
+    let group = try await workspace.performCreateGroup(name: "Team", members: [first, second])
+    workspace.selectedTargetBotIDs[group] = [first, second]
+    workspace.draft = "Original"
+    workspace.draftSaveTask?.cancel()
+    try await workspace.prepareSendOrConfirmAttachments()
+
+    workspace.draft = "Newer"
+    workspace.draftSaveTask?.cancel()
+    let staleDraft = try XCTUnwrap(workspace.confirmAttachmentSend())
+    await staleDraft.value
+    XCTAssertTrue(workspace.attachmentConfirmationError?.contains("changed") == true)
+    XCTAssertEqual(provider.callCount, 0)
+    workspace.cancelAttachmentConfirmation()
+
+    try await workspace.prepareSendOrConfirmAttachments()
+    workspace.selectedProviderID = nil
+    let staleProvider = try XCTUnwrap(workspace.confirmAttachmentSend())
+    await staleProvider.value
+    XCTAssertTrue(workspace.attachmentConfirmationError?.contains("changed") == true)
+    XCTAssertEqual(provider.callCount, 0)
+    XCTAssertEqual(workspace.draft, "Newer")
+    workspace.selectedProviderID = providerID
+  }
+
+  func testStoppingOneRoundMemberStopsRemainingAndPreservesCompletedReply() async throws {
+    let (repository, _) = try await openRepository()
+    let provider = ScriptedProvider()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(
+      repository, credentials: RecordingCredentialStore(), provider: provider)
+    _ = try await saveFixtureProvider(in: workspace)
+    var bots: [UUID] = []
+    for name in ["First", "Second", "Third"] {
+      bots.append(
+        try await workspace.performCreateBot(
+          name: name, description: "", color: "green", shape: .circle))
+    }
+    let group = try await workspace.performCreateGroup(name: "Team", members: bots)
+    workspace.selectedTargetBotIDs[group] = bots
+    workspace.draft = "Round"
+    workspace.draftSaveTask?.cancel()
+    try await workspace.prepareSendOrConfirmAttachments()
+    var starts = provider.starts.makeAsyncIterator()
+    let accepted = try XCTUnwrap(workspace.confirmAttachmentSend())
+    await accepted.value
+    let firstStart = await starts.next()
+    XCTAssertEqual(firstStart, 0)
+    provider.send(.text("Done"), to: 0)
+    provider.send(.finished, to: 0, finish: true)
+    let secondStart = await starts.next()
+    XCTAssertEqual(secondStart, 1)
+    try await waitUntil { (try await repository.snapshot()).generations.count == 3 }
+    await workspace.refreshGeneration(group)
+    let second = try XCTUnwrap(
+      workspace.generations.first { $0.roundIndex == 1 })
+    try await workspace.cancelReply(second.id)
+    await workspace.coordinator?.waitForIdle()
+
+    let generations = try await repository.snapshot().generations.sorted {
+      $0.roundIndex! < $1.roundIndex!
+    }
+    XCTAssertEqual(generations.map(\.state), [.completed, .cancelled, .cancelled])
+    XCTAssertEqual(provider.callCount, 2)
+    let replies = try await repository.messages(conversationID: group).messages.filter {
+      $0.role == .assistant
+    }
+    XCTAssertEqual(replies.map(\.text), ["Done"])
+  }
+
   private func saveFixtureProvider(in workspace: PreviewWorkspace) async throws -> UUID {
     try await workspace.saveProvider(
       id: nil, name: "Fixture", apiRoot: "https://fixture.invalid/v1",
       modelID: "fixture-model", secret: "test-only-sentinel", allowsLoopbackHTTP: false)
+  }
+
+  func testFailedMemberRetryWaitsForRoundSoStopCannotBeBlockedByPreparation() async throws {
+    let (repository, _) = try await openRepository()
+    let provider = ScriptedProvider()
+    let credentials = RecordingCredentialStore()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(repository, credentials: credentials, provider: provider)
+    _ = try await saveFixtureProvider(in: workspace)
+    var bots: [UUID] = []
+    for name in ["Fails first", "Streams second", "Queued third"] {
+      bots.append(
+        try await workspace.performCreateBot(
+          name: name, description: "", color: "green", shape: .circle))
+    }
+    let group = try await workspace.performCreateGroup(name: "Team", members: bots)
+    workspace.selectedTargetBotIDs[group] = bots
+    workspace.draft = "Bounded round"
+    workspace.draftSaveTask?.cancel()
+    try await workspace.prepareSendOrConfirmAttachments()
+    let accepted = try XCTUnwrap(workspace.confirmAttachmentSend())
+    await accepted.value
+    try await waitUntil { provider.callCount == 1 }
+    provider.send(.text("Interrupted partial"), to: 0, finish: true)
+    try await waitUntil { provider.callCount == 2 }
+    await workspace.refreshGeneration(group)
+    let failed = try XCTUnwrap(workspace.generations.first { $0.roundIndex == 0 })
+    let active = try XCTUnwrap(workspace.generations.first { $0.roundIndex == 1 })
+    XCTAssertEqual(failed.state, .failed)
+    XCTAssertFalse(workspace.canRetry(failed))
+    workspace.performRetry(failed.id)
+    XCTAssertNil(workspace.sendTask)
+    // A regression that reads credentials instead of rejecting will throw missingCredential.
+    await credentials.failReads()
+    do {
+      try await workspace.retryReply(failed.id)
+      XCTFail("Retry must wait for the round to finish or stop")
+    } catch { XCTAssertEqual(error as? ProviderError, .roundInProgress) }
+    XCTAssertTrue(workspace.pendingGenerationActions.isEmpty)
+    try await workspace.cancelReply(active.id)
+    await workspace.coordinator?.waitForIdle()
+    await workspace.refreshGeneration(group)
+    XCTAssertTrue(workspace.canRetry(failed))
+    XCTAssertEqual(provider.callCount, 2)
+    XCTAssertEqual(workspace.generations.filter { $0.state == .cancelled }.count, 2)
+    let replies = try await repository.messages(conversationID: group).messages.filter {
+      $0.role == .assistant
+    }
+    XCTAssertEqual(replies.map(\.text), ["Interrupted partial"])
   }
 
   func testChangingDestinationRequiresExplicitCredentialReentry() async throws {

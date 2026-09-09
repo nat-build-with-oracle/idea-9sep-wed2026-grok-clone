@@ -2,7 +2,7 @@
 
 The Swift package's transport and generation coordinator are now wired to the
 native app. Settings opens a separate native window; the composer exposes provider,
-destination/model and an explicit single-bot target for groups. Streamed text is
+destination/model and ordered explicit recipients for groups. Streamed text is
 persisted and attributed, and generation rows expose Stop/Retry. The normal suite verifies these paths with
 **offline fixtures**; the separate experimental Codex adapter also has explicit
 user-directed auth-file ingress. Without a configuration or
@@ -21,8 +21,10 @@ usable credential, Send preserves the draft and does not fabricate a reply.
   the metadata commit succeeds. A changed API root or storage mode requires key re-entry.
 - A blank replacement field retains the existing reference for the same API root and storage mode.
   Unused old-item cleanup failure is surfaced without undoing saved metadata.
-- The composer shows the destination and context scope. Group replies use only
-  the explicitly selected bot; mention-driven multi-bot rounds remain open.
+- The composer shows the destination and context scope. Group replies run once per
+  explicitly selected member in displayed order, with one common user message and
+  aggregate confirmation before multiple requests. See [group rounds](GROUP-ROUNDS.md)
+  for frozen context, Stop and per-member failure/retry behavior. Mention-driven selection remains open.
   Provider/target choices are session selections, not yet per-bot persisted preferences.
 - Draft flushes share one writer. A newer edit arriving during credential lookup
   is retained; sent content is cleared only when its local draft version still
@@ -78,7 +80,9 @@ diagnostic, not an automated test.
   [Codex contract](CODEX-ADAPTER-CONTRACT.md) for compatibility and privacy limits.
 - `GenerationCoordinator.swift`: persist the user message and queued generation
   before transport; one active request per conversation, at most three globally;
-  cancellation, retry with a new attempt, and orderly shutdown.
+  cancellation, retry with a new attempt, and orderly shutdown. Group rounds capture
+  context/files once, compare all ordered consent before credentials, commit all queued
+  members atomically and stop remaining siblings together.
 - Repository events reject stale attempts and duplicate/out-of-order sequence
   numbers. Streamed assistant messages keep speaker identity/name snapshots.
   Cancellation preserves already-persisted text; retry preserves the original

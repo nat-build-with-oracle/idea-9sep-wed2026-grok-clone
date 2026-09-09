@@ -52,6 +52,43 @@ public struct SendCommand: Sendable {
   }
 }
 
+public struct SendRoundCommand: Sendable {
+  public struct Target: Sendable {
+    public let targetBotID: UUID
+    public let generationID: UUID
+    public let attemptID: UUID
+
+    public init(
+      targetBotID: UUID, generationID: UUID = UUID(), attemptID: UUID = UUID()
+    ) {
+      self.targetBotID = targetBotID
+      self.generationID = generationID
+      self.attemptID = attemptID
+    }
+  }
+
+  public let conversationID: UUID
+  public let userMessageID: UUID
+  public let text: String
+  public let replyToID: UUID?
+  public let attachmentIDs: [UUID]
+  public let createdAt: Date
+  public let targets: [Target]
+
+  public init(
+    conversationID: UUID, userMessageID: UUID = UUID(), targets: [Target], text: String,
+    replyToID: UUID? = nil, attachmentIDs: [UUID] = [], createdAt: Date = Date()
+  ) {
+    self.conversationID = conversationID
+    self.userMessageID = userMessageID
+    self.text = text
+    self.replyToID = replyToID
+    self.attachmentIDs = attachmentIDs
+    self.createdAt = createdAt
+    self.targets = targets
+  }
+}
+
 public enum WorkspaceMutation: Sendable {
   /// Caller retains both IDs across retries. They must differ and must not already exist.
   case createBot(Bot, conversationID: UUID)
@@ -70,7 +107,11 @@ public enum WorkspaceMutation: Sendable {
   /// Commits user message, initial generation, sequence allocation and draft clear in one save.
   /// Transport is deliberately outside the repository; this does not itself contact any provider.
   case beginGeneration(SendCommand)
+  /// Atomically commits one user message and one ordered queued generation per target.
+  case beginGenerationRound(SendRoundCommand)
   case cancelGeneration(id: UUID, attemptID: UUID)
+  /// Atomically cancels the nonterminal ordinary generations linked to one user round.
+  case cancelGenerationRound(userMessageID: UUID)
   case applyGenerationEvent(GenerationEvent)
   case retryGeneration(id: UUID, attemptID: UUID)
   case interruptPendingGenerations

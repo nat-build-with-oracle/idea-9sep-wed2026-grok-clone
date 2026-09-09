@@ -45,6 +45,7 @@ struct WorkspaceView: View {
     .sheet(item: $store.attachmentConfirmationTarget) { target in
       AttachmentConfirmationView(
         conversation: target.conversation, targetBot: target.targetBot,
+        targetBots: target.targetBots, requestCount: target.requestCount, isRound: target.isRound,
         apiRoot: target.plan.provider.apiRoot, modelID: target.plan.provider.modelID,
         attachments: target.plan.attachments, contextMessageCount: target.plan.contextMessageCount,
         isSending: store.isConfirmingAttachmentSend, error: store.attachmentConfirmationError,
@@ -415,7 +416,9 @@ private struct ConversationView: View {
                 Text("A new conversation").font(.system(size: 21, weight: .medium))
                 Text(
                   store.isPersistent
-                    ? "Your drafts are saved on this Mac. Choose a provider below to send a message. Only the selected bot will reply."
+                    ? conversation.kind == .group
+                      ? "Your drafts are saved on this Mac. Choose a provider and one or more ordered reply bots below."
+                      : "Your drafts are saved on this Mac. Choose a provider below to send a message."
                     : "Try the composer below. This native preview saves messages only for this session; it does not contact an AI provider."
                 )
                 .foregroundStyle(ShellTheme.secondary).multilineTextAlignment(.center).frame(
@@ -498,6 +501,9 @@ private struct ConversationView: View {
     ForEach(
       store.generations.filter {
         $0.userMessageID == message.id && $0.state != .completed
+      }.sorted {
+        ($0.roundIndex ?? Int.max, $0.id.uuidString)
+          < ($1.roundIndex ?? Int.max, $1.id.uuidString)
       }
     ) { generation in
       GenerationStatusView(store: store, generation: generation)
@@ -634,18 +640,71 @@ private struct ConversationView: View {
         .buttonStyle(.plain).accessibilityLabel("Configure model provider")
       }
       if let conversation = store.current, conversation.kind == .group {
-        Picker(
-          "Reply as",
-          selection: Binding<UUID?>(
-            get: { store.selectedTargetBotIDs[conversation.id] },
-            set: { store.selectedTargetBotIDs[conversation.id] = $0 }
-          )
-        ) {
-          Text("Choose one bot").tag(Optional<UUID>.none)
-          ForEach(store.bots.filter { conversation.memberIDs.contains($0.id) }) {
-            Text($0.name).tag(Optional($0.id))
+        let members = store.bots.filter { conversation.memberIDs.contains($0.id) }
+        let selected = store.selectedTargetBotIDsForCurrent
+        VStack(alignment: .leading, spacing: 5) {
+          HStack {
+            Text("Reply as")
+            Spacer()
+            Menu(selected.isEmpty ? "Choose bots" : "\(selected.count) selected") {
+              ForEach(members) { bot in
+                Button {
+                  store.toggleGroupTarget(bot.id, in: conversation.id)
+                } label: {
+                  Label(
+                    bot.name,
+                    systemImage: selected.contains(bot.id) ? "checkmark.circle.fill" : "circle")
+                }
+              }
+            }
+            .accessibilityLabel("Choose group reply bots")
+            .accessibilityValue(selected.isEmpty ? "None selected" : "\(selected.count) selected")
+            .accessibilityIdentifier("send-target")
           }
-        }.accessibilityIdentifier("send-target")
+          if !selected.isEmpty {
+            ScrollView {
+              VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(selected.enumerated()), id: \.element) { index, id in
+                  let name = members.first(where: { $0.id == id })?.name ?? "Deleted bot"
+                  HStack(spacing: 6) {
+                    Text("\(index + 1). \(name)").lineLimit(1).help(name)
+                    Spacer(minLength: 4)
+                    Button {
+                      store.moveGroupTarget(id, in: conversation.id, offset: -1)
+                    } label: {
+                      Image(systemName: "arrow.up")
+                    }
+                    .disabled(index == 0).accessibilityLabel("Move \(name) earlier")
+                    Button {
+                      store.moveGroupTarget(id, in: conversation.id, offset: 1)
+                    } label: {
+                      Image(systemName: "arrow.down")
+                    }
+                    .disabled(index == selected.count - 1)
+                    .accessibilityLabel("Move \(name) later")
+                    Button {
+                      store.toggleGroupTarget(id, in: conversation.id)
+                    } label: {
+                      Image(systemName: "xmark.circle")
+                    }
+                    .accessibilityLabel("Remove \(name) from group round")
+                  }
+                  .buttonStyle(.plain)
+                  .font(.system(size: 11))
+                  .accessibilityElement(children: .contain)
+                  .accessibilityIdentifier("selected-round-target-\(index)")
+                }
+              }
+            }
+            .frame(height: min(CGFloat(selected.count) * 25, 82))
+            Text(
+              selected.count > 1
+                ? "One ordered request per bot. You will review the full round before sending."
+                : "Select more bots to create an ordered group round."
+            )
+            .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+          }
+        }
       }
       if let provider = store.selectedProvider {
         Text("To: \(provider.apiRoot.absoluteString) · \(provider.modelID)")
@@ -667,8 +726,13 @@ private struct ConversationView: View {
 private struct GenerationStatusView: View {
   @ObservedObject var store: PreviewWorkspace
   let generation: Generation
+  private var isRound: Bool {
+    store.generations.lazy.filter { $0.userMessageID == generation.userMessageID }.prefix(2).count
+      > 1
+  }
   private var speakerName: String {
-    store.bots.first { $0.id == generation.targetBotID }?.name
+    generation.targetSpeakerNameSnapshot
+      ?? store.bots.first { $0.id == generation.targetBotID }?.name
       ?? store.messages[generation.conversationID]?.first {
         $0.id == generation.assistantMessageID
       }?.speakerName ?? "Deleted bot"
@@ -681,14 +745,18 @@ private struct GenerationStatusView: View {
         )
         Spacer()
         if !generation.state.isTerminal {
-          Button("Stop") { action { try await store.cancelReply(generation.id) } }
-            .accessibilityIdentifier("stop-\(generation.id)")
+          Button(isRound ? "Stop round" : "Stop") {
+            action { try await store.cancelReply(generation.id) }
+          }
+          .accessibilityIdentifier("stop-\(generation.id)")
         } else if generation.routineRunID != nil {
           Text("Routine run · retry unavailable here").font(.caption)
         } else {
           Button("Retry") { store.performRetry(generation.id) }
             .help(
-              "Retry using the currently selected provider. The original user message and partial reply are retained."
+              isRound
+                ? "Finish or Stop the round before retrying this member with the selected provider. Other members are not resent."
+                : "Retry using the currently selected provider. The original user message and partial reply are retained."
             )
             .disabled(store.selectedProvider == nil || !store.canRetry(generation))
             .accessibilityIdentifier("retry-\(generation.id)")

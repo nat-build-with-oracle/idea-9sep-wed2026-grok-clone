@@ -127,10 +127,10 @@ extension PreviewWorkspace {
       default: throw WorkspaceError.identityConflict
       }
     }
-    if case .group(let id) = target, let selected = selectedTargetBotIDs[id],
-      conversations.first(where: { $0.id == id })?.memberIDs.contains(selected) != true
-    {
-      selectedTargetBotIDs[id] = nil
+    if case .group(let id) = target, let selected = selectedTargetBotIDs[id] {
+      let members = Set(conversations.first(where: { $0.id == id })?.memberIDs ?? [])
+      let retained = selected.filter { members.contains($0) }
+      selectedTargetBotIDs[id] = retained.isEmpty ? nil : retained
     }
   }
 }

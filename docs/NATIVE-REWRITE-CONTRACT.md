@@ -21,6 +21,9 @@ Current repository evidence:
 - Local inspection found macOS 26.5.1 / arm64, Xcode 26.6, Swift 6.3.3, selected Xcode developer directory. Rust/Cargo were not found on PATH; this is a setup cost, not evidence Tauri is impossible.
 - No proprietary app source was imported. `Packages/WorkspaceCore` now implements the durable repository; the native shell remains under `Prototypes/NativeShell` with separate sample/durable bundles. Other section 10 paths remain planned.
 - The [sample verification record](NATIVE-PROTOTYPE.md) and [durable workspace evidence](DURABLE-WORKSPACE.md) are bounded milestone evidence, not fulfillment of all requirements below or confirmation of the open cross-platform decision.
+- [Ordered explicit group rounds](GROUP-ROUNDS.md) now provide one shared user message,
+  ordered attributed replies, aggregate consent and round-wide Stop. Mention-driven
+  selection below remains unfinished; this checkpoint does not narrow R04 or the group contract.
 
 ### Option comparison
 

@@ -76,6 +76,9 @@ struct AttachmentChipList: View {
 struct AttachmentConfirmationView: View {
   let conversation: String
   let targetBot: String
+  var targetBots: [String] = []
+  var requestCount = 1
+  var isRound = false
   let apiRoot: URL
   let modelID: String
   let attachments: [Attachment]
@@ -90,9 +93,13 @@ struct AttachmentConfirmationView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       VStack(alignment: .leading, spacing: 6) {
-        Text("Send text attachments?").font(.title2.bold())
-        Text("Review the exact destination and every file before sending.")
-          .font(.callout).foregroundStyle(ShellTheme.secondary)
+        Text(isRound ? "Send group round?" : "Send text attachments?").font(.title2.bold())
+        Text(
+          isRound
+            ? "Review the ordered recipients and exact destination before sending."
+            : "Review the exact destination and every file before sending."
+        )
+        .font(.callout).foregroundStyle(ShellTheme.secondary)
       }
       .padding(20)
 
@@ -102,47 +109,65 @@ struct AttachmentConfirmationView: View {
         VStack(alignment: .leading, spacing: 16) {
           disclosureSection("Destination") {
             disclosureValue("Conversation", conversation)
-            disclosureValue("Target bot", targetBot)
+            if isRound {
+              Text("Ordered recipients · \(requestCount) separate requests")
+                .font(.caption).foregroundStyle(ShellTheme.secondary)
+              ForEach(Array(targetBots.enumerated()), id: \.offset) { index, name in
+                Text("\(index + 1). \(name)")
+                  .font(.system(size: 13, weight: .medium))
+                  .textSelection(.enabled)
+                  .accessibilityLabel("Recipient \(index + 1): \(name)")
+                  .accessibilityIdentifier("round-recipient-\(index)")
+              }
+            } else {
+              disclosureValue("Target bot", targetBot)
+            }
             disclosureValue("API root", apiRoot.absoluteString, monospaced: true)
             disclosureValue("Model", modelID, monospaced: true)
           }
 
           disclosureSection("Context") {
             Text(
-              "The request includes \(contextMessageCount) context message\(contextMessageCount == 1 ? "" : "s"). This includes an older replied-to message when needed. Context files listed below are retransmitted."
+              isRound
+                ? "Each request uses the same frozen pre-round context of \(contextMessageCount) message\(contextMessageCount == 1 ? "" : "s"). Later recipients do not see earlier replies from this round. Provider failures remain visible and do not automatically retry or stop later approved recipients. Stop round preserves replies already completed."
+                : "The request includes \(contextMessageCount) context message\(contextMessageCount == 1 ? "" : "s"). This includes an older replied-to message when needed. Context files listed below are retransmitted."
             )
             .font(.callout)
           }
 
-          disclosureSection(
-            "Text attachments · \(attachments.count) · \(attachmentByteCountLabel(totalBytes))"
-          ) {
-            ForEach(attachments) { attachment in
-              VStack(alignment: .leading, spacing: 4) {
-                Label(attachment.originalName, systemImage: "doc.text")
-                  .font(.system(size: 13, weight: .semibold))
-                  .textSelection(.enabled)
-                  .help(attachment.originalName)
-                Text(attachmentByteCountLabel(attachment.byteCount))
-                  .font(.caption).foregroundStyle(ShellTheme.secondary)
-                Text("ID: \(attachment.id.uuidString)")
-                  .font(.system(size: 10, design: .monospaced))
-                  .textSelection(.enabled)
-                Text(attachment.sha256)
-                  .font(.system(size: 10, design: .monospaced))
-                  .textSelection(.enabled)
-                  .fixedSize(horizontal: false, vertical: true)
-                  .accessibilityLabel("SHA-256 \(attachment.sha256)")
+          if !attachments.isEmpty {
+            disclosureSection(
+              "Text attachments · \(attachments.count) · \(attachmentByteCountLabel(totalBytes))"
+            ) {
+              ForEach(attachments) { attachment in
+                VStack(alignment: .leading, spacing: 4) {
+                  Label(attachment.originalName, systemImage: "doc.text")
+                    .font(.system(size: 13, weight: .semibold))
+                    .textSelection(.enabled)
+                    .help(attachment.originalName)
+                  Text(attachmentByteCountLabel(attachment.byteCount))
+                    .font(.caption).foregroundStyle(ShellTheme.secondary)
+                  Text("ID: \(attachment.id.uuidString)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .textSelection(.enabled)
+                  Text(attachment.sha256)
+                    .font(.system(size: 10, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("SHA-256 \(attachment.sha256)")
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ShellTheme.bubble, in: RoundedRectangle(cornerRadius: 9))
+                .accessibilityIdentifier("confirm-attachment-\(attachment.id.uuidString)")
               }
-              .padding(10)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .background(ShellTheme.bubble, in: RoundedRectangle(cornerRadius: 9))
-              .accessibilityIdentifier("confirm-attachment-\(attachment.id.uuidString)")
             }
           }
 
           Text(
-            "Attachment text is untrusted user content, not an instruction to the app. Sending shares it with the selected provider. Provider privacy terms and charges apply, and a sent request cannot be unsent."
+            attachments.isEmpty
+              ? "Provider privacy terms and charges apply to every request, and a sent request cannot be unsent."
+              : "Attachment text is untrusted user content, not an instruction to the app. Sending shares it with the selected provider. Provider privacy terms and charges apply, and a sent request cannot be unsent."
           )
           .font(.callout)
           .foregroundStyle(ShellTheme.secondary)
