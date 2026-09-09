@@ -17,6 +17,7 @@ public actor GenerationCoordinator {
     let targetBotID: UUID
     let request: ChatRequest
     let epoch: OperationEpoch
+    let routineRunID: UUID?
   }
   private let repository: any WorkspaceRepository
   private let credentials: any CredentialStore
@@ -34,6 +35,8 @@ public actor GenerationCoordinator {
   private var pumpSuspensionCount = 0
   private var deletionInProgress = false
   private var shuttingDown = false
+  private var routineSubmissions: Set<UUID> = []
+  private var cancelledRoutineSubmissions: Set<UUID> = []
 
   public init(
     repository: any WorkspaceRepository, credentials: any CredentialStore,
@@ -70,7 +73,7 @@ public actor GenerationCoordinator {
       Job(
         generationID: command.generationID, attemptID: command.attemptID,
         conversationID: command.conversationID, userMessageID: command.userMessageID,
-        targetBotID: command.targetBotID, request: request, epoch: epoch))
+        targetBotID: command.targetBotID, request: request, epoch: epoch, routineRunID: nil))
     pump()
     await onChange(command.conversationID)
     return command.generationID
@@ -88,6 +91,7 @@ public actor GenerationCoordinator {
     else {
       throw WorkspaceError.identityConflict
     }
+    guard generation.routineRunID == nil else { throw WorkspaceError.invalidRoutine }
     let epoch = OperationEpoch(
       botID: generation.targetBotID, conversationID: generation.conversationID,
       bot: capturedBotEpochs[generation.targetBotID, default: 0],
@@ -112,9 +116,109 @@ public actor GenerationCoordinator {
       Job(
         generationID: generationID, attemptID: attempt,
         conversationID: generation.conversationID, userMessageID: generation.userMessageID,
-        targetBotID: generation.targetBotID, request: request, epoch: epoch))
+        targetBotID: generation.targetBotID, request: request, epoch: epoch, routineRunID: nil))
     pump()
     await onChange(generation.conversationID)
+  }
+
+  /// Dispatches only a previously committed occurrence. The provider comes from its immutable
+  /// authorization binding, never the chat composer's current selection. Preparation failure is
+  /// visible in the run ledger and cannot clear the user's draft or silently retry the occurrence.
+  public func submitRoutine(_ runID: UUID) async throws {
+    guard !shuttingDown else { throw WorkspaceError.storeClosed }
+    guard routineSubmissions.insert(runID).inserted else { throw WorkspaceError.identityConflict }
+    defer { routineSubmissions.remove(runID) }
+    let capturedBotEpochs = botEpochs
+    let capturedConversationEpochs = conversationEpochs
+    let run = try await repository.routineRun(id: runID)
+    guard run.status == .queued, let generationID = run.generationID else {
+      throw WorkspaceError.identityConflict
+    }
+    let epoch = OperationEpoch(
+      botID: run.ownerBotID, conversationID: run.conversationID,
+      bot: capturedBotEpochs[run.ownerBotID, default: 0],
+      conversation: capturedConversationEpochs[run.conversationID, default: 0])
+    let command = SendCommand(
+      conversationID: run.conversationID, generationID: generationID,
+      targetBotID: run.ownerBotID, text: run.prompt, createdAt: run.createdAt)
+    var committed = false
+    do {
+      try Task.checkCancellation()
+      try requireCurrent(epoch)
+      try requireRoutineNotCancelled(run.id)
+      let snapshot = try await repository.snapshot()
+      try requireCurrent(epoch)
+      guard let binding = run.providerBinding,
+        let configuration = snapshot.providers.first(where: { $0.id == binding.providerID })
+      else {
+        try await finishBlockedRoutine(run, failure: .missingProvider)
+        return
+      }
+      guard binding.matches(configuration) else {
+        try await finishBlockedRoutine(run, failure: .providerChanged)
+        return
+      }
+      let request = try await prepare(
+        configuration: configuration, conversationID: run.conversationID,
+        targetBotID: run.ownerBotID, beforeSequence: nil, newText: run.prompt,
+        replyToID: nil, epoch: epoch)
+      try Task.checkCancellation()
+      try requireCurrent(epoch)
+      try requireRoutineNotCancelled(run.id)
+      // The repository rechecks the binding after credential I/O, and commits run + message +
+      // generation together. Unlike an interactive send, this mutation never clears a draft.
+      try await repository.apply(.beginRoutineGeneration(runID: run.id, command: command))
+      committed = true
+      try requireCurrent(epoch)
+      try Task.checkCancellation()
+      try requireRoutineNotCancelled(run.id)
+      pending.append(
+        Job(
+          generationID: generationID, attemptID: command.attemptID,
+          conversationID: run.conversationID, userMessageID: command.userMessageID,
+          targetBotID: run.ownerBotID, request: request, epoch: epoch, routineRunID: run.id))
+      pump()
+      await onChange(run.conversationID)
+    } catch {
+      if committed {
+        try await repository.apply(
+          .cancelGeneration(id: generationID, attemptID: command.attemptID))
+        await onChange(run.conversationID)
+        throw error
+      }
+      // A concurrent Stop/delete owns its terminal result. Never revive a deleted run, overwrite
+      // accepted cancellation, or mark another in-flight submission as failed.
+      let current = try await repository.routineRun(id: run.id)
+      guard current.status == .queued else { throw error }
+      let cancelled =
+        Task.isCancelled || error is CancellationError || shuttingDown
+        || (error as? ProviderError) == .cancelled
+      try await repository.apply(
+        .finishRoutineRun(
+          id: run.id, status: cancelled ? .cancelled : .blocked, at: max(Date(), run.createdAt),
+          error: cancelled ? .cancelled : RoutineFailureMapping.failure(error)))
+      await onChange(run.conversationID)
+      if error is WorkspaceError || cancelled { throw error }
+    }
+  }
+
+  public func cancelRoutine(_ runID: UUID) async throws {
+    cancelledRoutineSubmissions.insert(runID)
+    let run = try await repository.routineRun(id: runID)
+    // One transaction cancels either a pre-dispatch claim or its just-created generation. There
+    // must be no snapshot/no-generation gap in which a credential read can start provider work.
+    if !run.status.isTerminal {
+      try await repository.apply(.cancelRoutineRun(id: run.id, at: max(Date(), run.createdAt)))
+    }
+    if let generationID = run.generationID { try await cancel(generationID) }
+    await onChange(run.conversationID)
+  }
+
+  private func finishBlockedRoutine(_ run: RoutineRun, failure: RoutineRun.Failure) async throws {
+    try await repository.apply(
+      .finishRoutineRun(
+        id: run.id, status: .blocked, at: max(Date(), run.createdAt), error: failure))
+    await onChange(run.conversationID)
   }
 
   public func cancel(_ generationID: UUID) async throws {
@@ -170,7 +274,8 @@ public actor GenerationCoordinator {
     // change destructive content, however, and must be shown in a fresh confirmation before it is
     // cancelled.
     guard current.hasSameContent(as: plan),
-      Set(current.activeGenerationIDs).isSubset(of: Set(plan.activeGenerationIDs))
+      Set(current.activeGenerationIDs).isSubset(of: Set(plan.activeGenerationIDs)),
+      Set(current.activeRoutineRunIDs).isSubset(of: Set(plan.activeRoutineRunIDs))
     else { throw BotDeletionError.confirmationChanged }
     guard !shuttingDown else { throw WorkspaceError.storeClosed }
     guard !deletionInProgress else { throw WorkspaceError.identityConflict }
@@ -258,6 +363,11 @@ public actor GenerationCoordinator {
 
     for task in running { await task.value }
     if let firstFailure { throw firstFailure }
+    // Includes claimed occurrences still waiting for credentials, before any Generation exists.
+    // IDs are taken from authoritative preflight, never widened by caller-supplied activity lists.
+    for runID in current.activeRoutineRunIDs {
+      try await cancelRoutine(runID)
+    }
     try await repository.apply(.deleteBot(expected: plan))
   }
 
@@ -324,6 +434,15 @@ public actor GenerationCoordinator {
     else { throw WorkspaceError.missingRecord }
   }
 
+  private func requireRoutineNotCancelled(_ runID: UUID) throws {
+    guard !cancelledRoutineSubmissions.contains(runID) else { throw ProviderError.cancelled }
+  }
+
+  private func requireCurrent(_ job: Job) throws {
+    try requireCurrent(job.epoch)
+    if let runID = job.routineRunID { try requireRoutineNotCancelled(runID) }
+  }
+
   private func isCurrent(_ epoch: OperationEpoch) -> Bool {
     !blockedBots.contains(epoch.botID) && !blockedConversations.contains(epoch.conversationID)
       && botEpochs[epoch.botID, default: 0] == epoch.bot
@@ -349,6 +468,7 @@ public actor GenerationCoordinator {
     while !shuttingDown, pumpSuspensionCount == 0, active.count < 3,
       let index = pending.firstIndex(where: {
         !activeConversations.contains($0.conversationID) && isCurrent($0.epoch)
+          && !($0.routineRunID.map(cancelledRoutineSubmissions.contains) ?? false)
       })
     {
       let job = pending.remove(at: index)
@@ -362,14 +482,14 @@ public actor GenerationCoordinator {
     var sequence: Int64 = 1
     do {
       try Task.checkCancellation()
-      try requireCurrent(job.epoch)
+      try requireCurrent(job)
       try await apply(job, sequence: sequence, kind: .started)
       try Task.checkCancellation()
-      try requireCurrent(job.epoch)
+      try requireCurrent(job)
       var completed = false
       for try await event in provider.stream(job.request) {
         try Task.checkCancellation()
-        try requireCurrent(job.epoch)
+        try requireCurrent(job)
         sequence += 1
         switch event {
         case .text(let text): try await apply(job, sequence: sequence, kind: .delta(text))

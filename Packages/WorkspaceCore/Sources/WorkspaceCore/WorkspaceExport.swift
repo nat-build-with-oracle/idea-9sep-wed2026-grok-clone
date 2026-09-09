@@ -27,11 +27,12 @@ public struct WorkspaceExportSummary: Codable, Sendable, Equatable {
   public let draftCount: Int
   public let generationCount: Int
   public let routineCount: Int
+  public let routineRunCount: Int
   public let providerCount: Int
 
   public init(
     botCount: Int, conversationCount: Int, messageCount: Int, draftCount: Int,
-    generationCount: Int, routineCount: Int, providerCount: Int
+    generationCount: Int, routineCount: Int, routineRunCount: Int, providerCount: Int
   ) {
     self.botCount = botCount
     self.conversationCount = conversationCount
@@ -39,6 +40,7 @@ public struct WorkspaceExportSummary: Codable, Sendable, Equatable {
     self.draftCount = draftCount
     self.generationCount = generationCount
     self.routineCount = routineCount
+    self.routineRunCount = routineRunCount
     self.providerCount = providerCount
   }
 }
@@ -63,11 +65,11 @@ public enum WorkspaceExportError: Error, Sendable, Equatable, LocalizedError {
   }
 }
 
-/// Version 1 is a complete, text-only snapshot of the current workspace schema.
+/// Version 2 is a complete, text-only snapshot including routine execution history.
 /// It is an export format, not a persistence backup or an import contract.
 public struct WorkspaceExportDocument: Codable, Sendable, Equatable {
-  public static let currentFormatVersion = 1
-  public static let currentSourceSchemaVersion = 1
+  public static let currentFormatVersion = 2
+  public static let currentSourceSchemaVersion = 2
   public static let defaultMaxEncodedBytes = 100 * 1_024 * 1_024
 
   public let formatVersion: Int
@@ -81,12 +83,13 @@ public struct WorkspaceExportDocument: Codable, Sendable, Equatable {
   public let drafts: [Draft]
   public let generations: [Generation]
   public let routines: [Routine]
+  public let routineRuns: [RoutineRun]
   public let providers: [WorkspaceExportProvider]
 
   public init(
     exportedAt: Date, revision: Int64, bots: [Bot], conversations: [Conversation],
     messages: [Message], drafts: [Draft], generations: [Generation], routines: [Routine],
-    providers: [WorkspaceExportProvider]
+    routineRuns: [RoutineRun] = [], providers: [WorkspaceExportProvider]
   ) throws {
     guard messages.allSatisfy(\.attachmentIDs.isEmpty),
       drafts.allSatisfy(\.attachmentIDs.isEmpty)
@@ -108,12 +111,13 @@ public struct WorkspaceExportDocument: Codable, Sendable, Equatable {
     self.drafts = drafts.sorted { Self.uuidLess($0.conversationID, $1.conversationID) }
     self.generations = generations.sorted { Self.uuidLess($0.id, $1.id) }
     self.routines = routines.sorted { Self.uuidLess($0.id, $1.id) }
+    self.routineRuns = routineRuns.sorted { Self.uuidLess($0.id, $1.id) }
     self.providers = providers.sorted { Self.uuidLess($0.id, $1.id) }
     summary = WorkspaceExportSummary(
       botCount: bots.count, conversationCount: conversations.count,
       messageCount: messages.count, draftCount: drafts.count,
       generationCount: generations.count, routineCount: routines.count,
-      providerCount: providers.count)
+      routineRunCount: routineRuns.count, providerCount: providers.count)
   }
 
   /// Produces canonical JSON with lossless Foundation reference-date seconds and a hard,

@@ -107,6 +107,8 @@ public struct Generation: Codable, Sendable, Equatable, Identifiable {
   public var lastEventSequence: Int64
   public var error: String?
   public var assistantMessageID: UUID? = nil
+  /// Durable provenance for routine-created generations. Legacy and ordinary generations are nil.
+  public var routineRunID: UUID? = nil
 }
 
 public struct Routine: Codable, Sendable, Equatable, Identifiable {
@@ -122,10 +124,15 @@ public struct Routine: Codable, Sendable, Equatable, Identifiable {
   public var timezoneID: String
   public var enabled: Bool
   public var nextRunAt: Date?
+  /// Credential-free provider snapshot selected for future routine runs.
+  public var providerBinding: RoutineProviderBinding?
+  /// Stable recurrence identity reserved for schedule edits and occurrence deduplication.
+  public var scheduleID: UUID?
 
   public init(
     id: UUID = UUID(), ownerBotID: UUID, name: String, prompt: String, trigger: Trigger,
-    timezoneID: String, enabled: Bool = false, nextRunAt: Date? = nil
+    timezoneID: String, enabled: Bool = false, nextRunAt: Date? = nil,
+    providerBinding: RoutineProviderBinding? = nil, scheduleID: UUID? = nil
   ) {
     self.id = id
     self.ownerBotID = ownerBotID
@@ -135,6 +142,28 @@ public struct Routine: Codable, Sendable, Equatable, Identifiable {
     self.timezoneID = timezoneID
     self.enabled = enabled
     self.nextRunAt = nextRunAt
+    self.providerBinding = providerBinding
+    self.scheduleID = scheduleID
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, ownerBotID, name, prompt, trigger, timezoneID, enabled, nextRunAt, providerBinding,
+      scheduleID
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    ownerBotID = try values.decode(UUID.self, forKey: .ownerBotID)
+    name = try values.decode(String.self, forKey: .name)
+    prompt = try values.decode(String.self, forKey: .prompt)
+    trigger = try values.decode(Trigger.self, forKey: .trigger)
+    timezoneID = try values.decode(String.self, forKey: .timezoneID)
+    enabled = try values.decode(Bool.self, forKey: .enabled)
+    nextRunAt = try values.decodeIfPresent(Date.self, forKey: .nextRunAt)
+    providerBinding = try values.decodeIfPresent(
+      RoutineProviderBinding.self, forKey: .providerBinding)
+    scheduleID = try values.decodeIfPresent(UUID.self, forKey: .scheduleID)
   }
 }
 
@@ -281,6 +310,22 @@ enum DomainValidation {
       guard (0...23).contains(hour), (0...59).contains(minute) else {
         throw WorkspaceError.invalidRoutine
       }
+    }
+    if let next = routine.nextRunAt {
+      guard next.timeIntervalSinceReferenceDate.isFinite else {
+        throw WorkspaceError.invalidRoutine
+      }
+    }
+    if let binding = routine.providerBinding {
+      let validationReference =
+        binding.kind == .codexResponses
+        ? CodexSessionCredential.makeReference() : "routine-binding-validation"
+      let candidate = ProviderConfig(
+        id: binding.providerID, name: "Routine provider", apiRoot: binding.apiRoot,
+        modelID: binding.modelID, credentialReference: validationReference,
+        allowsLoopbackHTTP: binding.allowsLoopbackHTTP, kind: binding.kind)
+      let validated = try provider(candidate)
+      guard binding.matches(validated) else { throw WorkspaceError.invalidRoutine }
     }
     return routine
   }

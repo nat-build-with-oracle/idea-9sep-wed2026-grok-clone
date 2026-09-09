@@ -44,9 +44,11 @@ public struct BotDeletionPlan: Sendable, Equatable, Identifiable {
   public let draftConversationIDs: [UUID]
   public let generationIDs: [UUID]
   public let routineIDs: [UUID]
+  public let routineRunIDs: [UUID]
   public let affectedGroups: [AffectedGroup]
   /// Non-terminal generations in affected conversations, plus work targeting this bot elsewhere.
   public let activeGenerationIDs: [UUID]
+  public let activeRoutineRunIDs: [UUID]
   /// Conversations whose provider work must be cancelled and awaited before deletion.
   public let cancellationConversationIDs: [UUID]
 
@@ -56,6 +58,7 @@ public struct BotDeletionPlan: Sendable, Equatable, Identifiable {
   public var draftCount: Int { draftConversationIDs.count }
   public var generationCount: Int { generationIDs.count }
   public var routineCount: Int { routineIDs.count }
+  public var routineRunCount: Int { routineRunIDs.count }
   public var affectedGroupCount: Int { affectedGroups.count }
 
   /// Compares destructive persisted impact, ignoring cancellation-state transitions. The
@@ -67,6 +70,7 @@ public struct BotDeletionPlan: Sendable, Equatable, Identifiable {
       && draftConversationIDs == other.draftConversationIDs
       && generationIDs == other.generationIDs
       && routineIDs == other.routineIDs
+      && routineRunIDs == other.routineRunIDs
       && affectedGroups == other.affectedGroups
   }
 
@@ -74,7 +78,8 @@ public struct BotDeletionPlan: Sendable, Equatable, Identifiable {
     botID: UUID, name: String, directConversationIDs: [UUID], messageIDs: [UUID],
     draftConversationIDs: [UUID], generationIDs: [UUID], routineIDs: [UUID],
     affectedGroups: [AffectedGroup], activeGenerationIDs: [UUID],
-    cancellationConversationIDs: [UUID]
+    cancellationConversationIDs: [UUID], routineRunIDs: [UUID] = [],
+    activeRoutineRunIDs: [UUID] = []
   ) {
     self.botID = botID
     self.name = name
@@ -83,8 +88,10 @@ public struct BotDeletionPlan: Sendable, Equatable, Identifiable {
     self.draftConversationIDs = draftConversationIDs
     self.generationIDs = generationIDs
     self.routineIDs = routineIDs
+    self.routineRunIDs = routineRunIDs
     self.affectedGroups = affectedGroups
     self.activeGenerationIDs = activeGenerationIDs
+    self.activeRoutineRunIDs = activeRoutineRunIDs
     self.cancellationConversationIDs = cancellationConversationIDs
   }
 }

@@ -71,6 +71,14 @@ public enum WorkspaceMutation: Sendable {
   case retryGeneration(id: UUID, attemptID: UUID)
   case interruptPendingGenerations
   case saveRoutine(Routine)
+  case editRoutine(expected: Routine, replacement: Routine)
+  case deleteRoutine(expected: Routine)
+  case claimRoutineRun(
+    expected: Routine, run: RoutineRun, skipped: RoutineRun?, nextRunAt: Date?)
+  case beginRoutineGeneration(runID: UUID, command: SendCommand)
+  case finishRoutineRun(
+    id: UUID, status: RoutineRun.Status, at: Date, error: RoutineRun.Failure?)
+  case cancelRoutineRun(id: UUID, at: Date)
   case saveProvider(ProviderConfig)
   case markRead(conversationID: UUID, throughSequence: Int64)
 }
@@ -79,6 +87,8 @@ public protocol WorkspaceRepository: Sendable {
   func snapshot() async throws -> WorkspaceSnapshot
   func exportSnapshot() async throws -> WorkspaceExportDocument
   func botDeletionPlan(botID: UUID) async throws -> BotDeletionPlan
+  func routineRuns(routineID: UUID?, limit: Int) async throws -> [RoutineRun]
+  func routineRun(id: UUID) async throws -> RoutineRun
   @discardableResult func apply(_ mutation: WorkspaceMutation, expectedRevision: Int64?)
     async throws -> Int64
   func messages(conversationID: UUID, beforeSequence: Int64?, limit: Int) async throws
@@ -94,6 +104,18 @@ extension WorkspaceRepository {
 
   public func botDeletionPlan(botID: UUID) async throws -> BotDeletionPlan {
     throw BotDeletionError.unsupportedRepository
+  }
+
+  public func routineRuns(routineID: UUID?, limit: Int) async throws -> [RoutineRun] {
+    throw WorkspaceError.storeUnavailable
+  }
+
+  public func routineRuns(routineID: UUID? = nil) async throws -> [RoutineRun] {
+    try await routineRuns(routineID: routineID, limit: 100)
+  }
+
+  public func routineRun(id: UUID) async throws -> RoutineRun {
+    throw WorkspaceError.storeUnavailable
   }
 
   public func message(id: UUID) async throws -> Message {

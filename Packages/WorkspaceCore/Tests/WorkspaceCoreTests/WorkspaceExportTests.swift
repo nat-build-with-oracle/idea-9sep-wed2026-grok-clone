@@ -74,8 +74,9 @@ import XCTest
     }
 
     let document = try await repository.exportSnapshot()
-    XCTAssertEqual(document.formatVersion, 1)
-    XCTAssertEqual(document.sourceSchemaVersion, 1)
+    XCTAssertEqual(document.formatVersion, 2)
+    XCTAssertEqual(document.sourceSchemaVersion, 2)
+    XCTAssertEqual(document.summary.routineRunCount, 0)
     XCTAssertEqual(document.bots.count, 2)
     XCTAssertEqual(document.bots.first { $0.id == second.id }?.hiddenAt, date)
     XCTAssertEqual(

@@ -1,6 +1,7 @@
 @preconcurrency import CoreData
 import Darwin
 import Foundation
+import OSLog
 
 /// One private-queue context owns every managed object and transaction. Only Sendable DTOs escape.
 /// `@unchecked` is restricted to the Core Data queue boundary, not shared mutable domain state.
@@ -11,12 +12,25 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   private var closed = false
   private var failNextSave = false
 
+  enum MigrationFailureForTesting { case beforeReplacement, afterReplacement }
+
   /// Store opening can perform disk I/O; callers should invoke this off the main actor.
   public static func open(at url: URL) async throws -> CoreDataWorkspaceRepository {
     try await Task.detached { try CoreDataWorkspaceRepository(storeURL: url) }.value
   }
 
-  private init(storeURL: URL) throws {
+  static func open(at url: URL, migrationFailureForTesting: MigrationFailureForTesting) async throws
+    -> CoreDataWorkspaceRepository
+  {
+    try await Task.detached {
+      try CoreDataWorkspaceRepository(
+        storeURL: url, migrationFailureForTesting: migrationFailureForTesting)
+    }.value
+  }
+
+  private init(
+    storeURL: URL, migrationFailureForTesting: MigrationFailureForTesting? = nil
+  ) throws {
     guard storeURL.isFileURL else { throw WorkspaceError.invalidStore }
     let canonical = storeURL.standardizedFileURL.resolvingSymlinksInPath()
     do {
@@ -26,7 +40,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         attributes: [.posixPermissions: 0o700])
     } catch { throw WorkspaceError.storeUnavailable }
     lease = try StoreLease(url: canonical.appendingPathExtension("lock"))
-    let model = Self.modelV1()
+    let model = Self.modelV2()
     let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
     let existingStore = FileManager.default.fileExists(atPath: canonical.path)
     if existingStore {
@@ -36,8 +50,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
           ofType: NSSQLiteStoreType, at: canonical, options: [NSReadOnlyPersistentStoreOption: true]
         )
       } catch { throw WorkspaceError.invalidStore }
-      guard model.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) else {
-        throw WorkspaceError.unsupportedSchema
+      if !model.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
+        guard Self.modelV1().isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata)
+        else { throw WorkspaceError.unsupportedSchema }
+        try Self.migrateV1Store(
+          at: canonical, failureForTesting: migrationFailureForTesting)
       }
     }
     do {
@@ -58,11 +75,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         guard !existingStore else { throw WorkspaceError.invalidStore }
         let metadata = NSEntityDescription.insertNewObject(forEntityName: "Metadata", into: context)
         metadata.setValue("workspace", forKey: "id")
-        metadata.setValue(Int64(1), forKey: "schemaVersion")
+        metadata.setValue(Int64(2), forKey: "schemaVersion")
         metadata.setValue(Int64(0), forKey: "revision")
         try context.save()
       }
-      guard try self.metadata().value(forKey: "schemaVersion") as? Int64 == 1 else {
+      guard try self.metadata().value(forKey: "schemaVersion") as? Int64 == 2 else {
         throw WorkspaceError.unsupportedSchema
       }
     }
@@ -105,6 +122,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         drafts: self.all("Draft", as: Draft.self),
         generations: self.all("Generation", as: Generation.self),
         routines: self.all("Routine", as: Routine.self),
+        routineRuns: self.all("RoutineRun", as: RoutineRun.self),
         providers: self.all("Provider", as: ProviderConfig.self).map(WorkspaceExportProvider.init))
     }
   }
@@ -113,6 +131,31 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     try await context.perform {
       try self.requireOpen()
       return try self.makeBotDeletionPlan(botID: botID)
+    }
+  }
+
+  public func routineRuns(routineID: UUID?, limit: Int) async throws -> [RoutineRun] {
+    guard (1...500).contains(limit) else { throw WorkspaceError.invalidPage }
+    return try await context.perform {
+      try self.requireOpen()
+      let request = NSFetchRequest<NSManagedObject>(entityName: "RoutineRun")
+      if let routineID {
+        request.predicate = NSPredicate(format: "routineID == %@", routineID.uuidString)
+      }
+      request.sortDescriptors = [
+        NSSortDescriptor(key: "createdAt", ascending: false),
+        NSSortDescriptor(key: "id", ascending: false),
+      ]
+      request.fetchLimit = limit
+      request.fetchBatchSize = limit
+      return try self.context.fetch(request).map { try self.decode($0, as: RoutineRun.self) }
+    }
+  }
+
+  public func routineRun(id: UUID) async throws -> RoutineRun {
+    try await context.perform {
+      try self.requireOpen()
+      return try self.read("RoutineRun", id: id)
     }
   }
 
@@ -277,11 +320,14 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       guard current.hasSameContent(as: expected) else {
         throw BotDeletionError.confirmationChanged
       }
-      guard current.activeGenerationIDs.isEmpty else { throw BotDeletionError.activeWork }
+      guard current.activeGenerationIDs.isEmpty, current.activeRoutineRunIDs.isEmpty else {
+        throw BotDeletionError.activeWork
+      }
 
       for id in current.messageIDs { try delete("Message", id: id) }
       for id in current.draftConversationIDs { try delete("Draft", id: id) }
       for id in current.generationIDs { try delete("Generation", id: id) }
+      for id in current.routineRunIDs { try delete("RoutineRun", id: id) }
       for id in current.routineIDs { try delete("Routine", id: id) }
       for id in current.directConversationIDs { try delete("Conversation", id: id) }
       for affected in current.affectedGroups {
@@ -336,50 +382,15 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       try put("Draft", value: draft)
 
     case .beginGeneration(let command):
-      var conversation: Conversation = try read("Conversation", id: command.conversationID)
-      let text = command.text.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !text.isEmpty else { throw WorkspaceError.invalidDraft }
-      if conversation.kind == .group {
-        try validateMembers(conversation.memberBotIDs, allowHidden: true)
-      }
-      guard conversation.memberBotIDs.contains(command.targetBotID) else {
-        throw WorkspaceError.invalidMembers
-      }
-      let _: Bot = try read("Bot", id: command.targetBotID)
-      guard command.userMessageID != command.generationID else {
-        throw WorkspaceError.identityConflict
-      }
-      try ensureIdentityAvailable(command.userMessageID)
-      try ensureIdentityAvailable(command.generationID)
-      try validateReply(command.replyToID, conversationID: conversation.id)
-      guard conversation.nextSequence < Int64.max else { throw WorkspaceError.invalidStore }
-      let message = Message(
-        id: command.userMessageID, conversationID: conversation.id,
-        sequence: conversation.nextSequence, role: .user, speakerBotID: nil,
-        speakerNameSnapshot: nil, text: text, createdAt: command.createdAt,
-        replyToID: command.replyToID, attachmentIDs: [], generationID: command.generationID)
-      let generation = Generation(
-        id: command.generationID, conversationID: conversation.id,
-        userMessageID: command.userMessageID, attemptID: command.attemptID,
-        targetBotID: command.targetBotID, state: .queued, lastEventSequence: 0, error: nil)
-      conversation.nextSequence += 1
-      try put("Message", value: message)
-      try put("Generation", value: generation)
-      try put("Conversation", value: conversation)
-      if let record = try find("Draft", id: conversation.id.uuidString) {
-        let draft = try decode(record, as: Draft.self)
-        if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
-          draft.replyToID == command.replyToID, draft.attachmentIDs.isEmpty
-        {
-          context.delete(record)
-        }
-      }
+      try beginGeneration(command, clearMatchingDraft: true, routineRunID: nil)
 
     case .cancelGeneration(let id, let attemptID):
       var generation: Generation = try read("Generation", id: id)
       guard generation.attemptID == attemptID, !generation.state.isTerminal else { return }
       generation.state = .cancelled
       try put("Generation", value: generation)
+      try updateRoutineRun(
+        generationID: generation.id, status: .cancelled, at: Date(), error: .cancelled)
 
     case .applyGenerationEvent(let event):
       var generation: Generation = try read("Generation", id: event.generationID)
@@ -423,9 +434,23 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       }
       generation.lastEventSequence = event.sequence
       try put("Generation", value: generation)
+      switch event.kind {
+      case .started:
+        try updateRoutineRun(
+          generationID: generation.id, status: .running, at: event.createdAt, error: nil)
+      case .completed:
+        try updateRoutineRun(
+          generationID: generation.id, status: .completed, at: event.createdAt, error: nil)
+      case .failed(let error):
+        try updateRoutineRun(
+          generationID: generation.id, status: .failed, at: event.createdAt,
+          error: RoutineFailureMapping.failure(error))
+      case .delta: break
+      }
 
     case .retryGeneration(let id, let attemptID):
       var generation: Generation = try read("Generation", id: id)
+      guard generation.routineRunID == nil else { throw WorkspaceError.invalidRoutine }
       guard [.failed, .cancelled, .interrupted].contains(generation.state),
         generation.attemptID != attemptID
       else {
@@ -465,6 +490,12 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
           "The app stopped before this reply finished. Retry explicitly to continue."
         try put("Generation", value: generation)
       }
+      for var run in try all("RoutineRun", as: RoutineRun.self) where !run.status.isTerminal {
+        run.status = .interrupted
+        run.endedAt = max(Date(), run.createdAt)
+        run.error = .interrupted
+        try put("RoutineRun", value: run)
+      }
 
     case .saveRoutine(let input):
       let routine = try DomainValidation.routine(input)
@@ -477,7 +508,111 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       } else {
         try ensureIdentityAvailable(routine.id)
       }
+      try validateRoutineBinding(routine.providerBinding)
       try put("Routine", value: routine)
+
+    case .editRoutine(let expected, let replacement):
+      let current: Routine = try read("Routine", id: expected.id)
+      guard current == expected, replacement.id == expected.id,
+        replacement.ownerBotID == expected.ownerBotID
+      else { throw WorkspaceError.editConflict }
+      let replacement = try DomainValidation.routine(replacement)
+      if replacement.trigger != expected.trigger || replacement.timezoneID != expected.timezoneID {
+        guard let replacementScheduleID = replacement.scheduleID,
+          replacementScheduleID != expected.scheduleID
+        else { throw WorkspaceError.invalidRoutine }
+      }
+      try validateRoutineBinding(replacement.providerBinding)
+      try put("Routine", value: replacement)
+
+    case .deleteRoutine(let expected):
+      let current: Routine = try read("Routine", id: expected.id)
+      guard current == expected else { throw WorkspaceError.editConflict }
+      let runs = try all("RoutineRun", as: RoutineRun.self).filter {
+        $0.routineID == expected.id
+      }
+      guard runs.allSatisfy(\.status.isTerminal) else { throw BotDeletionError.activeWork }
+      for run in runs { try delete("RoutineRun", id: run.id) }
+      try delete("Routine", id: expected.id)
+
+    case .claimRoutineRun(let expected, let run, let skipped, let nextRunAt):
+      let current: Routine = try read("Routine", id: expected.id)
+      guard current == expected else { throw WorkspaceError.editConflict }
+      try validateRoutineRunClaim(
+        routine: current, run: run, skipped: skipped, nextRunAt: nextRunAt)
+      let existingRuns = try all("RoutineRun", as: RoutineRun.self)
+      guard
+        !existingRuns.contains(where: { $0.routineID == run.routineID && !$0.status.isTerminal })
+      else { throw WorkspaceError.identityConflict }
+      if let occurrenceID = run.occurrenceID {
+        guard
+          !existingRuns.contains(where: {
+            $0.routineID == run.routineID && $0.occurrenceID == occurrenceID
+          })
+        else { throw WorkspaceError.identityConflict }
+      }
+      try ensureIdentityAvailable(run.id)
+      if let generationID = run.generationID {
+        try ensureIdentityAvailable(generationID)
+        guard !existingRuns.contains(where: { $0.generationID == generationID }) else {
+          throw WorkspaceError.identityConflict
+        }
+      }
+      if let skipped {
+        guard skipped.id != run.id, skipped.id != run.generationID else {
+          throw WorkspaceError.identityConflict
+        }
+        try ensureIdentityAvailable(skipped.id)
+        try put("RoutineRun", value: skipped)
+      }
+      try put("RoutineRun", value: run)
+      if run.occurrenceID != nil {
+        var updated = current
+        updated.nextRunAt = nextRunAt
+        try put("Routine", value: updated)
+      }
+
+    case .beginRoutineGeneration(let runID, let command):
+      var run: RoutineRun = try read("RoutineRun", id: runID)
+      guard run.status == .queued, run.generationID == command.generationID,
+        run.ownerBotID == command.targetBotID, run.conversationID == command.conversationID,
+        run.prompt == command.text, command.replyToID == nil
+      else { throw WorkspaceError.invalidRoutine }
+      guard let binding = run.providerBinding else { throw WorkspaceError.invalidProvider }
+      let provider: ProviderConfig = try read("Provider", id: binding.providerID)
+      guard binding.matches(provider) else { throw WorkspaceError.invalidProvider }
+      try beginGeneration(command, clearMatchingDraft: false, routineRunID: runID)
+      run.error = nil
+      try put("RoutineRun", value: run)
+
+    case .finishRoutineRun(let id, let status, let at, let error):
+      var run: RoutineRun = try read("RoutineRun", id: id)
+      guard run.status == .queued,
+        [.failed, .cancelled, .interrupted, .blocked].contains(status),
+        try run.generationID.map({ try find("Generation", id: $0.uuidString) == nil }) ?? true
+      else { throw WorkspaceError.invalidRoutine }
+      guard error != nil else { throw WorkspaceError.invalidRoutine }
+      run.status = status
+      run.endedAt = max(at, run.createdAt)
+      run.error = error
+      try put("RoutineRun", value: run)
+
+    case .cancelRoutineRun(let id, let at):
+      var run: RoutineRun = try read("RoutineRun", id: id)
+      guard !run.status.isTerminal else { return }
+      if let generationID = run.generationID,
+        let record = try find("Generation", id: generationID.uuidString)
+      {
+        var generation = try decode(record, as: Generation.self)
+        if !generation.state.isTerminal {
+          generation.state = .cancelled
+          try put("Generation", value: generation)
+        }
+      }
+      run.status = .cancelled
+      run.endedAt = max(at, run.createdAt)
+      run.error = .cancelled
+      try put("RoutineRun", value: run)
 
     case .saveProvider(let input):
       let provider = try DomainValidation.provider(input)
@@ -494,6 +629,133 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       conversation.lastReadSequence = max(conversation.lastReadSequence, sequence)
       try put("Conversation", value: conversation)
     }
+  }
+
+  private func beginGeneration(
+    _ command: SendCommand, clearMatchingDraft: Bool, routineRunID: UUID?
+  ) throws {
+    var conversation: Conversation = try read("Conversation", id: command.conversationID)
+    let text = command.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { throw WorkspaceError.invalidDraft }
+    if conversation.kind == .group {
+      try validateMembers(conversation.memberBotIDs, allowHidden: true)
+    }
+    guard conversation.memberBotIDs.contains(command.targetBotID) else {
+      throw WorkspaceError.invalidMembers
+    }
+    let _: Bot = try read("Bot", id: command.targetBotID)
+    guard command.userMessageID != command.generationID else {
+      throw WorkspaceError.identityConflict
+    }
+    let reservedRun = try all("RoutineRun", as: RoutineRun.self).first {
+      $0.generationID == command.generationID
+    }
+    guard reservedRun?.id == routineRunID else { throw WorkspaceError.identityConflict }
+    try ensureIdentityAvailable(command.userMessageID)
+    try ensureIdentityAvailable(command.generationID)
+    try validateReply(command.replyToID, conversationID: conversation.id)
+    guard conversation.nextSequence < Int64.max else { throw WorkspaceError.invalidStore }
+    let message = Message(
+      id: command.userMessageID, conversationID: conversation.id,
+      sequence: conversation.nextSequence, role: .user, speakerBotID: nil,
+      speakerNameSnapshot: nil, text: text, createdAt: command.createdAt,
+      replyToID: command.replyToID, attachmentIDs: [], generationID: command.generationID)
+    let generation = Generation(
+      id: command.generationID, conversationID: conversation.id,
+      userMessageID: command.userMessageID, attemptID: command.attemptID,
+      targetBotID: command.targetBotID, state: .queued, lastEventSequence: 0, error: nil,
+      routineRunID: routineRunID)
+    conversation.nextSequence += 1
+    try put("Message", value: message)
+    try put("Generation", value: generation)
+    try put("Conversation", value: conversation)
+    guard clearMatchingDraft, let record = try find("Draft", id: conversation.id.uuidString) else {
+      return
+    }
+    let draft = try decode(record, as: Draft.self)
+    if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
+      draft.replyToID == command.replyToID, draft.attachmentIDs.isEmpty
+    {
+      context.delete(record)
+    }
+  }
+
+  private func validateRoutineBinding(_ binding: RoutineProviderBinding?) throws {
+    guard let binding else { return }
+    let provider: ProviderConfig = try read("Provider", id: binding.providerID)
+    guard binding.matches(provider) else { throw WorkspaceError.invalidProvider }
+  }
+
+  private func validateRoutineRunClaim(
+    routine: Routine, run: RoutineRun, skipped: RoutineRun?, nextRunAt: Date?
+  ) throws {
+    guard run.routineID == routine.id, run.ownerBotID == routine.ownerBotID,
+      run.name == routine.name, run.prompt == routine.prompt,
+      run.providerBinding == routine.providerBinding, run.status == .queued,
+      run.generationID != nil, run.startedAt == nil, run.endedAt == nil, run.error == nil,
+      run.skippedCount == 0, run.firstSkippedAt == nil, run.lastSkippedAt == nil
+    else { throw WorkspaceError.invalidRoutine }
+    let conversation: Conversation = try read("Conversation", id: run.conversationID)
+    guard conversation.kind == .direct, conversation.memberBotIDs == [routine.ownerBotID] else {
+      throw WorkspaceError.invalidRoutine
+    }
+    if let occurrenceID = run.occurrenceID {
+      guard routine.enabled, let first = routine.nextRunAt, let scheduledAt = run.scheduledAt,
+        let window = try RoutineSchedule.due(
+          from: first, through: run.createdAt, trigger: routine.trigger,
+          timezoneID: routine.timezoneID),
+        scheduledAt == window.latest, nextRunAt == window.next,
+        occurrenceID
+          == (try RoutineSchedule.occurrenceID(
+            scheduleID: routine.scheduleID ?? routine.id, at: window.latest,
+            trigger: routine.trigger, timezoneID: routine.timezoneID))
+      else { throw WorkspaceError.invalidRoutine }
+      try validateSkippedRun(skipped, routine: routine, execution: run, window: window)
+    } else {
+      guard run.scheduledAt == nil, nextRunAt == nil, skipped == nil else {
+        throw WorkspaceError.invalidRoutine
+      }
+    }
+  }
+
+  private func validateSkippedRun(
+    _ skipped: RoutineRun?, routine: Routine, execution: RoutineRun, window: RoutineDueWindow
+  ) throws {
+    guard window.skippedCount > 0 else {
+      guard skipped == nil else { throw WorkspaceError.invalidRoutine }
+      return
+    }
+    guard let skipped, skipped.routineID == routine.id,
+      skipped.ownerBotID == routine.ownerBotID,
+      skipped.conversationID == execution.conversationID, skipped.name == routine.name,
+      skipped.prompt == routine.prompt, skipped.providerBinding == routine.providerBinding,
+      skipped.occurrenceID == nil, skipped.scheduledAt == nil,
+      skipped.createdAt == execution.createdAt, skipped.generationID == nil,
+      skipped.status == .skipped, skipped.startedAt == nil,
+      skipped.endedAt == execution.createdAt, skipped.error == .supersededOccurrence,
+      skipped.skippedCount == window.skippedCount,
+      skipped.firstSkippedAt == window.firstSkippedAt,
+      skipped.lastSkippedAt == window.lastSkippedAt
+    else { throw WorkspaceError.invalidRoutine }
+  }
+
+  private func updateRoutineRun(
+    generationID: UUID, status: RoutineRun.Status, at: Date, error: RoutineRun.Failure?
+  ) throws {
+    guard
+      var run = try all("RoutineRun", as: RoutineRun.self).first(where: {
+        $0.generationID == generationID
+      })
+    else { return }
+    guard !run.status.isTerminal else { return }
+    run.status = status
+    if status == .running {
+      run.startedAt = run.startedAt ?? max(at, run.createdAt)
+    } else if status.isTerminal {
+      run.endedAt = max(at, run.createdAt)
+    }
+    run.error = error
+    try put("RoutineRun", value: run)
   }
 
   private func validateProvider(_ id: UUID?) throws {
@@ -520,6 +782,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     let generations = try all("Generation", as: Generation.self)
     let deletedGenerations = generations.filter { directIDs.contains($0.conversationID) }
     let routines = try all("Routine", as: Routine.self).filter { $0.ownerBotID == botID }
+    let routineIDs = Set(routines.map(\.id))
+    let routineRuns = try all("RoutineRun", as: RoutineRun.self).filter {
+      $0.ownerBotID == botID || routineIDs.contains($0.routineID)
+    }
+    let activeRoutineRuns = routineRuns.filter { !$0.status.isTerminal }
     let groups = conversations.filter {
       $0.kind == .group && $0.memberBotIDs.contains(botID)
     }.map {
@@ -544,7 +811,9 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       routineIDs: sortedIDs(routines.map(\.id)),
       affectedGroups: groups.sorted { $0.id.uuidString < $1.id.uuidString },
       activeGenerationIDs: sortedIDs(activeGenerations.map(\.id)),
-      cancellationConversationIDs: sortedIDs(Array(cancellationConversationIDs)))
+      cancellationConversationIDs: sortedIDs(Array(cancellationConversationIDs)),
+      routineRunIDs: sortedIDs(routineRuns.map(\.id)),
+      activeRoutineRunIDs: sortedIDs(activeRoutineRuns.map(\.id)))
   }
 
   private func sortedIDs(_ ids: [UUID]) -> [UUID] {
@@ -581,7 +850,9 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     else { throw WorkspaceError.invalidDraft }
   }
   private func ensureIdentityAvailable(_ id: UUID) throws {
-    for entity in ["Bot", "Conversation", "Message", "Generation", "Routine", "Provider"] {
+    for entity in [
+      "Bot", "Conversation", "Message", "Generation", "Routine", "RoutineRun", "Provider",
+    ] {
       if try find(entity, id: id.uuidString) != nil { throw WorkspaceError.identityConflict }
     }
   }
@@ -638,6 +909,157 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       record.setValue(message.conversationID.uuidString, forKey: "conversationID")
       record.setValue(message.sequence, forKey: "sequence")
       record.setValue(message.text, forKey: "searchText")
+    } else if let run = value as? RoutineRun {
+      record.setValue(run.routineID.uuidString, forKey: "routineID")
+      record.setValue(run.createdAt, forKey: "createdAt")
+    }
+  }
+
+  private static func migrateV1Store(
+    at sourceURL: URL, failureForTesting: MigrationFailureForTesting?
+  ) throws {
+    let directory = sourceURL.deletingLastPathComponent()
+    let token = UUID().uuidString
+    let migratedURL = directory.appendingPathComponent(".workspace-migration-\(token).sqlite")
+    let backupURL = directory.appendingPathComponent(".workspace-recovery-\(token).sqlite")
+    let sourceModel = modelV1()
+    let destinationModel = modelV2()
+    let fileManager = FileManager.default
+    var preserveBackup = false
+    defer {
+      var cleanupURLs = [migratedURL]
+      if !preserveBackup { cleanupURLs.append(backupURL) }
+      for url in cleanupURLs {
+        try? fileManager.removeItem(at: url)
+        try? fileManager.removeItem(at: URL(fileURLWithPath: url.path + "-wal"))
+        try? fileManager.removeItem(at: URL(fileURLWithPath: url.path + "-shm"))
+      }
+    }
+    do {
+      try validateV1Store(at: sourceURL, model: sourceModel)
+      let mapping = try NSMappingModel.inferredMappingModel(
+        forSourceModel: sourceModel, destinationModel: destinationModel)
+      let manager = NSMigrationManager(sourceModel: sourceModel, destinationModel: destinationModel)
+      try manager.migrateStore(
+        from: sourceURL, sourceType: NSSQLiteStoreType,
+        options: [NSReadOnlyPersistentStoreOption: true],
+        with: mapping, toDestinationURL: migratedURL, destinationType: NSSQLiteStoreType,
+        destinationOptions: nil)
+      try setMigratedSchemaVersionAndValidate(at: migratedURL, model: destinationModel)
+      if failureForTesting == .beforeReplacement { throw WorkspaceError.storeUnavailable }
+
+      let replacement = NSPersistentStoreCoordinator(managedObjectModel: destinationModel)
+      try replacement.replacePersistentStore(
+        at: backupURL, destinationOptions: nil, withPersistentStoreFrom: sourceURL,
+        sourceOptions: [NSReadOnlyPersistentStoreOption: true], type: .sqlite)
+      do {
+        try replacement.replacePersistentStore(
+          at: sourceURL, destinationOptions: nil, withPersistentStoreFrom: migratedURL,
+          sourceOptions: [NSReadOnlyPersistentStoreOption: true], type: .sqlite)
+        if failureForTesting == .afterReplacement { throw WorkspaceError.storeUnavailable }
+      } catch {
+        do {
+          try replacement.replacePersistentStore(
+            at: sourceURL, destinationOptions: nil, withPersistentStoreFrom: backupURL,
+            sourceOptions: [NSReadOnlyPersistentStoreOption: true], type: .sqlite)
+        } catch {
+          // Preserve the consistent recovery store for manual recovery rather than deleting it.
+          preserveBackup = true
+          Logger(subsystem: "WorkspaceCore", category: "Migration").error(
+            "Automatic restoration failed; preserved recovery store \(backupURL.lastPathComponent, privacy: .public)"
+          )
+          throw WorkspaceError.storeUnavailable
+        }
+        throw error
+      }
+    } catch let error as WorkspaceError {
+      throw error
+    } catch {
+      throw WorkspaceError.storeUnavailable
+    }
+  }
+
+  private static func validateV1Store(at url: URL, model: NSManagedObjectModel) throws {
+    let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+    let store = try coordinator.addPersistentStore(
+      ofType: NSSQLiteStoreType, configurationName: nil, at: url,
+      options: [NSReadOnlyPersistentStoreOption: true])
+    defer { try? coordinator.remove(store) }
+    let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+    context.persistentStoreCoordinator = coordinator
+    try context.performAndWait {
+      let metadataRequest = NSFetchRequest<NSManagedObject>(entityName: "Metadata")
+      metadataRequest.predicate = NSPredicate(format: "id == %@", "workspace")
+      metadataRequest.fetchLimit = 2
+      let metadata = try context.fetch(metadataRequest)
+      guard metadata.count == 1,
+        metadata[0].value(forKey: "schemaVersion") as? Int64 == 1
+      else { throw WorkspaceError.unsupportedSchema }
+
+      for entity in [
+        "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "Provider",
+      ] {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+        for record in try context.fetch(request) {
+          guard let payload = record.value(forKey: "payload") as? Data else {
+            throw WorkspaceError.invalidStore
+          }
+          try validateV1Payload(payload, entity: entity)
+        }
+      }
+    }
+  }
+
+  private static func validateV1Payload(_ payload: Data, entity: String) throws {
+    let decoder = JSONDecoder()
+    do {
+      switch entity {
+      case "Bot": _ = try decoder.decode(Bot.self, from: payload)
+      case "Conversation": _ = try decoder.decode(Conversation.self, from: payload)
+      case "Draft": _ = try decoder.decode(Draft.self, from: payload)
+      case "Message": _ = try decoder.decode(Message.self, from: payload)
+      case "Generation": _ = try decoder.decode(Generation.self, from: payload)
+      case "Routine": _ = try decoder.decode(Routine.self, from: payload)
+      case "Provider": _ = try decoder.decode(ProviderConfig.self, from: payload)
+      default: throw WorkspaceError.invalidStore
+      }
+    } catch let error as WorkspaceError {
+      throw error
+    } catch {
+      throw WorkspaceError.invalidStore
+    }
+  }
+
+  private static func setMigratedSchemaVersionAndValidate(
+    at url: URL, model: NSManagedObjectModel
+  ) throws {
+    let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+    let store = try coordinator.addPersistentStore(
+      ofType: NSSQLiteStoreType, configurationName: nil, at: url,
+      options: [NSMigratePersistentStoresAutomaticallyOption: false])
+    defer { try? coordinator.remove(store) }
+    let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+    context.persistentStoreCoordinator = coordinator
+    try context.performAndWait {
+      let request = NSFetchRequest<NSManagedObject>(entityName: "Metadata")
+      request.predicate = NSPredicate(format: "id == %@", "workspace")
+      request.fetchLimit = 1
+      guard let metadata = try context.fetch(request).first else {
+        throw WorkspaceError.invalidStore
+      }
+      guard metadata.value(forKey: "schemaVersion") as? Int64 == 1 else {
+        throw WorkspaceError.unsupportedSchema
+      }
+      metadata.setValue(Int64(2), forKey: "schemaVersion")
+      for entity in [
+        "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "Provider",
+      ] {
+        let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+        for record in try context.fetch(request) {
+          guard record.value(forKey: "payload") is Data else { throw WorkspaceError.invalidStore }
+        }
+      }
+      try context.save()
     }
   }
 
@@ -680,6 +1102,71 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
                 property: attributes.first { $0.name == "conversationID" }!, collationType: .binary),
               NSFetchIndexElementDescription(
                 property: attributes.first { $0.name == "sequence" }!, collationType: .binary),
+            ])
+        ]
+      }
+      entities.append(entity)
+    }
+    model.entities = entities
+    return model
+  }
+
+  static func modelV2() -> NSManagedObjectModel {
+    let model = NSManagedObjectModel()
+    model.versionIdentifiers = ["WorkspaceCore.v2"]
+    var entities: [NSEntityDescription] = []
+    for name in [
+      "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "RoutineRun",
+      "Provider", "Metadata",
+    ] {
+      let entity = NSEntityDescription()
+      entity.name = name
+      entity.managedObjectClassName = "NSManagedObject"
+      var attributes = [attribute("id", .stringAttributeType)]
+      if name == "Metadata" {
+        attributes += [
+          attribute("schemaVersion", .integer64AttributeType),
+          attribute("revision", .integer64AttributeType),
+        ]
+      } else {
+        attributes += [attribute("payload", .binaryDataAttributeType)]
+      }
+      if name == "Message" {
+        attributes += [
+          attribute("conversationID", .stringAttributeType),
+          attribute("sequence", .integer64AttributeType),
+          attribute("searchText", .stringAttributeType),
+        ]
+      } else if name == "RoutineRun" {
+        attributes += [
+          attribute("routineID", .stringAttributeType),
+          attribute("createdAt", .dateAttributeType),
+        ]
+      }
+      entity.properties = attributes
+      entity.uniquenessConstraints = [["id"]]
+      if name == "Message" {
+        entity.uniquenessConstraints.append(["conversationID", "sequence"])
+        entity.indexes = [
+          NSFetchIndexDescription(
+            name: "messageConversationSequence",
+            elements: [
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "conversationID" }!,
+                collationType: .binary),
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "sequence" }!, collationType: .binary),
+            ])
+        ]
+      } else if name == "RoutineRun" {
+        entity.indexes = [
+          NSFetchIndexDescription(
+            name: "routineRunRoutineCreatedAt",
+            elements: [
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "routineID" }!, collationType: .binary),
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "createdAt" }!, collationType: .binary),
             ])
         ]
       }
