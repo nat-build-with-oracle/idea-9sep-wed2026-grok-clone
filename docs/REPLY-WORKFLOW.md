@@ -54,7 +54,8 @@ with its original role and text. Trusted application metadata identifies its
 non-system context-turn index; parent content is not promoted to a system
 instruction. The representation also works with the Codex adapter's separate
 instructions/input mapping. Existing request-size and transport limits still
-apply; this does not add tools, attachments, or a private endpoint integration.
+apply. The later [attachment workflow](ATTACHMENTS.md) adds explicit file consent for
+reply context; neither feature adds tools or a private Grok/Cursor endpoint integration.
 
 Previews use recorded speaker names, not a renamed bot's current display name.
 Pending and unavailable parents have distinct states. Failed lookups are cached

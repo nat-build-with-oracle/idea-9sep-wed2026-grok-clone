@@ -9,7 +9,8 @@ extension PreviewWorkspace {
   var canBeginBotDeletion: Bool {
     isPersistent && repository != nil && coordinator != nil
       && !isClosing && !isLoading && !isSaving && !isSubmitting && !isProfileSaving
-      && !isExporting && !isDeletingBot && botDeletionTarget == nil
+      && !isExporting && !isDeletingBot && !isAttachingFiles
+      && attachmentConfirmationTarget == nil && botDeletionTarget == nil
       && editTarget == nil && panel == nil && routineEditTarget == nil
       && routineDetailTarget == nil && pendingRoutineActions.isEmpty
   }
@@ -20,7 +21,8 @@ extension PreviewWorkspace {
   }
 
   func canRetry(_ generation: Generation) -> Bool {
-    guard !isDeletingBot, !isClosing, generation.routineRunID == nil,
+    guard !isDeletingBot, !isClosing, !isAttachingFiles, attachmentConfirmationTarget == nil,
+      generation.routineRunID == nil,
       let conversation = conversations.first(where: { $0.id == generation.conversationID }),
       conversation.memberIDs.contains(generation.targetBotID),
       bots.contains(where: { $0.id == generation.targetBotID })
@@ -139,6 +141,11 @@ extension PreviewWorkspace {
     conversations.removeAll { removed.contains($0.id) }
     for index in conversations.indices {
       conversations[index].memberIDs.removeAll { $0 == plan.botID }
+    }
+    for id in plan.attachmentIDs {
+      attachmentMetadata[id] = nil
+      unavailableAttachmentIDs.remove(id)
+      pendingAttachmentPayloads[id] = nil
     }
     for id in removed {
       drafts[id] = nil

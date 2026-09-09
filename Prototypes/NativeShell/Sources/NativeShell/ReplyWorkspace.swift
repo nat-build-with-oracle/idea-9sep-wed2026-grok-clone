@@ -194,6 +194,7 @@ extension PreviewWorkspace {
           == true
       else { return }
       await refreshReplyPreviews(in: conversationID)
+      await refreshAttachmentMetadata(in: conversationID)
       guard isCurrent() else { return }
       transcriptJumpRequest = TranscriptJumpRequest(
         conversationID: conversationID, messageID: messageID)

@@ -39,6 +39,9 @@ extension PreviewWorkspace {
   static func providerErrorMessage(_ error: Error) -> String {
     if let error = error as? WorkspaceError { return error.localizedDescription }
     if let error = error as? ProviderSetupError { return error.localizedDescription }
+    if let error = error as? AttachmentError { return error.localizedDescription }
+    if let error = error as? AttachmentWorkspaceError { return error.localizedDescription }
+    if let error = error as? AttachmentFileImportError { return error.localizedDescription }
     return ProviderError.sanitized(error).localizedDescription
   }
 
@@ -80,6 +83,7 @@ extension PreviewWorkspace {
       }
       messages[conversationID] = existing
       await refreshReplyPreviews(in: conversationID)
+      await refreshAttachmentMetadata(in: conversationID)
     } catch {
       guard context == replyContextGeneration,
         conversations.contains(where: { $0.id == conversationID })
@@ -89,36 +93,60 @@ extension PreviewWorkspace {
   }
 
   @discardableResult
-  func submitDraft() async throws -> UUID {
-    guard !isClosing, !isSubmitting, !isDeletingBot else { throw ProviderSetupError.busy }
+  func submitDraft(attachmentConsent: AttachmentTransmissionPlan? = nil) async throws -> UUID {
+    let captured = try captureDraftSubmission()
+    return try await submitCapturedDraft(
+      captured.command, configuration: captured.configuration, version: captured.version,
+      context: captured.context, attachmentConsent: attachmentConsent)
+  }
+
+  func captureDraftSubmission() throws -> (
+    command: SendCommand, configuration: ProviderConfig, version: Int?, context: Int
+  ) {
+    guard !isClosing, !isSubmitting, !isDeletingBot, !isAttachingFiles else {
+      throw ProviderSetupError.busy
+    }
     guard !currentNeedsMembershipRepair else { throw WorkspaceError.invalidMembers }
-    guard let coordinator, let configuration = selectedProvider else {
+    guard coordinator != nil, let configuration = selectedProvider else {
       throw ProviderSetupError.noProvider
     }
     guard let conversationID = selectedID else { throw WorkspaceError.missingRecord }
     guard let target = selectedTargetBotID else { throw ProviderSetupError.targetRequired }
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-    let replyToID = draftReplyIDs[conversationID]
     let attachmentIDs = draftAttachmentIDs[conversationID] ?? []
     guard !text.isEmpty || !attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
-    let version = draftVersions[conversationID]
+    return (
+      SendCommand(
+        conversationID: conversationID, targetBotID: target, text: text,
+        replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs),
+      configuration, draftVersions[conversationID], replyContextGeneration
+    )
+  }
+
+  @discardableResult
+  func submitCapturedDraft(
+    _ command: SendCommand, configuration: ProviderConfig, version: Int?, context: Int,
+    attachmentConsent: AttachmentTransmissionPlan?
+  ) async throws -> UUID {
+    guard let coordinator, !isClosing, !isSubmitting, !isDeletingBot,
+      context == replyContextGeneration
+    else { throw ProviderSetupError.busy }
     isSubmitting = true
     defer { isSubmitting = false }
     try await flushDrafts()
     try Task.checkCancellation()
-    guard !isClosing else { throw WorkspaceError.storeClosed }
+    guard !isClosing, context == replyContextGeneration else { throw WorkspaceError.storeClosed }
     let id = try await coordinator.submit(
-      SendCommand(
-        conversationID: conversationID, targetBotID: target, text: text, replyToID: replyToID,
-        attachmentIDs: attachmentIDs),
-      configuration: configuration)
+      command, configuration: configuration, attachmentConsent: attachmentConsent)
+    guard context == replyContextGeneration else { return id }
+    let conversationID = command.conversationID
     if draftVersions[conversationID] == version {
       drafts[conversationID] = ""
       draftReplyIDs[conversationID] = nil
       draftAttachmentIDs[conversationID] = []
       dirtyDrafts.remove(conversationID)
     } else {
-      // Even a new edit with identical text must survive the repository's matching-draft clear.
+      // A newer edit remains a separate draft, even when its text happens to match.
       scheduleDraftSave(conversationID)
     }
     notice = nil
@@ -139,14 +167,15 @@ extension PreviewWorkspace {
     }
   }
 
-  func retryReply(_ id: UUID) async throws {
+  func retryReply(_ id: UUID, attachmentConsent: AttachmentTransmissionPlan? = nil) async throws {
     guard !isClosing, !isDeletingBot, let coordinator, !pendingGenerationActions.contains(id) else {
       throw ProviderSetupError.busy
     }
     guard let configuration = selectedProvider else { throw ProviderSetupError.noProvider }
     pendingGenerationActions.insert(id)
     defer { pendingGenerationActions.remove(id) }
-    try await coordinator.retry(id, configuration: configuration)
+    try await coordinator.retry(
+      id, configuration: configuration, attachmentConsent: attachmentConsent)
   }
 
   @discardableResult
@@ -266,6 +295,8 @@ extension PreviewWorkspace {
 
   func prepareForClose() async throws {
     await shutdownRoutines()
+    try await finishAttachmentImport()
+    cancelAttachmentConfirmation()
     if let botDeletionTask {
       await botDeletionTask.value
       if botDeletionError != nil { throw WorkspaceError.storeUnavailable }
@@ -282,6 +313,7 @@ extension PreviewWorkspace {
     if isProviderSaving { await withCheckedContinuation { providerSaveWaiters.append($0) } }
     sendTask?.cancel()
     await sendTask?.value
+    cancelAttachmentConfirmation()
     try await flushDrafts()
     providerShutdownStarted = true
     try await coordinator?.shutdown()

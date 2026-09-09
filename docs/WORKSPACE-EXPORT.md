@@ -108,9 +108,9 @@ exclusion, exact round-trip encoding, size/dangling-reference rejection and conc
 consistency. Native tests cover destination cancellation, single-flight/lifecycle guards,
 draft-save/size/write failures, stale workspaces and actual temporary-file writes.
 
-New core/native attachment tests extend this baseline with content persistence,
+Core/native attachment tests extend this baseline with content persistence,
 reference-safe deletion/export and preservation by native text editing. They do not
-exercise a selected-file chooser or provider attachment transmission.
+exercise the OS file picker. The separate [attachment smoke](ATTACHMENTS.md) covers injected selection and confirmed offline transmission.
 
 The sandboxed native smoke uses synthetic data and an **injected destination inside
 its own temporary directory**, real encoding/atomic replacement and a rendered Settings

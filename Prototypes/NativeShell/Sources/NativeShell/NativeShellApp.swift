@@ -195,6 +195,11 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-attachments") {
+          reopened = try await verifyAttachmentFlow(
+            repository: reopened, url: url, conversationID: groupID, targetID: botID,
+            directory: directory, small: small, arguments: arguments)
+        }
         if arguments.contains("--verify-routines") {
           reopened = try await verifyRoutineFlow(
             repository: reopened, url: url, botID: botID, groupID: groupID,
@@ -273,6 +278,124 @@ import WorkspaceCore
         persistentRepository = nil
         NSApp.terminate(nil)
       }
+    }
+  }
+
+  /// Exercises explicit file selection, managed persistence and disclosure with synthetic local
+  /// input and an injected provider. It never opens NSOpenPanel, reads user files, or uses a key.
+  private func verifyAttachmentFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, conversationID: UUID, targetID: UUID,
+    directory: URL, small: Bool, arguments: [String]
+  ) async throws -> CoreDataWorkspaceRepository {
+    let credentialReference = "attachment-smoke-memory-only"
+    let credentials = SmokeAttachmentCredentials(
+      reference: credentialReference, value: Data("offline-attachment-key".utf8))
+    let provider = SmokeAttachmentProvider()
+    let configuration = ProviderConfig(
+      name: "Offline attachment fixture", apiRoot: URL(string: "https://fixture.invalid/v1")!,
+      modelID: "attachment-fixture", credentialReference: credentialReference)
+    try await repository.apply(.saveProvider(configuration))
+    try await store.connect(
+      repository, credentials: credentials, provider: provider,
+      displayName: "Attachment smoke workspace")
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    try await store.loadMessages(conversationID)
+
+    let body = "Synthetic attachment body — สวัสดี\nSecond line."
+    let selectedURL = directory.appendingPathComponent("selected-attachment-smoke.txt")
+    try Data(body.utf8).write(to: selectedURL, options: .atomic)
+    let chooser = SmokeAttachmentChooser(urls: [selectedURL])
+    store.draft = "Read the attached synthetic note."
+    guard let importTask = store.performAttachmentImport(chooser: chooser) else {
+      throw AttachmentSmokeFailure(stage: "import-start")
+    }
+    await importTask.value
+    guard chooser.chooseCount == 1, store.attachmentImportFailure == nil,
+      let attachmentID = store.currentDraftAttachmentIDs.first,
+      store.currentDraftAttachmentIDs.count == 1,
+      let imported = try? await repository.attachmentContent(id: attachmentID),
+      imported.data == Data(body.utf8),
+      imported.attachment.originalName == selectedURL.lastPathComponent
+    else { throw AttachmentSmokeFailure(stage: "managed-copy") }
+    try FileManager.default.removeItem(at: selectedURL)
+    guard !FileManager.default.fileExists(atPath: selectedURL.path) else {
+      throw AttachmentSmokeFailure(stage: "original-delete")
+    }
+
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(
+      reopened, credentials: credentials, provider: provider,
+      displayName: "Attachment smoke workspace")
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    try await store.loadMessages(conversationID)
+    await store.refreshAttachmentMetadata(in: conversationID, retryUnavailable: true)
+    guard store.currentDraftAttachmentIDs == [attachmentID],
+      store.attachmentMetadata[attachmentID] == imported.attachment,
+      (try await reopened.attachmentContent(id: attachmentID)) == imported
+    else { throw AttachmentSmokeFailure(stage: "restart") }
+
+    try await store.prepareSendOrConfirmAttachments()
+    try await waitForAttachmentSmoke("first-confirmation") {
+      self.store.attachmentConfirmationTarget?.plan.attachments == [imported.attachment]
+        && self.window?.attachedSheet != nil
+    }
+    try await Task.sleep(for: .milliseconds(100))
+    writeSnapshot(small: small, arguments: arguments + ["--attachment-confirmation"])
+    store.cancelAttachmentConfirmation()
+    try await waitForAttachmentSmoke("cancel-dismissed") {
+      self.store.attachmentConfirmationTarget == nil && self.window?.attachedSheet == nil
+    }
+    guard await credentials.readCount() == 0, provider.callCount == 0 else {
+      throw AttachmentSmokeFailure(stage: "cancel-effects")
+    }
+
+    try await store.prepareSendOrConfirmAttachments()
+    try await waitForAttachmentSmoke("second-confirmation") {
+      self.store.attachmentConfirmationTarget != nil && self.window?.attachedSheet != nil
+    }
+    guard let send = store.confirmAttachmentSend() else {
+      throw AttachmentSmokeFailure(stage: "confirm-start")
+    }
+    await send.value
+    await store.coordinator?.waitForIdle()
+    guard let request = provider.lastRequest else {
+      throw AttachmentSmokeFailure(stage: "request")
+    }
+    let userText = request.turns.filter { $0.role == "user" }.map(\.content).joined(separator: "\n")
+    let page = try await reopened.messages(conversationID: conversationID)
+    let snapshot = try await reopened.snapshot()
+    try await store.loadMessages(conversationID)
+    await store.refreshAttachmentMetadata(in: conversationID, retryUnavailable: true)
+    guard await credentials.readCount() == 1, provider.callCount == 1,
+      userText.components(separatedBy: body).count - 1 == 1,
+      userText.contains(imported.attachment.sha256), store.currentDraftAttachmentIDs.isEmpty,
+      store.draft.isEmpty,
+      !snapshot.drafts.contains(where: { $0.conversationID == conversationID }),
+      page.messages.first(where: { $0.role == .user && $0.attachmentIDs == [attachmentID] }) != nil,
+      store.currentMessages.first(where: {
+        $0.role == .user && $0.attachmentIDs == [attachmentID]
+      }) != nil,
+      store.attachmentMetadata[attachmentID] == imported.attachment
+    else { throw AttachmentSmokeFailure(stage: "confirmed-send") }
+    print(
+      "NATIVE_ATTACHMENT_SMOKE=PASS offlineFixture=true injectedChooser=true nativePanelSelectionTested=false managedCopySurvivedOriginalDeletion=true restarted=true chipsRestored=true confirmationCancelledWithoutEffects=true explicitConfirmationSent=true exactBodyOnce=true matchingDraftCleared=true storedMessageChips=true"
+    )
+    return reopened
+  }
+
+  private func waitForAttachmentSmoke(
+    _ stage: String, condition: @MainActor () -> Bool
+  ) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(5))
+    while !condition() {
+      guard clock.now < deadline else { throw AttachmentSmokeFailure(stage: stage) }
+      try await Task.sleep(for: .milliseconds(10))
     }
   }
 
@@ -842,6 +965,7 @@ import WorkspaceCore
     let target =
       arguments.contains("--verify-profiles") || arguments.contains("--deletion-confirmation")
         || arguments.contains("--verify-routines")
+        || arguments.contains("--attachment-confirmation")
       ? window?.attachedSheet
       : arguments.contains("--settings") || arguments.contains("--verify-export")
         ? settingsWindow : window
@@ -851,30 +975,32 @@ import WorkspaceCore
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--verify-routines")
-      ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
-      : arguments.contains("--deletion-confirmation")
-        ? "delete-confirmation"
-        : arguments.contains("--verify-deletion")
-          ? "degraded-group"
-          : arguments.contains("--verify-export")
-            ? "export-settings"
-            : arguments.contains("--verify-profiles")
-              ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-              : arguments.contains("--verify-codex-fixture")
-                || arguments.contains("--verify-codex-stdin")
-                ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-                : arguments.contains("--verify-provider")
-                  ? (arguments.contains("--settings")
-                    ? (arguments.contains("--router-models")
-                      ? "router-model-settings" : "provider-settings")
-                    : "provider-chat")
-                  : arguments.contains("--verify-replies")
-                    ? "reply-chat"
-                    : arguments.contains("--verify-workspace")
-                      ? "durable-workspace"
-                      : arguments.contains("--group")
-                        ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--attachment-confirmation")
+      ? "attachment-confirmation"
+      : arguments.contains("--verify-routines")
+        ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
+        : arguments.contains("--deletion-confirmation")
+          ? "delete-confirmation"
+          : arguments.contains("--verify-deletion")
+            ? "degraded-group"
+            : arguments.contains("--verify-export")
+              ? "export-settings"
+              : arguments.contains("--verify-profiles")
+                ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+                : arguments.contains("--verify-codex-fixture")
+                  || arguments.contains("--verify-codex-stdin")
+                  ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+                  : arguments.contains("--verify-provider")
+                    ? (arguments.contains("--settings")
+                      ? (arguments.contains("--router-models")
+                        ? "router-model-settings" : "provider-settings")
+                      : "provider-chat")
+                    : arguments.contains("--verify-replies")
+                      ? "reply-chat"
+                      : arguments.contains("--verify-workspace")
+                        ? "durable-workspace"
+                        : arguments.contains("--group")
+                          ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

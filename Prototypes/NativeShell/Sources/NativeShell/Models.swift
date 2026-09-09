@@ -103,6 +103,17 @@ enum ComposerInputPolicy {
   @Published var drafts: [UUID: String] = [:]
   @Published var draftReplyIDs: [UUID: UUID] = [:]
   @Published var draftAttachmentIDs: [UUID: [UUID]] = [:]
+  @Published var attachmentMetadata: [UUID: Attachment] = [:]
+  @Published var unavailableAttachmentIDs: Set<UUID> = []
+  @Published var isAttachingFiles = false
+  var attachmentImportAccepted = false
+  var attachmentImportFailure: String?
+  var attachmentImportTask: Task<Void, Never>?
+  var cancelAttachmentSelection: (() -> Void)?
+  var pendingAttachmentPayloads: [UUID: AttachmentContent] = [:]
+  @Published var attachmentConfirmationTarget: AttachmentConfirmationTarget?
+  @Published var attachmentConfirmationError: String?
+  @Published var isConfirmingAttachmentSend = false
   @Published var replyPreviews: [UUID: [UUID: ReplyPreview]] = [:]
   @Published var transcriptJumpRequest: TranscriptJumpRequest?
   @Published var isJumpingToReply = false

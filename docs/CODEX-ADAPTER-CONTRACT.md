@@ -103,7 +103,8 @@ Codex credential reference  ─X→ custom chat-completions endpoint
   generation guard, fixed destination, editable model, kind-change credential
   re-entry and memory-only/context disclosures. The durable bundle now uses
   user-selected **read-write** file access for explicit import plus
-  [workspace export](WORKSPACE-EXPORT.md), not broad filesystem access. Auth import
+  [workspace export](WORKSPACE-EXPORT.md) and [managed text attachments](ATTACHMENTS.md),
+  not broad filesystem access. Auth import
   remains read-only in behavior: it never modifies or copies the selected auth file.
 - The fixed backend was observed returning HTTP 200 without Content-Type. Only the
   Codex adapter accepts an absent header and then requires strict SSE/event parsing;

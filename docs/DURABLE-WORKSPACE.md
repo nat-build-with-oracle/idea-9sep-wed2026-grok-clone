@@ -62,7 +62,7 @@ The repository confines managed objects to its private queue; only Codable/Senda
 | Create bot | Bot and direct conversation commit together with different stable IDs; trimmed name, description/color and provider references validated |
 | Edit/hide bot | Native editor changes name, description, color and shape; direct title follows the normalized name. Identity, creation date, provider assignment, visibility, routines, drafts and transcript remain intact; hide/unhide stays separate |
 | Create/update group | Native editor changes the title and ordered 2–6-member list. Existing hidden members may remain, but hidden/missing bots cannot be newly added; future target choices follow the new list without rewriting an in-flight reply or recorded attribution |
-| Save draft | Native conversation-scoped Unicode text/reply selection, cancellation and original-message navigation; persisted on debounce/flush; stored attachment IDs are preserved on native text edits; invalid references are rejected, and file selection/removal controls remain pending |
+| Save draft | Native conversation-scoped Unicode text/reply selection, cancellation and original-message navigation; persisted on debounce/flush; native selected text files use atomic managed copies and persistent removable chips; invalid references are rejected |
 | Begin generation | User message, queued generation/attempt, monotonically assigned sequence and matching-draft clear are atomic; newer draft text is preserved |
 | Cancel/reconcile | Stale attempt cannot cancel current work; restart reconciliation marks pending work interrupted without replaying it |
 | Routines | Native interval/daily editor with explicit owner/provider consent; Run Now, pause/resume, Stop, confirmed deletion, visible history, awake reconciliation. No work is promised while closed/asleep |
@@ -81,21 +81,22 @@ The [routine flow](ROUTINES.md), introduced in schema v2, is preserved by schema
 
 Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 
-- **225 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
+- **234 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
   generation/coordinator, provider/transport, model catalog, Codex, profiles, reply context,
   export/deletion, calendar boundaries and routine claims/lifecycle. Attachment coverage adds
-  13 content/repository tests, 5 historical migration/recovery tests, 7 pre-credential
-  transmission guards and legacy export-summary decoding. All use offline credentials,
+  13 content/repository tests, 5 historical migration/recovery tests, 13 generation-consent and 3 wire/fingerprint
+  tests and legacy export-summary decoding. All use offline credentials,
   URLProtocol/provider fixtures and/or actual temporary stores.
-- **170 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
+- **204 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
   profiles/replies/export/deletion, **11 routine editor** tests and **14 routine workspace/lifecycle**
-  tests, plus 5 attachment draft/reply/reopen/disclosure tests. Total: **395 tests**.
+  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Total: **438 tests**.
   Routine coverage includes explicit owner/binding consent, provider
   drift, dirty/cancel/reload/save races, catch-up/wake, direct-chat output, draft preservation,
   Stop/partial text, confirmed deletion, active history after clock rollback, and quit joining.
 
 - Native `smoke` uses a newly minted temporary workspace inside this app's sandbox, creates two bots/one group/one paused routine/a Unicode draft through the UI's service path, closes/reopens the store, asserts restored identities/content, renders the native window, removes only its own test directory and exits. It does not open, mutate, or capture the user's normal workspace.
 - Provider smoke injects offline credentials and a fixture stream into that isolated native workspace, verifies persisted user/assistant messages and attribution, and renders desktop/narrow chat and the separate Settings window. No live endpoint or real Keychain item is accessed.
+- Attachment smoke copies a synthetic selected text file, deletes its original, reopens the managed copy, renders chips/consent, verifies Cancel has no credential/provider calls and confirms an exact offline file send. OS panel clicks and external grants remain manual. See [attachment contract](ATTACHMENTS.md).
 - Reply smoke restores a selected parent/text after SQLite reopen, checks explicit context at the fixture provider boundary, sends/persists the reference, clears only the matching draft, then renders an unsent follow-up. See [reply workflow](REPLY-WORKFLOW.md).
 - Export smoke writes/replaces a synthetic JSON file in its own sandbox temporary directory, checks complete fixture records/draft flush/credential-reference exclusion and renders Settings. It injects the destination; native Save Panel interaction and its external sandbox grant remain unautomated. See [export format and limits](WORKSPACE-EXPORT.md).
 - Routine smoke renders the native daily editor and history, executes an offline run into the explicit owner’s direct chat, keeps the group draft, resumes/pauses and reopens. It uses synthetic fixtures and controller actions, not physical input automation. See [routine verification limits](ROUTINES.md).
@@ -112,6 +113,6 @@ Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 - T08 injects a failure at the transaction save boundary. This proves rollback and draft retention; a coordinator fake also verifies zero provider calls after a failed save. Neither is a real disk-full OS test.
 - Message rows are paginated, but snapshot generation history is not yet bounded. T13's persisted 10k-message native rendering/50 updates/sec/Instruments budget remains **unverified**.
 - Actual IME candidate input, full VoiceOver/focus/shortcuts/divider interaction, and macOS 14 runtime coverage remain open.
-- Native attachment selection/chips and confirmed provider transmission, real provider/Keychain signing verification, physical routine sleep/wake checks, complete profile/settings/delete/routine a11y interaction, XCUITest coverage, and release signing/notarization are incomplete. Native bot/group profile editing and confirmed bot deletion have unit, persistence, concurrency and smoke coverage, but this does not close every R02/UI acceptance gate.
+- Real attachment file-picker sandbox grants, real provider/Keychain signing verification, physical routine sleep/wake checks, complete profile/settings/delete/routine a11y interaction, XCUITest coverage, and release signing/notarization are incomplete. Native bot/group profile editing and confirmed bot deletion have unit, persistence, concurrency and smoke coverage, but this does not close every R02/UI acceptance gate.
 
 The full R01–R09 / T01–T18 contract stays active. This durable offline milestone is progress toward it, not a smaller replacement finish line.

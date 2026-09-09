@@ -10,6 +10,11 @@ extension PreviewWorkspace {
     isLoading = true
     defer { isLoading = false }
     await shutdownRoutines()
+    try await finishAttachmentImport()
+    cancelAttachmentConfirmation()
+    sendTask?.cancel()
+    await sendTask?.value
+    cancelAttachmentConfirmation()
     routineEditTarget = nil
     routineEditorDirty = false
     routineError = nil
@@ -38,6 +43,9 @@ extension PreviewWorkspace {
     drafts = [:]
     draftReplyIDs = [:]
     draftAttachmentIDs = [:]
+    attachmentMetadata = [:]
+    unavailableAttachmentIDs = []
+    pendingAttachmentPayloads = [:]
     dirtyDrafts = []
     draftVersions = [:]
     messages = [:]
@@ -113,6 +121,7 @@ extension PreviewWorkspace {
       olderCursor = page.beforeSequence
     }
     await refreshReplyPreviews(in: id, retryUnavailable: true)
+    await refreshAttachmentMetadata(in: id, retryUnavailable: true)
   }
 
   func searchPersistent() async {
@@ -135,6 +144,7 @@ extension PreviewWorkspace {
       guard id == selectedID else { return }
       mergeOlderMessages(page, in: id)
       await refreshReplyPreviews(in: id)
+      await refreshAttachmentMetadata(in: id)
     } catch { storageError = error.localizedDescription }
   }
 
@@ -189,7 +199,18 @@ extension PreviewWorkspace {
         let draft = Draft(
           conversationID: id, text: drafts[id] ?? "",
           attachmentIDs: draftAttachmentIDs[id] ?? [], replyToID: draftReplyIDs[id])
-        try await repository.apply(.saveDraft(draft))
+        let payloads = draft.attachmentIDs.compactMap { pendingAttachmentPayloads[$0] }
+        if payloads.isEmpty {
+          try await repository.apply(.saveDraft(draft))
+        } else {
+          try await repository.apply(.saveDraftWithAttachments(draft, attachments: payloads))
+          // An acknowledged payload is now owned by Core Data. A later version can
+          // remove its reference, but must not retain another in-memory file copy.
+          for payload in payloads where pendingAttachmentPayloads[payload.attachment.id] == payload
+          {
+            pendingAttachmentPayloads[payload.attachment.id] = nil
+          }
+        }
         if version == draftVersions[id] { dirtyDrafts.remove(id) }
       }
     }
@@ -268,10 +289,14 @@ extension PreviewWorkspace {
       Task { do { try await flushDrafts() } catch { storageError = error.localizedDescription } }
       return
     }
-    guard sendTask == nil, !isClosing else { return }
+    guard sendTask == nil, !isClosing, !isAttachingFiles, attachmentConfirmationTarget == nil else {
+      return
+    }
     sendTask = Task {
       defer { sendTask = nil }
-      do { _ = try await submitDraft() } catch { notice = Self.providerErrorMessage(error) }
+      do { try await prepareSendOrConfirmAttachments() } catch {
+        notice = Self.providerErrorMessage(error)
+      }
     }
   }
 

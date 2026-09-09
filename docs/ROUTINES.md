@@ -6,8 +6,8 @@ background service, live-provider certification, physical sleep testing, or comp
 
 Schema v3 preserves this routine ledger and adds attachment storage. Existing routine
 consent is not file-transmission consent: runs whose recent context includes stored
-attachments are recorded as blocked before credential reads or network calls until
-the [attachment confirmation flow](ATTACHMENTS.md) is implemented.
+attachments are recorded as blocked before credential reads or network calls because
+interactive [attachment confirmation](ATTACHMENTS.md) does not widen routine authorization.
 
 ## Execution boundary
 

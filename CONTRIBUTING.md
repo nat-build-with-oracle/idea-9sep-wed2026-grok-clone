@@ -69,9 +69,9 @@ This removes generated build output, not the application's workspace data.
   history, exact date round trips, draft/write failures, cancellation and stale workspaces.
   Export fixtures must be synthetic and temporary; never commit real exported conversations.
 
-Attachment storage is not permission to transmit files. Preserve the fail-closed provider
-guards until destination/model/content-bound confirmation and native file controls are
-implemented and tested; see the [attachment contract](docs/ATTACHMENTS.md).
+Attachment storage is not permission to transmit files. Preserve destination/model/content-bound
+confirmation before credentials and test native import/draft lifecycle races. Routine
+authorization remains text-only; see the [attachment contract](docs/ATTACHMENTS.md).
 
 Private design references are intentionally absent from this repository. Build,
 test and smoke commands do not need them. The `ψ/` placeholder directories and

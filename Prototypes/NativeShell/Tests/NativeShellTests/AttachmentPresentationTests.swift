@@ -38,9 +38,9 @@ final class AttachmentPresentationTests: XCTestCase {
 
     do {
       _ = try await workspace.submitDraft()
-      XCTFail("Expected attachment transmission to remain unavailable")
+      XCTFail("Expected explicit attachment consent before transmission")
     } catch {
-      XCTAssertEqual(error as? ProviderError, .attachmentTransmissionUnavailable)
+      XCTAssertEqual(error as? ProviderError, .attachmentConsentRequired)
     }
 
     let credentialReadCount = await credentials.currentReadCount()
@@ -89,9 +89,9 @@ final class AttachmentPresentationTests: XCTestCase {
     restored.draft = "Follow up"
     do {
       _ = try await restored.submitDraft()
-      XCTFail("Expected reply context with attachments to remain unavailable")
+      XCTFail("Expected explicit consent for attachment-bearing reply context")
     } catch {
-      XCTAssertEqual(error as? ProviderError, .attachmentTransmissionUnavailable)
+      XCTAssertEqual(error as? ProviderError, .attachmentConsentRequired)
     }
     let credentialReadCount = await credentials.currentReadCount()
     XCTAssertEqual(credentialReadCount, 0)

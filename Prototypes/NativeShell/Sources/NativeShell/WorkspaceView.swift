@@ -40,6 +40,15 @@ struct WorkspaceView: View {
     .ignoresSafeArea()
     .sheet(item: $store.panel) { panel in PrototypePanel(store: store, panel: panel) }
     .sheet(item: $store.editTarget) { target in ProfileEditorView(store: store, target: target) }
+    .sheet(item: $store.attachmentConfirmationTarget) { target in
+      AttachmentConfirmationView(
+        conversation: target.conversation, targetBot: target.targetBot,
+        apiRoot: target.plan.provider.apiRoot, modelID: target.plan.provider.modelID,
+        attachments: target.plan.attachments, contextMessageCount: target.plan.contextMessageCount,
+        isSending: store.isConfirmingAttachmentSend, error: store.attachmentConfirmationError,
+        onCancel: { store.cancelAttachmentConfirmation() },
+        onSend: { store.confirmAttachmentSend() })
+    }
     .sheet(item: $store.botDeletionTarget) { _ in BotDeletionView(store: store) }
     .sheet(item: $store.routineDetailTarget) { RoutineDetailView(store: store, target: $0) }
     .sheet(
@@ -76,7 +85,9 @@ struct WorkspaceView: View {
       }
     }
     .onExitCommand {
-      if store.routineEditTarget != nil {
+      if store.attachmentConfirmationTarget != nil {
+        store.cancelAttachmentConfirmation()
+      } else if store.routineEditTarget != nil {
         // The routine editor owns dirty-discard handling.
       } else if store.routineDetailTarget != nil {
         store.closeRoutine()
@@ -417,6 +428,10 @@ private struct ConversationView: View {
   private func messageRow(_ message: PreviewMessage, conversationID: UUID) -> some View {
     MessageBubble(
       message: message,
+      attachments: message.attachmentIDs.compactMap { store.attachmentMetadata[$0] },
+      unavailableAttachmentIDs: message.attachmentIDs.filter {
+        store.attachmentMetadata[$0] == nil || store.unavailableAttachmentIDs.contains($0)
+      },
       reference: store.replyPreview(for: message),
       isJumpingToReply: store.isJumpingToReply,
       onReply: { Task { await store.beginReply(to: message.id, in: conversationID) } },
@@ -470,30 +485,40 @@ private struct ConversationView: View {
           .buttonStyle(.plain).accessibilityLabel("Dismiss notice")
         }.padding(.horizontal, 8).accessibilityIdentifier("workspace-notice")
       }
-      if !store.currentDraftAttachmentIDs.isEmpty {
-        Text(
-          AttachmentPresentation.storedCount(store.currentDraftAttachmentIDs.count)
-            + " File controls and provider transmission are not available yet; these references stay in the local draft."
+      if !store.currentDraftAttachmentIDs.isEmpty, let conversation = store.current {
+        AttachmentChipList(
+          attachments: store.currentDraftAttachmentIDs.compactMap { store.attachmentMetadata[$0] },
+          unavailableIDs: store.currentDraftAttachmentIDs.filter {
+            store.attachmentMetadata[$0] == nil || store.unavailableAttachmentIDs.contains($0)
+          },
+          onRemove: { store.removeDraftAttachment($0, in: conversation.id) }
         )
-        .font(.system(size: 11)).foregroundStyle(ShellTheme.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
-        .accessibilityIdentifier("draft-attachment-disclosure")
+        .disabled(
+          store.isAttachingFiles || store.isSubmitting || store.attachmentConfirmationTarget != nil
+        )
+        .accessibilityIdentifier("draft-attachments")
+      }
+      if store.isAttachingFiles {
+        ProgressView("Copying selected text files…").controlSize(.small)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
       HStack(alignment: .bottom, spacing: 10) {
         Button {
-          store.notice =
-            store.isPersistent
-            ? "Existing text attachments are kept locally. Adding, removing, previewing and transmitting files are not available yet."
-            : "File attachments are planned for the production app. This feasibility preview does not read files."
+          if store.isPersistent {
+            store.chooseAttachments()
+          } else {
+            store.notice =
+              "The sample preview does not read files. Use BotWorkspace to attach text files."
+          }
         } label: {
           Image(systemName: "plus").font(.system(size: 23, weight: .light)).frame(
             width: 33, height: 33
           )
           .background(.white.opacity(0.08), in: Circle())
         }.buttonStyle(.plain).foregroundStyle(ShellTheme.secondary).padding(.bottom, 1)
-          .accessibilityLabel("Attachment availability")
+          .disabled(store.isPersistent && !store.canChooseAttachments)
+          .accessibilityLabel("Attach text files")
+          .accessibilityIdentifier("attach-text-files")
         ZStack(alignment: .topLeading) {
           if store.draft.isEmpty {
             Text("Message \(store.current?.title ?? "Bot")").font(.system(size: 16))
@@ -517,7 +542,8 @@ private struct ConversationView: View {
         }.buttonStyle(.plain).disabled(
           (store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && store.currentDraftAttachmentIDs.isEmpty) || store.isSubmitting
-            || store.isDeletingBot || store.currentNeedsMembershipRepair
+            || store.isDeletingBot || store.currentNeedsMembershipRepair || store.isAttachingFiles
+            || store.attachmentConfirmationTarget != nil
         )
         .padding(.bottom, 1).help(
           store.isPersistent
@@ -570,9 +596,7 @@ private struct ConversationView: View {
           .font(.system(size: 11)).textSelection(.enabled)
           .accessibilityIdentifier("send-destination")
         Text(
-          store.currentDraftAttachmentIDs.isEmpty
-            ? "Sends draft, bot description, up to 100 recent text messages, and the original message if replying. Stored attachments are not transmitted."
-            : "This draft has stored attachments. Attachment transmission is not available, so Send will stop before credentials are read or any network request begins."
+          "Sends draft, bot description, up to 100 recent messages, and the original message if replying. Text files in the draft or context require confirmation for each send, including retries."
         )
         .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
       } else {
@@ -580,7 +604,7 @@ private struct ConversationView: View {
           .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
       }
     }.foregroundStyle(ShellTheme.secondary).padding(.horizontal, 6)
-      .disabled(store.isSubmitting)
+      .disabled(store.isSubmitting || store.attachmentConfirmationTarget != nil)
   }
 }
 
@@ -606,7 +630,7 @@ private struct GenerationStatusView: View {
         } else if generation.routineRunID != nil {
           Text("Routine run · retry unavailable here").font(.caption)
         } else {
-          Button("Retry") { action { try await store.retryReply(generation.id) } }
+          Button("Retry") { store.performRetry(generation.id) }
             .help(
               "Retry using the currently selected provider. The original user message and partial reply are retained."
             )
@@ -632,6 +656,8 @@ private struct BottomPreference: PreferenceKey {
 
 private struct MessageBubble: View {
   let message: PreviewMessage
+  let attachments: [Attachment]
+  let unavailableAttachmentIDs: [UUID]
   let reference: ReplyPreview?
   let isJumpingToReply: Bool
   let onReply: () -> Void
@@ -675,13 +701,10 @@ private struct MessageBubble: View {
                   .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
               }
               if !message.attachmentIDs.isEmpty {
-                Label(
-                  AttachmentPresentation.storedCount(message.attachmentIDs.count),
-                  systemImage: "doc.text"
+                AttachmentChipList(
+                  attachments: attachments, unavailableIDs: unavailableAttachmentIDs
                 )
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(ShellTheme.secondary)
-                .accessibilityIdentifier("message-attachment-disclosure-\(message.id)")
+                .accessibilityIdentifier("message-attachments-\(message.id)")
               }
             }
             .padding(.horizontal, 15).padding(.vertical, 11)

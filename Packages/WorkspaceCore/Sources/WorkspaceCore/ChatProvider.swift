@@ -34,6 +34,8 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
   case missingCredential, invalidCredential
   case codexLoginRequired, invalidCodexLogin
   case attachmentTransmissionUnavailable
+  case attachmentConsentRequired, attachmentConsentChanged, attachmentInputLimit,
+    attachmentRoleUnsupported
   case keychain(Int32)
   case invalidResponse, streamEnded
   case http(Int)
@@ -41,8 +43,16 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
     storageFailure
   public var errorDescription: String? {
     switch self {
+    case .attachmentConsentRequired:
+      "Review and approve the exact files, provider, model, and conversation before sending. No files or message were sent."
+    case .attachmentConsentChanged:
+      "The files, conversation context, provider, or model changed. Review the updated attachment disclosure before sending."
+    case .attachmentInputLimit:
+      "A provider request can include at most 32 unique attachments and 25 MiB of attachment text."
+    case .attachmentRoleUnsupported:
+      "Only attachments on user messages can be sent. This conversation includes a file on a bot response; no files or message were sent."
     case .attachmentTransmissionUnavailable:
-      "This conversation or draft includes stored attachments. Attachment transmission and its confirmation UI are not available yet; no files or message were sent."
+      "This routine’s conversation includes attachments. Saved routine authorization is text-only; no files or routine message were sent."
     case .codexLoginRequired:
       "Import an updated Codex ChatGPT auth.json in Settings. This app does not refresh your login; imported access expires when the app quits or the provider rejects it."
     case .invalidCodexLogin:

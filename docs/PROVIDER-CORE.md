@@ -46,8 +46,8 @@ gates. [Apple's entitlement diagnostic](https://developer.apple.com/documentatio
 explains inspecting the built executable's entitlements.
 
 The durable app requests App Sandbox, **outgoing network client**, and
-**user-selected read-write files** for explicit Codex auth import and
-[JSON workspace export](WORKSPACE-EXPORT.md);
+**user-selected read-write files** for explicit Codex auth import,
+[managed text attachments](ATTACHMENTS.md) and [JSON workspace export](WORKSPACE-EXPORT.md);
 the sample-only bundle still has only App Sandbox. No incoming server, broad file
 access, or unprovisioned Keychain access-group entitlement is added. Credential
 entry is explicit; no real key or existing Keychain record is used by normal tests
@@ -96,18 +96,18 @@ Retry → new attempt ID; original user message; earlier partial retained
 The adapter implements a bounded text-only subset of the
 [Chat Completions request format](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
 and [streaming chunk format](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events).
-It is not a claim of compatibility with every provider. Tool calls, attachments
+It is not a claim of compatibility with every provider. Tool calls, binary/image attachments
 and other non-text output are not supported.
 
 ## Verification and limits
 
-The core suite has **115 tests**: 29 repository, 11 generation/coordinator,
+At the original provider/Codex checkpoint, the core suite had **115 tests**: 29 repository, 11 generation/coordinator,
 15 Chat Completions SSE, 15 transport/request, 8 provider-setup/credential-routing,
 12 model-catalog, 9 Codex credential/request and 16 Codex SSE tests. Transport tests
 use URLProtocol; coordinator tests use fake providers and credentials with
-actual temporary SQLite stores. The shell has **70 tests**: 38 original tests,
+actual temporary SQLite stores. The shell had **70 tests**: 38 original tests,
 16 provider-presentation, 7 model-discovery lifecycle and 9 Codex settings/flow tests.
-Total: **185**. Codex additions cover explicit bounded import, unchanged source files,
+Checkpoint total: **185**, not the current combined count; see [current verification](DURABLE-WORKSPACE.md#verification-evidence). Codex additions cover explicit bounded import, unchanged source files,
 no refresh/ID-token retention, backwards metadata decoding, fixed-origin/namespace
 isolation, expiry/draft preservation, Stop/Retry attribution and credential rollback.
 

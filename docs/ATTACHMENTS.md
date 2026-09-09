@@ -1,9 +1,10 @@
-# Attachment foundation and remaining native workflow
+# Native text attachments and transmission contract
 
-**Status: storage milestone, not finished R04.** This source release adds app-managed
-UTF-8 content persistence, migration, export and reference-safe cleanup. It does
-**not** yet let users choose/remove files or transmit their content to a provider.
-The existing attachment button still explains that file controls are unavailable.
+**Status: native UTF-8 attachment workflow implemented; remaining platform validation is open.**
+The app copies explicitly chosen text files into its managed workspace, restores removable
+composer chips and transcript metadata, and requires a fresh destination/content-bound
+confirmation before transmitting files from a draft, recent context, an older reply or retry.
+Images and other binary formats are unsupported. This does not complete all R04/R09 gates.
 
 ## Storage decision (ADR-ATTACHMENT-01)
 
@@ -54,58 +55,85 @@ the internal storage layout. It is not an import/restore feature or encrypted ba
   migrations produce schema v3, retain existing payloads/routine history, and use
   the existing replacement/recovery boundary rather than silently resetting data.
 
-## Current native/provider behavior
+## Native file ingress and draft lifecycle
 
-Native text edits, flushes and reconnects preserve existing attachment IDs. Existing
-draft/transcript references are disclosed as stored-attachment counts rather than
-rendered as silently empty text. Export warns that exact stored file content is
-included and is **not secret-scrubbed**. Deletion names attachment counts and bytes.
+- The **+** button opens a cancellable multi-file `NSOpenPanel`. The sample preview
+  does not read files. No home scan, automatic credential-file discovery or retained
+  original path/bookmark is involved.
+- Reads run off the main actor with balanced security-scoped access. A bounded file
+  descriptor read uses `O_NOFOLLOW`, `O_NONBLOCK`, regular-file/size checks and
+  before/after identity, size and timestamp checks. Final-component symlinks, folders,
+  devices, unsupported types, invalid UTF-8 and unsafe filenames are rejected.
+  This does **not** prove protection against every hostile ancestor-directory race.
+- One chooser/import owns the operation synchronously. The selected conversation is
+  frozen when it starts; navigating elsewhere never retargets the copy. Accepted reads
+  and saves are joined on quit/reconnect; an unaccepted chooser is cancelled.
+- All new files and the full draft go through the existing sole, versioned draft writer.
+  A failed batch leaves no new references/content; concurrent text edits survive. If a
+  later unrelated draft save fails after the file transaction committed, committed
+  chips remain and the storage error is surfaced rather than pretending to undo it.
+- Draft chips show names and exact byte counts, support removal, and survive restart.
+  Transcript chips are read-only metadata. Missing metadata is visible, not silently
+  rendered as an empty message. Bytes are not fetched merely to render a chip.
+- Removing a draft reference never removes content still referenced by a message.
+  Managed content is independent of subsequent edits/removal of the original file.
 
-`GenerationCoordinator` rejects new attachment sends, original-message retries,
-attachment-bearing recent context and explicitly selected older attachment replies
-**before credential reads, generation mutation or provider calls**. Attachment-only
-messages are checked before filtering empty text. Routine runs record a typed
-blocked outcome rather than silently omitting files or broadening saved consent.
-Unselected unsent draft files are not read or transmitted by unrelated text sends.
-Ordinary text-only conversations remain usable.
+## Provider transmission and consent
 
-## Required next integration — not deferred out of v1
+`GenerationCoordinator.attachmentTransmissionPlan` and its retry counterpart prepare
+an ordered, unique disclosure without credential reads, generation writes or network.
+The plan includes conversation/target bot, full provider configuration, ordered file
+IDs/names/hashes/bytes, context count and a deterministic request fingerprint. It is
+memory-only and contains neither file bodies nor actual credentials.
 
-1. Native, explicit selected-file ingress: bounded regular-file reads, security-scope
-   lifetime, cancellation, symlink/type/size checks, exact managed copy and no paths
-   retained. No credential-file discovery, home scan or automatic file read.
-2. Persistent removable draft chips and transcript metadata, attachment-only send
-   affordance, single-flight chooser, frozen conversation ownership, and accepted
-   import work joined before quit/reconnect. Use the existing serialized draft
-   writer; do not race a second independent draft-save path.
-3. Preflight selected/recent/reply file content before credentials/network. Disclose
-   destination/model, ordered IDs/names/hashes/bytes and conversation; bind explicit
-   confirmation to that exact request. Changed content/destination needs fresh
-   consent. File content stays untrusted user text, not system instructions or tools.
-   Decide routine file authorization explicitly; do not reuse existing text consent.
-4. Synthetic-file native smokes at desktop/narrow sizes and failure/race tests for
-   selection, cancellation, original-file changes, draft switching, save failure,
-   consent drift, retry, export, deletion and restart. Validate real sandbox grants
-   and accessibility interactions separately from injected chooser fixtures.
+The native confirmation names the API root/model/conversation/bot and every file,
+including files being **retransmitted from context**. Cancel has no provider effects.
+Send recomputes the plan before credentials; a changed draft, target, provider, model,
+file or included context requires cancelling and reviewing a new disclosure. The
+fingerprint excludes only incidental new-command UUID/time, not semantic content or
+context identity. A caller cannot bypass this by omitting the optional consent argument.
 
-The complete R01–R09 / T01–T18 finish line remains active. Current repository tests
-do not prove selected-file OS permissions, hostile filesystem race resistance,
-physical input/VoiceOver, power-loss durability or macOS 14 runtime compatibility.
-Deletion removes managed records; it is not secure erasure of SQLite/WAL, filesystem
-backups or previously exported copies.
+Preparation validates exact managed bytes, strict UTF-8, hash and conversation scope.
+The request has at most **32 unique files and 25 MiB total raw file bytes** across draft,
+up to 100 recent messages and any explicitly selected older reply. Limits fail visibly;
+files are not silently truncated. Each file body appears once per request, with later
+references by identity. Files remain untrusted text, never executable HTML/tools or
+system instructions. Included non-user messages carrying file references are rejected
+before transmission rather than presenting file text as assistant-authored content.
+Both Chat Completions and the experimental Codex text adapter use
+this path; it is not an image upload capability.
+
+After consent validation the request uses the same immutable prepared turns, rather
+than rereading different bytes after credential access. Later edits cannot alter an
+already accepted request, and a newer draft is not cleared by an older send. Provider
+privacy terms/charges apply; a transmitted request cannot be unsent.
+
+**Routine authorization remains text-only.** A routine whose included context has files
+records a typed blocked outcome before credentials/network. The interactive file sheet
+does not silently broaden previously saved routine authorization. Unselected unsent
+files in another draft are not transmitted by unrelated text sends.
+
+Export includes exact stored content and is **not secret-scrubbed**. Deletion discloses
+counts/bytes. Neither logical deletion nor export promises secure erasure or encryption.
+
+## Verification and remaining gates
+
+Synthetic tests cover bounded/type/UTF-8 importer failures, cancellation, frozen chat
+ownership, atomic multi-file copy, concurrent edits, save rollback, removal/reopen,
+explicit send consent/cancel/drift, retries, recent and older reply context, request
+limits, wire formats and routine blocking. See the current counts in
+[durable workspace evidence](DURABLE-WORKSPACE.md#verification-evidence).
+
+`attachment-smoke` uses only temporary synthetic files/stores and offline credential/
+provider fixtures. It exercises real bounded file reading, managed-copy restart, native
+chips and confirmation rendering, Cancel with zero credential/provider calls, and an
+explicit confirmed send. It does not automate physical clicks in the OS file picker.
+
+Remaining validation includes real selected-file sandbox grants, native keyboard and
+VoiceOver interaction, hostile filesystem races, power-loss durability and macOS 14
+runtime compatibility. The complete R01–R09 / T01–T18 finish line remains active.
+Images and routine file authorization need separate capability/consent contracts.
 Explicit reference removal still scans persisted message/draft payloads; current
 reference validation rehashes up to 25 MiB of content. Those latency costs remain
 unmeasured. Export capture/JSON encoding and reference scans are not hard peak-memory
 or native 10k-message performance proofs; see [export limits](WORKSPACE-EXPORT.md).
-
-## Verification checkpoint
-
-The combined suite contains **395 tests** (225 core + 170 native). Attachment-specific
-coverage includes 13 content/repository tests, 5 historical migration/recovery tests,
-7 coordinator no-transmission tests and 5 native compatibility tests. Fixtures use
-temporary stores and synthetic content, including exact 10 MiB reopen and an impossible
-base64 export lower bound; they never read a user-selected or credential file.
-An injected save failure verifies atomic draft/content replacement and pruning rollback
-through reopen. Historical model bodies are compared unchanged against the previous
-public version. Existing native smokes exercise text-only fixtures, not a completed
-attachment chooser/transmission workflow.

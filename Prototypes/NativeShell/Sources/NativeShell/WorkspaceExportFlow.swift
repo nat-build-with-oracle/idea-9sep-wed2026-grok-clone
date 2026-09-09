@@ -16,7 +16,8 @@ enum WorkspaceExportFlowError: Error, LocalizedError {
 extension PreviewWorkspace {
   var canExportWorkspace: Bool {
     isPersistent && repository != nil && !isLoading && !isClosing && !isExporting
-      && !isDeletingBot && botDeletionTarget == nil
+      && !isDeletingBot && !isAttachingFiles && attachmentConfirmationTarget == nil
+      && botDeletionTarget == nil
   }
 
   func exportWorkspace() {
