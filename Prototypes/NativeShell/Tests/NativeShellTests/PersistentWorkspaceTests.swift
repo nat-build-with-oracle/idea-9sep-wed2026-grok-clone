@@ -5,6 +5,15 @@ import XCTest
 
 @MainActor
 final class PersistentWorkspaceTests: XCTestCase {
+  func testIsolatedFixtureUsesExplicitNameInsteadOfApplicationProfile() async throws {
+    let storeURL = try temporaryStoreURL()
+    let repository = try await CoreDataWorkspaceRepository.open(at: storeURL)
+    addTeardownBlock { try await repository.close() }
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(repository, displayName: "Isolated fixture")
+    XCTAssertEqual(workspace.name, "Isolated fixture")
+  }
+
   func testCreatedBotsAndGroupRestoreIntoProjectionAfterReopen() async throws {
     let storeURL = try temporaryStoreURL()
     let repository = try await CoreDataWorkspaceRepository.open(at: storeURL)

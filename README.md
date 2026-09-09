@@ -44,7 +44,7 @@ third-party dependency installation is needed for the current app or tests.
 | Credentials | Secure input and Keychain adapter; no plaintext fallback; actual authorized signing/Keychain access not yet verified |
 | Remaining gates | Live-provider validation, routine execution, attachments/export, remaining edit/delete and native accessibility flows |
 
-Verification: **113 tests** (63 core + 50 shell), desktop/narrow native persistence
+Verification: **114 tests** (63 core + 51 shell), desktop/narrow native persistence
 and offline provider smokes, Settings rendering, build/signature and formatting checks. See the evidence
 and limitations below for the current test counts and scope.
 

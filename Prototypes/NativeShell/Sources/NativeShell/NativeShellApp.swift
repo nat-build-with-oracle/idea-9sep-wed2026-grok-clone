@@ -142,7 +142,7 @@ import WorkspaceCore
       do {
         let first = try await CoreDataWorkspaceRepository.open(at: url)
         persistentRepository = first
-        try await store.connect(first)
+        try await store.connect(first, displayName: "Smoke workspace")
         let botID = try await store.performCreateBot(
           name: "Research Partner", description: "Smoke fixture", color: "blue", shape: .circle)
         let firstConversationID = store.selectedID
@@ -157,7 +157,7 @@ import WorkspaceCore
         try await first.close()
         let reopened = try await CoreDataWorkspaceRepository.open(at: url)
         persistentRepository = reopened
-        try await store.connect(reopened)
+        try await store.connect(reopened, displayName: "Smoke workspace")
         let snapshot = try await reopened.snapshot()
         guard snapshot.bots.count == 2, snapshot.conversations.count == 3,
           snapshot.routines.count == 1, snapshot.routines.first?.enabled == false,
@@ -196,7 +196,8 @@ import WorkspaceCore
     repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID
   ) async throws {
     try await store.connect(
-      repository, credentials: SmokeCredentials(), provider: SmokeChatProvider())
+      repository, credentials: SmokeCredentials(), provider: SmokeChatProvider(),
+      displayName: "Smoke workspace")
     _ = try await store.saveProvider(
       id: nil, name: "Offline fixture provider", apiRoot: "https://fixture.invalid/v1",
       modelID: "smoke-text", secret: "offline-fixture-credential", allowsLoopbackHTTP: false)

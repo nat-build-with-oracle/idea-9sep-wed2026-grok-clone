@@ -82,7 +82,7 @@ and other non-text output are not supported.
 The core suite has **63 tests**: 29 repository, 11 generation/coordinator,
 15 SSE parser and 8 transport/request tests. Transport tests use URLProtocol;
 coordinator tests use fake providers and credentials with temporary SQLite stores.
-The shell adds 13 provider-presentation tests to its 37 existing tests, for **113 total tests** across core and shell. They include key/metadata rollback, destination-change key re-entry, group targeting, concurrent draft edits, cancellation/retry, and recovery after a shutdown save failure.
+The shell adds 13 provider-presentation tests to its 38 existing tests, for **114 total tests** across core and shell. They include key/metadata rollback, destination-change key re-entry, group targeting, concurrent draft edits, cancellation/retry, and recovery after a shutdown save failure.
 
 No live requests, billable calls, real credentials or existing Keychain records
 were used. Transport tests also passed ten consecutive runs during development.
@@ -121,4 +121,4 @@ service path, verifies one persisted user message and completed attributed reply
 checks the cleared draft, renders this app's window and removes its temporary
 workspace. Settings capture uses a saved synthetic provider with an empty secret
 field. It does not capture the desktop, connect to any endpoint or open the user's
-normal workspace. Native renders are not a complete UI automation/a11y audit.
+normal workspace or its saved display-name preference. Smoke captures use an explicit synthetic profile name. Native renders are not a complete UI automation/a11y audit.

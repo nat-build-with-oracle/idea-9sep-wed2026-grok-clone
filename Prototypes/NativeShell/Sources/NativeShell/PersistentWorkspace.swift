@@ -5,7 +5,7 @@ extension PreviewWorkspace {
   func connect(
     _ repository: any WorkspaceRepository,
     credentials: any CredentialStore = KeychainCredentialStore(),
-    provider: any ChatProvider = ChatCompletionsProvider()
+    provider: any ChatProvider = ChatCompletionsProvider(), displayName: String? = nil
   ) async throws {
     try await coordinator?.shutdown()
     isPersistent = true
@@ -14,7 +14,9 @@ extension PreviewWorkspace {
     self.repository = repository
     self.credentials = credentials
     self.chatProvider = provider
-    name = UserDefaults.standard.string(forKey: "workspace.displayName") ?? "Your workspace"
+    name =
+      displayName ?? UserDefaults.standard.string(forKey: "workspace.displayName")
+      ?? "Your workspace"
     // Never silently replay an unfinished request after restart.
     try await repository.apply(.interruptPendingGenerations)
     try await refreshPersistent()
