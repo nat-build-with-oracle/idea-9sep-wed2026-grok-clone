@@ -86,7 +86,7 @@ scripts/native-app.sh export-smoke
 scripts/native-app.sh export-smoke --small
 ```
 
-Fresh full suite: **263 tests passed** (137 core + 126 native shell), including
+Export milestone suite: **263 tests passed** (137 core + 126 native shell), including
 5 core export tests and 23 native export tests.
 
 Core tests cover full history beyond 100 messages, hidden bots, group order, drafts,

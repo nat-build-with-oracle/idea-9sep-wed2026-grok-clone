@@ -43,6 +43,12 @@ Three columns on wide desktop. Collapse inspector when sidebar + chat + inspecto
 Loading, empty searches, empty groups, sending, profile validation/conflict, unsaved-profile discard, provider error/offline, routine paused/running/failed, upload validation, API failures, and persistence failures must be explicit. Profile edits use a detached buffer tied to a stable bot/group identity: navigation cannot redirect a save, stale editable fields require an explicit reload, and Cancel/Escape/window close confirms before discarding dirty fields. Reply cards use intrinsic content height, a two-line excerpt, an explicit cancel action in the composer, and loading/unavailable states. Parent selection is conversation-scoped and does not send; jump-to-original must not redirect later navigation. Public sample conversations are synthetic project-planning examples, not copied user history or live service output.
 
 ## Content voice
+Permanent bot deletion uses a dedicated confirmation sheet with affected-record counts,
+group names/remaining memberships and explicit cancellation/no-undo disclosure. Keep action
+buttons outside the scrolling impact list. No destructive Return default. Groups left with
+0/1 members retain history/drafts and show a repair action instead of a sendable composer.
+See [deletion contract](docs/BOT-DELETION.md).
+
 Export uses File/Settings and the native JSON Save Panel, not a custom path field.
 Disclose all saved/hidden content and secret-scrubbing limits before selection; separate
 busy, success-count and sanitized failure states. No implicit upload or automatic path.
