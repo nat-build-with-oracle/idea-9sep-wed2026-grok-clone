@@ -9,6 +9,11 @@ extension PreviewWorkspace {
   ) async throws {
     isLoading = true
     defer { isLoading = false }
+    await shutdownRoutines()
+    routineEditTarget = nil
+    routineEditorDirty = false
+    routineError = nil
+    closeRoutine()
     await botDeletionTask?.value
     cancelBotDeletion()
     cancelExportSelection?()
@@ -77,6 +82,7 @@ extension PreviewWorkspace {
       drafts[draft.conversationID] = draft.text
       draftReplyIDs[draft.conversationID] = draft.replyToID
     }
+    routineDefinitions = snapshot.routines
     routines = snapshot.routines.map { routine in
       let minutes: Int
       switch routine.trigger {
@@ -241,7 +247,7 @@ extension PreviewWorkspace {
     try await repository.apply(.saveRoutine(routine))
     try await refreshPersistent()
     panel = nil
-    notice = "Paused routine saved. Scheduling is not connected yet."
+    notice = "Paused routine saved. Edit it to choose a provider before running or enabling it."
   }
 
   func performSend() {

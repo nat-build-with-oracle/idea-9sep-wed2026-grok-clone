@@ -106,6 +106,24 @@ enum ComposerInputPolicy {
   var replyChoiceRequests: [UUID: Int] = [:]
   var replyJumpGeneration = 0
   @Published var routines: [PreviewRoutine] = []
+  @Published var routineDefinitions: [Routine] = []
+  @Published var routineEditTarget: RoutineEditTarget?
+  @Published var routineDetailTarget: RoutineDetailTarget?
+  @Published var routineHistory: [RoutineRun] = []
+  @Published var routineHistoryLoading = false
+  @Published var routineError: String?
+  @Published var routineEditorDirty = false
+  @Published var isRoutineSaving = false
+  @Published var pendingRoutineActions: Set<String> = []
+  @Published var routineDeletionPlan: RoutineDeletionPlan?
+  var routineEditorSaveTask: Task<Void, Never>?
+  var routineTasks: [String: Task<Void, Error>] = [:]
+  var routineHistoryRequest = 0
+  var routineHistoryTask: Task<Void, Never>?
+  var routineHost: RoutineHost?
+  var routineShutdownStarted = false
+  var routinePollingEnabled = true
+  var routineNow: @Sendable () -> Date = { Date() }
   @Published var selectedID: UUID?
   @Published var search = ""
   @Published var pickerQuery = ""

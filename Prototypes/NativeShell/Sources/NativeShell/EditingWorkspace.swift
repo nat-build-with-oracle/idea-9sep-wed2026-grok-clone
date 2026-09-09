@@ -5,6 +5,7 @@ extension PreviewWorkspace {
   func beginEditing(_ conversation: PreviewConversation) {
     guard !isClosing, !isLoading, !isSaving, !isProfileSaving, !isDeletingBot,
       botDeletionTarget == nil, editTarget == nil, panel == nil,
+      routineEditTarget == nil, routineDetailTarget == nil,
       conversations.contains(where: { $0.id == conversation.id })
     else { return }
     switch conversation.kind {

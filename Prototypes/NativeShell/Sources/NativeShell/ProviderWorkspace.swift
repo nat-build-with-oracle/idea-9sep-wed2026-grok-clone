@@ -44,17 +44,20 @@ extension PreviewWorkspace {
 
   func makeCoordinator() {
     guard let repository, let credentials, let chatProvider else { return }
+    let context = replyContextGeneration
     coordinator = GenerationCoordinator(
       repository: repository, credentials: credentials, provider: chatProvider,
-      onChange: { [weak self] id in await self?.refreshGeneration(id) },
+      onChange: { [weak self] id in await self?.refreshGeneration(id, expectedContext: context) },
       onError: { [weak self] message in await self?.setProviderStorageError(message) })
     coordinatorStopped = false
     providerShutdownStarted = false
+    startRoutineHost()
   }
 
   private func setProviderStorageError(_ message: String) { storageError = message }
 
-  func refreshGeneration(_ conversationID: UUID) async {
+  func refreshGeneration(_ conversationID: UUID, expectedContext: Int? = nil) async {
+    if let expectedContext, expectedContext != replyContextGeneration { return }
     guard let repository else { return }
     let context = replyContextGeneration
     do {
@@ -64,6 +67,7 @@ extension PreviewWorkspace {
         conversations.contains(where: { $0.id == conversationID })
       else { return }
       generations = latestGenerations
+      if routineDetailTarget != nil { try await refreshRoutinePresentation() }
       // Keep older pages already loaded; update deltas by stable message identity.
       var existing = messages[conversationID] ?? []
       for item in page.messages {
@@ -258,6 +262,7 @@ extension PreviewWorkspace {
   }
 
   func prepareForClose() async throws {
+    await shutdownRoutines()
     if let botDeletionTask {
       await botDeletionTask.value
       if botDeletionError != nil { throw WorkspaceError.storeUnavailable }
@@ -281,7 +286,11 @@ extension PreviewWorkspace {
   }
 
   func resumeAfterCloseFailure() {
-    if coordinatorStopped { makeCoordinator() }
+    if coordinatorStopped {
+      makeCoordinator()
+    } else if routineHost == nil && !providerShutdownStarted {
+      startRoutineHost()
+    }
   }
 
   func recoverStorage() async throws {

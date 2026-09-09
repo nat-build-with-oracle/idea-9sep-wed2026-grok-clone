@@ -10,7 +10,8 @@ extension PreviewWorkspace {
     isPersistent && repository != nil && coordinator != nil
       && !isClosing && !isLoading && !isSaving && !isSubmitting && !isProfileSaving
       && !isExporting && !isDeletingBot && botDeletionTarget == nil
-      && editTarget == nil && panel == nil
+      && editTarget == nil && panel == nil && routineEditTarget == nil
+      && routineDetailTarget == nil && pendingRoutineActions.isEmpty
   }
 
   var currentNeedsMembershipRepair: Bool {

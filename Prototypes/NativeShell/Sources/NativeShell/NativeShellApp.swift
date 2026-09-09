@@ -50,6 +50,12 @@ import WorkspaceCore
     self.window = window
     window.delegate = self
     store.openSettingsAction = { [weak self] in self?.showSettings() }
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self, selector: #selector(workspaceWillSleep(_:)), name: NSWorkspace.willSleepNotification,
+      object: nil)
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self, selector: #selector(workspaceDidWake(_:)), name: NSWorkspace.didWakeNotification,
+      object: nil)
     installMenus()
     window.center()
     window.makeKeyAndOrderFront(nil)
@@ -90,6 +96,8 @@ import WorkspaceCore
     guard !preparingToQuit else { return .terminateCancel }
     store.cancelExportSelection?()
     store.cancelBotDeletion()
+    let recheckRoutineAfterSave = store.isRoutineSaving
+    guard discardRoutineChangesIfNeeded() else { return .terminateCancel }
     let recheckProfileAfterSave = store.isProfileSaving
     guard discardProfileChangesIfNeeded() else { return .terminateCancel }
     guard store.isPersistent else { return .terminateNow }
@@ -101,6 +109,12 @@ import WorkspaceCore
     // Cancel this request, flush asynchronously, then issue a prepared synchronous termination.
     Task {
       do {
+        await store.routineEditorSaveTask?.value
+        if recheckRoutineAfterSave, !discardRoutineChangesIfNeeded() {
+          preparingToQuit = false
+          store.isClosing = false
+          return
+        }
         await store.profileEditorSaveTask?.value
         if recheckProfileAfterSave, !discardProfileChangesIfNeeded() {
           preparingToQuit = false
@@ -166,6 +180,7 @@ import WorkspaceCore
         let groupID = try await store.performCreateGroup(
           name: "Project team", members: [botID, secondID])
         try await store.flushDrafts()
+        try await store.prepareForClose()
         try await first.close()
         var reopened = try await CoreDataWorkspaceRepository.open(at: url)
         persistentRepository = reopened
@@ -180,6 +195,11 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-routines") {
+          reopened = try await verifyRoutineFlow(
+            repository: reopened, url: url, botID: botID, groupID: groupID,
+            small: small, arguments: arguments)
+        }
         if arguments.contains("--verify-deletion") {
           reopened = try await verifyBotDeletionFlow(
             repository: reopened, url: url, botID: botID, otherBotID: secondID,
@@ -241,6 +261,7 @@ import WorkspaceCore
         print(
           "NATIVE_PERSISTENCE_SMOKE=PASS bots=\(finalSnapshot.bots.count) conversations=\(finalSnapshot.conversations.count) pausedRoutines=\(finalSnapshot.routines.filter { !$0.enabled }.count) restoredDrafts=1"
         )
+        try await store.prepareForClose()
         try await reopened.close()
         persistentRepository = nil
         store.repository = nil
@@ -407,6 +428,116 @@ import WorkspaceCore
       "NATIVE_REPLY_SMOKE=PASS offline=true restoredReplyDraft=true sentReference=true providerContext=true matchingDraftCleared=true nextDraftKept=true"
     )
     return reopened
+  }
+
+  /// Exercises native editor/controller and run controls with a synthetic provider/store only.
+  private func verifyRoutineFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, botID: UUID, groupID: UUID,
+    small: Bool, arguments: [String]
+  ) async throws -> CoreDataWorkspaceRepository {
+    let credentials = SmokeCredentials()
+    let provider = ProviderConfig(
+      name: "Offline routine fixture", apiRoot: URL(string: "https://fixture.invalid/v1")!,
+      modelID: "routine-fixture", credentialReference: "routine-smoke")
+    await credentials.write(Data("offline-routine-fixture".utf8), for: provider.credentialReference)
+    try await repository.apply(.saveProvider(provider))
+    try await store.connect(repository, credentials: credentials, provider: SmokeChatProvider())
+    store.selectedID = groupID
+    store.beginRoutineEditing()
+    guard let target = store.routineEditTarget, target.preferredOwnerID == nil else {
+      throw RoutineSmokeFailure(stage: "create-target")
+    }
+    let editor = RoutineEditorController(store: store, target: target)
+    await editor.load()?.value
+    editor.setOwnerID(botID)
+    editor.setName("Daily project check-in")
+    editor.setPrompt("Summarize the fictional project's progress and one next step.")
+    editor.setTriggerKind(.daily)
+    editor.setDailyHour(9)
+    editor.setDailyMinute(15)
+    editor.setTimezoneID("Asia/Bangkok")
+    editor.setProviderID(provider.id)
+    editor.setAuthorizedTransmission(true)
+    await editor.save()?.value
+    guard editor.shouldDismiss, editor.errorMessage == nil,
+      let routine = try await repository.snapshot().routines.first(where: {
+        $0.name == "Daily project check-in"
+      })
+    else { throw RoutineSmokeFailure(stage: "editor-save") }
+    store.routineEditTarget = nil
+    store.routineEditorDirty = false
+    // Wait for actual sheet transitions, not a guessed animation duration.
+    await Task.yield()
+    try await waitForRoutineSmoke("create-sheet-dismissed") { self.window?.attachedSheet == nil }
+    store.beginRoutineEditing(routine)
+    try await waitForRoutineSmoke("editor-render") {
+      self.store.routineEditTarget?.routineID == routine.id && self.window?.attachedSheet != nil
+    }
+    try await Task.sleep(for: .milliseconds(150))
+    writeSnapshot(small: small, arguments: arguments + ["--routine-editor"])
+    store.routineEditTarget = nil
+    store.routineEditorDirty = false
+    await Task.yield()
+    try await waitForRoutineSmoke("editor-dismissed") { self.window?.attachedSheet == nil }
+    store.draft = "Keep the group's draft during the routine run."
+    try await store.flushDrafts()
+    try await store.startRoutineRunNow(routine, authorizedTransmission: true).value
+    await store.coordinator?.waitForIdle()
+    let history = try await repository.routineRuns(routineID: routine.id)
+    guard history.count == 1, history.first?.status == .completed,
+      history.first?.ownerBotID == botID, history.first?.conversationID != groupID,
+      store.draft == "Keep the group's draft during the routine run."
+    else { throw RoutineSmokeFailure(stage: "run-completed") }
+    // Resume through the same detached editor and consent gate, then explicitly pause.
+    store.beginRoutineEditing(routine)
+    guard let resumeTarget = store.routineEditTarget else {
+      throw RoutineSmokeFailure(stage: "resume-target")
+    }
+    let resumeEditor = RoutineEditorController(store: store, target: resumeTarget)
+    await resumeEditor.load()?.value
+    resumeEditor.setEnabled(true)
+    resumeEditor.setAuthorizedTransmission(true)
+    await resumeEditor.save()?.value
+    guard resumeEditor.shouldDismiss, resumeEditor.errorMessage == nil,
+      let enabled = try await repository.snapshot().routines.first(where: { $0.id == routine.id }),
+      enabled.enabled, enabled.nextRunAt != nil
+    else { throw RoutineSmokeFailure(stage: "resume-save") }
+    store.routineEditTarget = nil
+    store.routineEditorDirty = false
+    try await store.startRoutinePause(enabled).value
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(reopened, credentials: credentials, provider: SmokeChatProvider())
+    await store.routineHost?.waitForReconciliation()
+    let restored = try await reopened.routineRuns(routineID: routine.id)
+    guard restored == history,
+      let paused = store.routineDefinitions.first(where: { $0.id == routine.id }), !paused.enabled,
+      paused.trigger == .daily(hour: 9, minute: 15), paused.timezoneID == "Asia/Bangkok"
+    else { throw RoutineSmokeFailure(stage: "restart") }
+    store.selectedID = groupID
+    store.openRoutine(routine.id)
+    await store.routineHistoryTask?.value
+    // The detail view starts its own refresh. Its newer request deliberately supersedes
+    // the first task, so that task finishing does not prove the visible projection is ready.
+    try await waitForRoutineSmoke("history-projection") {
+      self.store.routineDetailTarget?.id == routine.id && self.store.routineHistory == history
+        && self.window?.attachedSheet != nil
+    }
+    print(
+      "NATIVE_ROUTINE_SMOKE=PASS offline=true explicitGroupOwner=true dailyEditor=true runNow=true directOutput=true groupDraftKept=true resumePause=true historyRestored=true"
+    )
+    return reopened
+  }
+
+  private func waitForRoutineSmoke(_ stage: String, condition: @MainActor () -> Bool) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(5))
+    while !condition() {
+      guard clock.now < deadline else { throw RoutineSmokeFailure(stage: stage) }
+      try await Task.sleep(for: .milliseconds(10))
+    }
   }
 
   /// Explicitly injected, offline fixtures, available only in the isolated smoke workspace.
@@ -636,7 +767,17 @@ import WorkspaceCore
     settings.makeKeyAndOrderFront(nil)
   }
 
+  @objc private func workspaceWillSleep(_ notification: Notification) {
+    store.routineHost?.suspend()
+  }
+  @objc private func workspaceDidWake(_ notification: Notification) { store.routineHost?.wake() }
+
   func windowShouldClose(_ sender: NSWindow) -> Bool {
+    if sender === window, store.routineEditTarget != nil {
+      guard !store.isRoutineSaving, discardRoutineChangesIfNeeded() else { return false }
+      store.routineEditTarget = nil
+      store.routineEditorDirty = false
+    }
     if sender === window, store.botDeletionTarget != nil {
       guard !store.isDeletingBot else { return false }
       store.cancelBotDeletion()
@@ -668,6 +809,17 @@ import WorkspaceCore
     store.providerSettingsDirty = false
     return true
   }
+  private func discardRoutineChangesIfNeeded() -> Bool {
+    guard store.routineEditorDirty, !store.isRoutineSaving else { return true }
+    let alert = NSAlert()
+    alert.messageText = "Discard unsaved routine changes?"
+    alert.informativeText =
+      "The routine edits and authorization changes have not been saved. Existing runs and chat messages are kept."
+    alert.addButton(withTitle: "Keep Editing")
+    alert.addButton(withTitle: "Discard Changes")
+    return alert.runModal() == .alertSecondButtonReturn
+  }
+
   private func discardProfileChangesIfNeeded() -> Bool {
     guard store.profileEditorDirty, !store.isProfileSaving else { return true }
     let alert = NSAlert()
@@ -689,6 +841,7 @@ import WorkspaceCore
   private func writeSnapshot(small: Bool, arguments: [String]) {
     let target =
       arguments.contains("--verify-profiles") || arguments.contains("--deletion-confirmation")
+        || arguments.contains("--verify-routines")
       ? window?.attachedSheet
       : arguments.contains("--settings") || arguments.contains("--verify-export")
         ? settingsWindow : window
@@ -698,28 +851,30 @@ import WorkspaceCore
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--deletion-confirmation")
-      ? "delete-confirmation"
-      : arguments.contains("--verify-deletion")
-        ? "degraded-group"
-        : arguments.contains("--verify-export")
-          ? "export-settings"
-          : arguments.contains("--verify-profiles")
-            ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-            : arguments.contains("--verify-codex-fixture")
-              || arguments.contains("--verify-codex-stdin")
-              ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-              : arguments.contains("--verify-provider")
-                ? (arguments.contains("--settings")
-                  ? (arguments.contains("--router-models")
-                    ? "router-model-settings" : "provider-settings")
-                  : "provider-chat")
-                : arguments.contains("--verify-replies")
-                  ? "reply-chat"
-                  : arguments.contains("--verify-workspace")
-                    ? "durable-workspace"
-                    : arguments.contains("--group")
-                      ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--verify-routines")
+      ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
+      : arguments.contains("--deletion-confirmation")
+        ? "delete-confirmation"
+        : arguments.contains("--verify-deletion")
+          ? "degraded-group"
+          : arguments.contains("--verify-export")
+            ? "export-settings"
+            : arguments.contains("--verify-profiles")
+              ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+              : arguments.contains("--verify-codex-fixture")
+                || arguments.contains("--verify-codex-stdin")
+                ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+                : arguments.contains("--verify-provider")
+                  ? (arguments.contains("--settings")
+                    ? (arguments.contains("--router-models")
+                      ? "router-model-settings" : "provider-settings")
+                    : "provider-chat")
+                  : arguments.contains("--verify-replies")
+                    ? "reply-chat"
+                    : arguments.contains("--verify-workspace")
+                      ? "durable-workspace"
+                      : arguments.contains("--group")
+                        ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {
@@ -727,4 +882,9 @@ import WorkspaceCore
       print("NATIVE_SNAPSHOT=\(file.path)")
     } catch { print("Snapshot failed: \(error.localizedDescription)") }
   }
+}
+
+private struct RoutineSmokeFailure: LocalizedError {
+  let stage: String
+  var errorDescription: String? { "Offline routine smoke failed at \(stage)." }
 }

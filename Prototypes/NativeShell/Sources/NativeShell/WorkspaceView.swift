@@ -41,6 +41,13 @@ struct WorkspaceView: View {
     .sheet(item: $store.panel) { panel in PrototypePanel(store: store, panel: panel) }
     .sheet(item: $store.editTarget) { target in ProfileEditorView(store: store, target: target) }
     .sheet(item: $store.botDeletionTarget) { _ in BotDeletionView(store: store) }
+    .sheet(item: $store.routineDetailTarget) { RoutineDetailView(store: store, target: $0) }
+    .sheet(
+      item: Binding(
+        get: { store.routineDetailTarget == nil ? store.routineEditTarget : nil },
+        set: { if store.routineDetailTarget == nil { store.routineEditTarget = $0 } }
+      )
+    ) { RoutineEditorView(store: store, target: $0) }
     .onChange(of: store.search) { _, _ in Task { await store.searchPersistent() } }
     .onChange(of: store.showHidden) { _, _ in Task { await store.searchPersistent() } }
     .disabled(store.isLoading || store.isClosing)
@@ -69,7 +76,11 @@ struct WorkspaceView: View {
       }
     }
     .onExitCommand {
-      if store.botDeletionTarget != nil {
+      if store.routineEditTarget != nil {
+        // The routine editor owns dirty-discard handling.
+      } else if store.routineDetailTarget != nil {
+        store.closeRoutine()
+      } else if store.botDeletionTarget != nil {
         store.cancelBotDeletion()
       } else if store.editTarget != nil {
         // The editor owns dirty-discard confirmation, including Escape.
@@ -309,6 +320,19 @@ private struct ConversationView: View {
         }
         .accessibilityIdentifier("edit-conversation-profile")
         .disabled(store.editTarget != nil || store.isProfileSaving)
+      }
+      if store.isPersistent, store.current != nil {
+        Menu {
+          Button("Add Routine…") { store.beginRoutineEditing() }
+          ForEach(store.visibleRoutineDefinitions) { routine in
+            Button(routine.name) { store.openRoutine(routine.id) }
+          }
+        } label: {
+          Image(systemName: "clock")
+        }
+        .menuStyle(.borderlessButton).frame(width: 28)
+        .accessibilityLabel("Routines").accessibilityIdentifier("routine-menu")
+        .disabled(!store.canOpenRoutine)
       }
       ShellIconButton(symbol: "sidebar.right", label: "Toggle conversation details") {
         store.inspectorPreferred.toggle()
@@ -707,48 +731,7 @@ private struct InspectorView: View {
           Text("\(store.currentBot?.name ?? "Group")'s screen")
             .font(.system(size: 13)).foregroundStyle(ShellTheme.secondary)
             .frame(maxWidth: .infinity).padding(.top, 10).padding(.bottom, 22)
-          HStack {
-            Text("Routines").foregroundStyle(ShellTheme.secondary)
-            Spacer()
-            ShellIconButton(symbol: "plus", label: "Add routine") { store.panel = .routine }
-              .disabled(store.currentBot == nil)
-          }.padding(.bottom, 8)
-          let routines = store.routines.filter { $0.botID == store.currentBot?.id }
-          ForEach(routines) { routine in
-            Button {
-              store.notice =
-                "This routine is paused. Editing and scheduling are not connected yet."
-            } label: {
-              HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "clock").foregroundStyle(Color(hex: 0x16be8b)).font(
-                  .system(size: 18)
-                ).padding(.top, 5)
-                VStack(alignment: .leading, spacing: 4) {
-                  Text(routine.name).font(.system(size: 15))
-                  Text(
-                    routine.intervalMinutes % 60 == 0
-                      ? "Every \(routine.intervalMinutes / 60) hours"
-                      : "Every \(routine.intervalMinutes) minutes"
-                  )
-                  .foregroundStyle(ShellTheme.secondary)
-                  Text(
-                    store.isPersistent
-                      ? "Paused · scheduler not connected" : "Paused · sample routine"
-                  ).font(.system(size: 10)).foregroundStyle(
-                    ShellTheme.secondary)
-                }
-                Spacer(minLength: 0)
-              }.padding(.vertical, 7)
-            }.buttonStyle(.plain)
-          }
-          if routines.isEmpty {
-            Text(
-              store.current?.kind == .group
-                ? "Open a bot conversation to add its routine." : "No routines yet"
-            )
-            .foregroundStyle(ShellTheme.secondary).font(.system(size: 13))
-            .padding(.vertical, 14)
-          }
+          RoutineInspectorSection(store: store)
         }.padding(.horizontal, 19)
       }
       Spacer(minLength: 0)
