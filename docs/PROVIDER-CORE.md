@@ -12,12 +12,13 @@ usable credential, Send preserves the draft and does not fabricate a reply.
 - `ProviderSettingsView.swift`: secure replacement-only credential input, endpoint
   and model fields, explicit loopback-HTTP opt-in, content/destination disclosure,
   and dirty-state discard confirmation. Saved credentials are never loaded into
-  the field. Saving does not claim a verified connection.
-- `ProviderWorkspace.swift`: validates before Keychain access; writes a new
+  the field. Setup templates and explicit credential lifetime selection are described
+  in [provider setup](PROVIDER-SETUP.md). Saving does not claim a verified connection.
+- `ProviderWorkspace.swift`: validates before credential access; writes a new
   credential reference before committing metadata; removes the newly written item
   if the metadata save fails. Key rotation leaves the old reference valid until
-  the metadata commit succeeds. A changed API root requires key re-entry.
-- A blank replacement field retains the existing reference for the same API root.
+  the metadata commit succeeds. A changed API root or storage mode requires key re-entry.
+- A blank replacement field retains the existing reference for the same API root and storage mode.
   Unused old-item cleanup failure is surfaced without undoing saved metadata.
 - The composer shows the destination and context scope. Group replies use only
   the explicitly selected bot; mention-driven multi-bot rounds remain open.
@@ -29,13 +30,16 @@ usable credential, Send preserves the draft and does not fabricate a reply.
 
 ## Signing boundary — do not skip
 
-The default adapter uses the data-protection Keychain. Apple documents that its
+The default credential choice uses the data-protection Keychain. Apple documents that its
 access groups derive from signing entitlements authorized by a provisioning
 profile; an ad-hoc bundle must not invent a Team ID or assume this access works.
 See [Apple TN3137](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains).
 
 This app maps `errSecMissingEntitlement` (`-34018`) to an actionable signing
 message and never silently falls back to plaintext or the legacy file Keychain.
+An explicit **This session only** choice routes session-prefixed references to
+process memory, never to Keychain. It does not bypass or fabricate Keychain access.
+Recreating the credential service (including app relaunch) loses these keys.
 Real authorized signing/profile setup and a Keychain roundtrip remain release
 gates. [Apple's entitlement diagnostic](https://developer.apple.com/documentation/security/errsecmissingentitlement)
 explains inspecting the built executable's entitlements.
@@ -54,6 +58,10 @@ entry is explicit; no real key or existing Keychain record is used by tests/smok
 - `CredentialStore.swift`: protocol and exact-reference Keychain actor. Secrets
   are runtime `Data`, not provider metadata or Codable workspace fields. No
   plaintext fallback is provided.
+- `SessionAwareCredentialStore.swift`: explicit reference-scoped memory/Keychain
+  routing, preserving legacy provider references. No automatic fallback on failure.
+- `ProviderPreset.swift`: setup suggestions for general Z.ai, local 9router,
+  OpenAI Platform and custom endpoints; no entitlement or compatibility inference.
 - `GenerationCoordinator.swift`: persist the user message and queued generation
   before transport; one active request per conversation, at most three globally;
   cancellation, retry with a new attempt, and orderly shutdown.
@@ -79,13 +87,15 @@ and other non-text output are not supported.
 
 ## Verification and limits
 
-The core suite has **63 tests**: 29 repository, 11 generation/coordinator,
-15 SSE parser and 8 transport/request tests. Transport tests use URLProtocol;
+The core suite has **71 tests**: 29 repository, 11 generation/coordinator,
+15 SSE parser, 8 transport/request and 8 provider-setup/credential-routing tests. Transport tests use URLProtocol;
 coordinator tests use fake providers and credentials with temporary SQLite stores.
-The shell adds 13 provider-presentation tests to its 38 existing tests, for **114 total tests** across core and shell. They include key/metadata rollback, destination-change key re-entry, group targeting, concurrent draft edits, cancellation/retry, and recovery after a shutdown save failure.
+The shell adds 16 provider-presentation tests to its 38 existing tests, for **125 total tests** across core and shell. They include key/metadata rollback, destination/storage-mode key re-entry, session-only sends and key expiration after reconnect, group targeting, concurrent draft edits, cancellation/retry, and recovery after a shutdown save failure.
 
-No live requests, billable calls, real credentials or existing Keychain records
-were used. Transport tests also passed ten consecutive runs during development.
+These automated tests/smokes make no live requests or billable calls and use no real
+credentials or existing Keychain records. Separate manual account diagnostics are
+not native-app success evidence and are not published. Transport tests also passed
+ten consecutive runs during the earlier development checkpoint.
 
 Coverage includes Unicode at every byte split, CR/LF/CRLF, BOM/comments, terminal
 events, malformed/early-ended streams, size limits, unsafe URLs, request encoding,
@@ -115,7 +125,7 @@ scripts/native-app.sh provider-smoke --small
 scripts/native-app.sh provider-smoke --settings
 ```
 
-Provider smoke uses a new isolated temporary workspace, in-memory test credentials
+Provider smoke uses a new isolated temporary workspace, the explicit session credential route
 and an explicitly injected fixture stream. It invokes the native presentation
 service path, verifies one persisted user message and completed attributed reply,
 checks the cleared draft, renders this app's window and removes its temporary

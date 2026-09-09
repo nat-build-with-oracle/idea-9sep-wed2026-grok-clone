@@ -6,6 +6,86 @@ import XCTest
 
 @MainActor
 final class ProviderWorkspaceTests: XCTestCase {
+  func testSessionProviderWorksWithoutPersistentCredentialWritesAndExpiresOnReconnect() async throws
+  {
+    let (repository, _) = try await openRepository()
+    let persistent = RecordingCredentialStore()
+    await persistent.failNextWrite()
+    let credentials = SessionAwareCredentialStore(persistent: persistent)
+    let workspace = PreviewWorkspace(seed: false)
+    let provider = ScriptedProvider()
+    try await workspace.connect(repository, credentials: credentials, provider: provider)
+    _ = try await workspace.saveProvider(
+      id: nil, name: "Session provider", apiRoot: "https://fixture.invalid/v1", modelID: "fixture",
+      secret: "session-only-fixture", allowsLoopbackHTTP: false, credentialLifetime: .session)
+    let snapshot = try await repository.snapshot()
+    let configuration = try XCTUnwrap(snapshot.providers.first)
+    XCTAssertEqual(CredentialLifetime.forReference(configuration.credentialReference), .session)
+    let encoded = try JSONEncoder().encode(configuration)
+    XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("session-only-fixture"))
+    let writes = await persistent.writtenReferences()
+    XCTAssertTrue(writes.isEmpty)
+    _ = try await workspace.performCreateBot(
+      name: "Helper", description: "", color: "green", shape: .circle)
+    workspace.draft = "Session request"
+    var starts = provider.starts.makeAsyncIterator()
+    _ = try await workspace.submitDraft()
+    let start = await starts.next()
+    XCTAssertEqual(start, 0)
+    provider.send(.text("Session reply"), to: 0)
+    provider.send(.finished, to: 0, finish: true)
+    await workspace.coordinator?.waitForIdle()
+    XCTAssertEqual(workspace.currentMessages.last?.text, "Session reply")
+
+    try await workspace.connect(
+      repository, credentials: SessionAwareCredentialStore(persistent: persistent),
+      provider: provider)
+    workspace.draft = "Keep after restart"
+    do {
+      _ = try await workspace.submitDraft()
+      XCTFail("Expired session key must fail before transport")
+    } catch { XCTAssertEqual(error as? ProviderError, .missingCredential) }
+    XCTAssertEqual(workspace.draft, "Keep after restart")
+    let reopened = try await repository.snapshot()
+    XCTAssertEqual(reopened.generations.count, 1)
+  }
+
+  func testChangingCredentialLifetimeRequiresReentryAndPreservesOldKey() async throws {
+    let (repository, _) = try await openRepository()
+    let credentials = RecordingCredentialStore()
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(repository, credentials: credentials, provider: ScriptedProvider())
+    let id = try await saveFixtureProvider(in: workspace)
+    let before = try await repository.snapshot().providers
+    do {
+      _ = try await workspace.saveProvider(
+        id: id, name: "Session", apiRoot: "https://fixture.invalid/v1", modelID: "model",
+        secret: "", allowsLoopbackHTTP: false, credentialLifetime: .session)
+      XCTFail("Storage mode changes need explicit re-entry")
+    } catch { XCTAssertEqual(error as? ProviderSetupError, .changedCredentialLifetime) }
+    let after = try await repository.snapshot().providers
+    XCTAssertEqual(after, before)
+    let removals = await credentials.removedReferences()
+    XCTAssertTrue(removals.isEmpty)
+  }
+
+  func testSessionProviderMetadataEditRetainsLifetimeWithoutReadingSecret() async throws {
+    let (repository, _) = try await openRepository()
+    let credentials = SessionAwareCredentialStore(persistent: RecordingCredentialStore())
+    let workspace = PreviewWorkspace(seed: false)
+    try await workspace.connect(repository, credentials: credentials, provider: ScriptedProvider())
+    let id = try await workspace.saveProvider(
+      id: nil, name: "Session", apiRoot: "https://fixture.invalid/v1", modelID: "model",
+      secret: "session-fixture", allowsLoopbackHTTP: false, credentialLifetime: .session)
+    let before = try await repository.snapshot().providers.first
+    _ = try await workspace.saveProvider(
+      id: id, name: "Renamed", apiRoot: "https://fixture.invalid/v1", modelID: "model",
+      secret: "", allowsLoopbackHTTP: false)
+    let after = try await repository.snapshot().providers.first
+    XCTAssertEqual(before?.credentialReference, after?.credentialReference)
+    XCTAssertEqual(after?.name, "Renamed")
+  }
+
   func testSaveProviderKeepsSecretOutOfPersistedMetadata() async throws {
     let (repository, _) = try await openRepository()
     let credentials = RecordingCredentialStore()

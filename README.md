@@ -20,7 +20,9 @@ scripts/native-app.sh smoke
 scripts/native-app.sh provider-smoke # offline fixture; no key or live network
 ```
 
-The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Configure an endpoint/model/key in Settings, then select the provider and (for groups) the replying bot in the composer. Without a provider or usable key, the draft is retained. Protected Keychain access requires authorized signing; a local ad-hoc build may refuse credential storage rather than fall back to plaintext. See [provider integration and signing limits](docs/PROVIDER-CORE.md).
+The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Settings offers Z.ai general API, local 9router, OpenAI Platform and custom setup templates. Enter the endpoint/model/key, then select the provider and (for groups) the replying bot in the composer. Without a usable credential, the draft is retained.
+
+Protected Keychain access requires authorized signing. For an ad-hoc local build, explicitly choose **This session only** to keep the key in process memory until quitting; re-enter it on the next launch. There is no automatic fallback or plaintext credential file. See [provider setup](docs/PROVIDER-SETUP.md) and [integration/signing limits](docs/PROVIDER-CORE.md).
 
 ## Try the native prototype
 
@@ -41,10 +43,10 @@ third-party dependency installation is needed for the current app or tests.
 | Native UI | Three-pane workspace, bot/group creation, search, hide/show, native text composer |
 | Local data | Core Data persistence, drafts, message pagination, paused routine records |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
-| Credentials | Secure input and Keychain adapter; no plaintext fallback; actual authorized signing/Keychain access not yet verified |
+| Credentials | Protected Keychain by default, explicit session-only memory option; no automatic fallback; authorized signing/Keychain access still unverified |
 | Remaining gates | Live-provider validation, routine execution, attachments/export, remaining edit/delete and native accessibility flows |
 
-Verification: **114 tests** (63 core + 51 shell), desktop/narrow native persistence
+Verification: **125 tests** (71 core + 54 shell), desktop/narrow native persistence
 and offline provider smokes, Settings rendering, build/signature and formatting checks. See the evidence
 and limitations below for the current test counts and scope.
 

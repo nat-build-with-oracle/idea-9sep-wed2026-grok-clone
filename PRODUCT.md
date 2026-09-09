@@ -28,8 +28,8 @@ Honor the supplied dark, three-column macOS messaging reference. Use original im
 ## Evidence on Hand
 - A user-supplied screenshot was retained unchanged as a private design reference. It is excluded from the public repository and is not needed to build or test the app.
 - Earlier conversation: sidebar, new-chat and group-picker screenshots and read-only installed-bundle findings.
-- No existing product source, API credentials, or live-computer backend provided.
-- The SwiftUI/AppKit shell now has separate sample and durable modes. `scripts/native-app.sh` packages the durable app; `scripts/native-prototype.sh` retains the session-only visual fixture. `Packages/WorkspaceCore` provides validated Core Data persistence and the streaming generation coordinator; native provider settings/chat are wired and fixture-tested. Real Keychain/signing and provider checks remain open. See `docs/DURABLE-WORKSPACE.md` for verified scope and missing features.
+- No existing product source or live-computer backend was provided. Provider credentials are optional, user-controlled inputs; they are not repository assets.
+- The SwiftUI/AppKit shell now has separate sample and durable modes. `scripts/native-app.sh` packages the durable app; `scripts/native-prototype.sh` retains the session-only visual fixture. `Packages/WorkspaceCore` provides validated Core Data persistence and the streaming generation coordinator; native provider settings/chat are wired and fixture-tested. Z.ai/9router setup templates and explicit session-only credentials are available. Real Keychain/signing and successful native live-provider checks remain open. See `docs/DURABLE-WORKSPACE.md` for verified scope and missing features.
 
 ## Product Principles
 - A conversation is the primary work surface.

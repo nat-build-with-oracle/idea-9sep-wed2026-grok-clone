@@ -2,7 +2,7 @@ import Foundation
 import WorkspaceCore
 
 enum ProviderSetupError: Error, LocalizedError {
-  case noProvider, targetRequired, busy, changedDestination
+  case noProvider, targetRequired, busy, changedDestination, changedCredentialLifetime
   var errorDescription: String? {
     switch self {
     case .noProvider: "Choose a provider in Settings before sending. Your draft is kept."
@@ -10,6 +10,8 @@ enum ProviderSetupError: Error, LocalizedError {
     case .busy: "Wait for the current save to finish, then try again."
     case .changedDestination:
       "The destination changed. Re-enter the key to authorize its use with this API root."
+    case .changedCredentialLifetime:
+      "The credential storage choice changed. Re-enter the key; saved credentials are never copied between storage modes."
     }
   }
 }
@@ -124,7 +126,7 @@ extension PreviewWorkspace {
   @discardableResult
   func saveProvider(
     id: UUID?, name: String, apiRoot: String, modelID: String, secret: String,
-    allowsLoopbackHTTP: Bool
+    allowsLoopbackHTTP: Bool, credentialLifetime: CredentialLifetime? = nil
   ) async throws -> UUID {
     guard !isClosing, !isProviderSaving else { throw ProviderSetupError.busy }
     guard let repository, let credentials else { throw WorkspaceError.storeUnavailable }
@@ -149,7 +151,13 @@ extension PreviewWorkspace {
         !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       else { throw ProviderError.invalidCredential }
     }
-    let reference = replacement ? "provider-\(UUID())" : old!.credentialReference
+    let lifetime =
+      credentialLifetime ?? old.map { CredentialLifetime.forReference($0.credentialReference) }
+      ?? .keychain
+    if let old, !replacement, lifetime != CredentialLifetime.forReference(old.credentialReference) {
+      throw ProviderSetupError.changedCredentialLifetime
+    }
+    let reference = replacement ? lifetime.makeReference() : old!.credentialReference
     let configuration = ProviderConfig(
       id: old?.id ?? UUID(), name: cleanName, apiRoot: root,
       modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -166,7 +174,7 @@ extension PreviewWorkspace {
       if replacement {
         do { try await credentials.remove(reference) } catch {
           notice =
-            "Provider was not saved. An unused Keychain item could not be removed. No plaintext key was saved."
+            "Provider was not saved. An unused credential could not be removed. No plaintext key was saved to disk."
         }
       }
       throw error
@@ -177,7 +185,7 @@ extension PreviewWorkspace {
       !providers.contains(where: { $0.credentialReference == old.credentialReference })
     {
       do { try await credentials.remove(old.credentialReference) } catch {
-        notice = "Provider saved. Its previous unused Keychain item could not be removed."
+        notice = "Provider saved. Its previous unused credential could not be removed."
       }
     }
     return configuration.id

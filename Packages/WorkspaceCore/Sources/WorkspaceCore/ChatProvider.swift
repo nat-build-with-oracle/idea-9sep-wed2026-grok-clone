@@ -39,10 +39,11 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
     storageFailure
   public var errorDescription: String? {
     switch self {
-    case .missingCredential: "No API key is saved for this provider. Open Settings to add one."
+    case .missingCredential:
+      "No API key is available for this provider. Session keys expire when the app quits. Open Settings to add one."
     case .invalidCredential: "The API key must be a nonempty single-line value."
     case .keychain(-34018):
-      "This build lacks an authorized Keychain signing profile. Use a properly signed build; no plaintext key was saved."
+      "This build lacks an authorized Keychain signing profile. Use a properly signed build or explicitly choose This session only in Settings; no plaintext key was saved to disk."
     case .keychain(let status):
       "Keychain is unavailable (\(status)). No plaintext credential was saved."
     case .invalidResponse: "The provider returned an unsupported or malformed streaming response."
@@ -50,7 +51,8 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
       "The connection ended before the reply finished. Retry explicitly to continue."
     case .http(401), .http(403):
       "The provider rejected the API key or account access. Check Settings."
-    case .http(429): "The provider rate limit was reached. Wait before retrying."
+    case .http(429):
+      "The provider rate or account limit was reached. Check quota and API billing before retrying."
     case .http(let code): "The provider request failed (HTTP \(code))."
     case .redirectRefused:
       "The provider redirected the request. Set the final API root in Settings."

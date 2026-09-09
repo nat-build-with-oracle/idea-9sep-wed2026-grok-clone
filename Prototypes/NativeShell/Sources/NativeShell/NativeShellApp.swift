@@ -196,11 +196,13 @@ import WorkspaceCore
     repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID
   ) async throws {
     try await store.connect(
-      repository, credentials: SmokeCredentials(), provider: SmokeChatProvider(),
+      repository, credentials: SessionAwareCredentialStore(persistent: SmokeCredentials()),
+      provider: SmokeChatProvider(),
       displayName: "Smoke workspace")
     _ = try await store.saveProvider(
       id: nil, name: "Offline fixture provider", apiRoot: "https://fixture.invalid/v1",
-      modelID: "smoke-text", secret: "offline-fixture-credential", allowsLoopbackHTTP: false)
+      modelID: "smoke-text", secret: "offline-fixture-credential", allowsLoopbackHTTP: false,
+      credentialLifetime: .session)
     store.selectedID = conversationID
     store.selectedTargetBotIDs[conversationID] = targetID
     store.draft = "Summarize this fictional project."

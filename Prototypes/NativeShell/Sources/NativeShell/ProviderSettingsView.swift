@@ -9,6 +9,7 @@ struct ProviderSettingsView: View {
     var apiRoot: String
     var modelID: String
     var allowsLoopbackHTTP: Bool
+    var credentialLifetime: CredentialLifetime
   }
 
   @ObservedObject var store: PreviewWorkspace
@@ -19,10 +20,15 @@ struct ProviderSettingsView: View {
   @State private var modelID = ""
   @State private var replacementSecret = ""
   @State private var allowsLoopbackHTTP = false
+  @State private var credentialLifetime: CredentialLifetime = .keychain
+  @State private var selectedPreset: ProviderPreset?
+  @State private var pendingPreset: ProviderPreset?
+  @State private var isConfirmingPreset = false
   @State private var errorMessage: String?
   @State private var hasLoadedInitialSelection = false
   @State private var baseline = FieldValues(
-    name: "", apiRoot: "https://api.openai.com/v1", modelID: "", allowsLoopbackHTTP: false)
+    name: "", apiRoot: "https://api.openai.com/v1", modelID: "", allowsLoopbackHTTP: false,
+    credentialLifetime: .keychain)
   @State private var pendingProviderID: UUID?
   @State private var isConfirmingDiscard = false
 
@@ -71,6 +77,7 @@ struct ProviderSettingsView: View {
           }.padding(.top, 8).frame(maxWidth: .infinity, alignment: .leading)
         }
         configurationPicker
+        if isNewProvider { templatePicker }
         providerFields
         destinationDisclosure
         credentialDisclosure
@@ -99,6 +106,10 @@ struct ProviderSettingsView: View {
     .onChange(of: modelID) { _, _ in updateDirtyState() }
     .onChange(of: replacementSecret) { _, _ in updateDirtyState() }
     .onChange(of: allowsLoopbackHTTP) { _, _ in updateDirtyState() }
+    .onChange(of: credentialLifetime) { _, _ in
+      replacementSecret = ""
+      updateDirtyState()
+    }
     .onDisappear {
       replacementSecret = ""
       store.providerSettingsDirty = false
@@ -114,6 +125,17 @@ struct ProviderSettingsView: View {
     } message: {
       Text("Changing configurations will discard the edits and any credential entered here.")
     }
+    .alert("Replace this form with a setup template?", isPresented: $isConfirmingPreset) {
+      Button("Keep Editing", role: .cancel) { pendingPreset = nil }
+      Button("Replace Form", role: .destructive) {
+        if let pendingPreset { applyPreset(pendingPreset) }
+        pendingPreset = nil
+      }
+    } message: {
+      Text(
+        "The name, endpoint, model and HTTP choice will be replaced. Any entered credential is cleared; no connection is made."
+      )
+    }
   }
 
   private var introduction: some View {
@@ -121,11 +143,43 @@ struct ProviderSettingsView: View {
       Text("Model Provider")
         .font(.system(size: 24, weight: .semibold))
       Text(
-        "Add an OpenAI-compatible chat endpoint. Saving stores configuration metadata in the workspace and the credential in the protected macOS Keychain."
+        "Add an OpenAI-compatible text chat endpoint. Choose protected Keychain storage or explicitly keep its credential in memory for this session."
       )
       .font(.system(size: 13))
       .foregroundStyle(ShellTheme.secondary)
       .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private var templatePicker: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Picker(
+        "Setup template",
+        selection: Binding(
+          get: { selectedPreset },
+          set: { preset in
+            guard let preset, preset != selectedPreset else { return }
+            if store.providerSettingsDirty {
+              pendingPreset = preset
+              isConfirmingPreset = true
+            } else {
+              applyPreset(preset)
+            }
+          })
+      ) {
+        Text("Choose a template (optional)").tag(Optional<ProviderPreset>.none)
+        ForEach(ProviderPreset.allCases) { preset in
+          Text(preset.name).tag(Optional(preset))
+        }
+      }
+      .accessibilityIdentifier("provider-setup-template")
+      if let selectedPreset {
+        Text(selectedPreset.guidance)
+          .font(.caption).foregroundStyle(ShellTheme.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("Template values remain editable. Review the actual destination below before saving.")
+          .font(.caption2).foregroundStyle(ShellTheme.secondary)
+      }
     }
   }
 
@@ -179,11 +233,18 @@ struct ProviderSettingsView: View {
           .accessibilityLabel("Model identifier")
           .accessibilityIdentifier("provider-model-id")
 
+        Picker("Credential storage", selection: $credentialLifetime) {
+          ForEach(CredentialLifetime.allCases) { lifetime in
+            Text(lifetime.name).tag(lifetime)
+          }
+        }
+        .accessibilityIdentifier("provider-credential-storage")
+
         fieldLabel(
           editingProvider == nil ? "Credential" : "Replacement credential",
           detail: editingProvider == nil
             ? "Required for a new configuration"
-            : "Leave blank to keep the key for the same API root; re-enter it if the destination changes"
+            : "Leave blank to keep the key for the same API root and storage mode; otherwise re-enter it"
         )
         SecureField("Provider credential", text: $replacementSecret)
           .textFieldStyle(.roundedBorder)
@@ -233,12 +294,10 @@ struct ProviderSettingsView: View {
     VStack(alignment: .leading, spacing: 8) {
       Label("Credential protection", systemImage: "key.fill")
         .font(.headline)
-      Text(
-        "The credential is written to the protected macOS Keychain and is never displayed here. A locally built app may need an authorized signing profile to use the protected Keychain. There is no plaintext fallback."
-      )
-      .font(.system(size: 12))
-      .foregroundStyle(ShellTheme.secondary)
-      .fixedSize(horizontal: false, vertical: true)
+      Text(credentialLifetime.guidance)
+        .font(.system(size: 12))
+        .foregroundStyle(ShellTheme.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       Text(
         "Saving records the configuration; it does not verify the connection. Connection status is known only after a reply request succeeds."
       )
@@ -314,6 +373,7 @@ struct ProviderSettingsView: View {
   }
 
   private func loadProvider(_ id: UUID?) {
+    selectedPreset = nil
     replacementSecret = ""
     errorMessage = nil
     guard let id, let provider = store.providers.first(where: { $0.id == id }) else {
@@ -321,6 +381,7 @@ struct ProviderSettingsView: View {
       apiRoot = "https://api.openai.com/v1"
       modelID = ""
       allowsLoopbackHTTP = false
+      credentialLifetime = .keychain
       baseline = currentFieldValues
       store.providerSettingsDirty = false
       return
@@ -329,13 +390,27 @@ struct ProviderSettingsView: View {
     apiRoot = provider.apiRoot.absoluteString
     modelID = provider.modelID
     allowsLoopbackHTTP = provider.allowsLoopbackHTTP
+    credentialLifetime = CredentialLifetime.forReference(provider.credentialReference)
     baseline = currentFieldValues
     store.providerSettingsDirty = false
   }
 
   private var currentFieldValues: FieldValues {
     FieldValues(
-      name: name, apiRoot: apiRoot, modelID: modelID, allowsLoopbackHTTP: allowsLoopbackHTTP)
+      name: name, apiRoot: apiRoot, modelID: modelID, allowsLoopbackHTTP: allowsLoopbackHTTP,
+      credentialLifetime: credentialLifetime)
+  }
+
+  private func applyPreset(_ preset: ProviderPreset) {
+    selectedPreset = preset
+    name = preset == .custom ? "" : preset.name
+    apiRoot = preset.apiRoot
+    modelID = preset.suggestedModel
+    // Even a local template needs an explicit HTTP opt-in. Never carry entered keys across roots.
+    allowsLoopbackHTTP = false
+    replacementSecret = ""
+    errorMessage = nil
+    updateDirtyState()
   }
 
   private func updateDirtyState() {
@@ -351,6 +426,7 @@ struct ProviderSettingsView: View {
     let submittedModel = modelID
     let submittedSecret = replacementSecret
     let submittedLoopback = allowsLoopbackHTTP
+    let submittedLifetime = credentialLifetime
 
     Task {
       do {
@@ -360,7 +436,8 @@ struct ProviderSettingsView: View {
           apiRoot: submittedRoot,
           modelID: submittedModel,
           secret: submittedSecret,
-          allowsLoopbackHTTP: submittedLoopback
+          allowsLoopbackHTTP: submittedLoopback,
+          credentialLifetime: submittedLifetime
         )
         replacementSecret = ""
         editingProviderID = savedID

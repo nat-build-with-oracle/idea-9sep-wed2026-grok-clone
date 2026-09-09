@@ -4,7 +4,7 @@ import WorkspaceCore
 extension PreviewWorkspace {
   func connect(
     _ repository: any WorkspaceRepository,
-    credentials: any CredentialStore = KeychainCredentialStore(),
+    credentials: any CredentialStore = SessionAwareCredentialStore(),
     provider: any ChatProvider = ChatCompletionsProvider(), displayName: String? = nil
   ) async throws {
     try await coordinator?.shutdown()
