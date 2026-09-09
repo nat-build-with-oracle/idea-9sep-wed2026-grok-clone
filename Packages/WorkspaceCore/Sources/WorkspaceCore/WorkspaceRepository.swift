@@ -53,9 +53,13 @@ public enum WorkspaceMutation: Sendable {
   /// Caller retains both IDs across retries. They must differ and must not already exist.
   case createBot(Bot, conversationID: UUID)
   case updateBot(Bot)
+  /// Atomically replaces only editable bot fields when they still match `expected`.
+  case editBot(id: UUID, expected: BotProfile, replacement: BotProfile)
   case setHidden(botID: UUID, at: Date?)
   case createGroup(Conversation)
   case updateGroup(id: UUID, title: String, members: [UUID])
+  /// Atomically replaces only editable group fields when they still match `expected`.
+  case editGroup(id: UUID, expected: GroupProfile, replacement: GroupProfile)
   case saveDraft(Draft)
   /// Commits user message, initial generation, sequence allocation and draft clear in one save.
   /// Transport is deliberately outside the repository; this does not itself contact any provider.

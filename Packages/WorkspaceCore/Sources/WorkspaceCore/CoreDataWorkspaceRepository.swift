@@ -206,6 +206,22 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         try put("Conversation", value: conversation)
       }
 
+    case .editBot(let id, let expected, let replacement):
+      var bot: Bot = try read("Bot", id: id)
+      let expected = try expected.validated()
+      let replacement = try replacement.validated()
+      guard BotProfile(bot) == expected else { throw WorkspaceError.editConflict }
+      bot.name = replacement.name
+      bot.description = replacement.description
+      bot.color = replacement.color
+      bot.shape = replacement.shape
+      try put("Bot", value: bot)
+      for var conversation in try all("Conversation", as: Conversation.self)
+      where conversation.kind == .direct && conversation.memberBotIDs == [bot.id] {
+        conversation.title = bot.name
+        try put("Conversation", value: conversation)
+      }
+
     case .setHidden(let id, let at):
       var bot: Bot = try read("Bot", id: id)
       bot.hiddenAt = at
@@ -228,6 +244,18 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       conversation.title = try DomainValidation.name(title)
       try validateMembers(members)
       conversation.memberBotIDs = members
+      try put("Conversation", value: conversation)
+
+    case .editGroup(let id, let expected, let replacement):
+      var conversation: Conversation = try read("Conversation", id: id)
+      guard conversation.kind == .group else { throw WorkspaceError.invalidMembers }
+      let expected = try expected.validated()
+      let replacement = try replacement.validated()
+      guard GroupProfile(conversation) == expected else { throw WorkspaceError.editConflict }
+      try validateEditedMembers(
+        replacement.memberBotIDs, retaining: Set(conversation.memberBotIDs))
+      conversation.title = replacement.title
+      conversation.memberBotIDs = replacement.memberBotIDs
       try put("Conversation", value: conversation)
 
     case .saveDraft(let draft):
@@ -399,15 +427,24 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     if let id { let _: ProviderConfig = try read("Provider", id: id) }
   }
   private func validateMembers(_ ids: [UUID], allowHidden: Bool = false) throws {
-    guard (2...6).contains(ids.count), Set(ids).count == ids.count else {
-      throw WorkspaceError.invalidMembers
-    }
+    _ = try GroupProfile(title: "Members", memberBotIDs: ids).validated()
     for id in ids {
       guard let record = try find("Bot", id: id.uuidString) else {
         throw WorkspaceError.invalidMembers
       }
       let bot = try decode(record, as: Bot.self)
       guard allowHidden || bot.hiddenAt == nil else { throw WorkspaceError.invalidMembers }
+    }
+  }
+  private func validateEditedMembers(_ ids: [UUID], retaining existingIDs: Set<UUID>) throws {
+    for id in ids {
+      guard let record = try find("Bot", id: id.uuidString) else {
+        throw WorkspaceError.invalidMembers
+      }
+      let bot = try decode(record, as: Bot.self)
+      guard bot.hiddenAt == nil || existingIDs.contains(id) else {
+        throw WorkspaceError.invalidMembers
+      }
     }
   }
   private func validateReply(_ id: UUID?, conversationID: UUID) throws {

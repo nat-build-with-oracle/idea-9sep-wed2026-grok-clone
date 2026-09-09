@@ -202,7 +202,7 @@ public struct MessagePage: Sendable, Equatable {
 
 public enum WorkspaceError: Error, Sendable, Equatable, LocalizedError {
   case invalidName, invalidDescription, invalidMembers, invalidAvatar, invalidRoutine
-  case invalidProvider, invalidDraft, missingRecord, identityConflict, staleRevision
+  case invalidProvider, invalidDraft, missingRecord, identityConflict, staleRevision, editConflict
   case invalidPage, unsupportedSchema, invalidStore, storeUnavailable, storeClosed, storeInUse
 
   public var errorDescription: String? {
@@ -217,6 +217,7 @@ public enum WorkspaceError: Error, Sendable, Equatable, LocalizedError {
     case .missingRecord: "This workspace item is no longer available."
     case .identityConflict: "This identity already belongs to a workspace item."
     case .staleRevision: "The workspace changed. Refresh before trying again."
+    case .editConflict: "This profile changed. Review the latest values before saving again."
     case .invalidPage: "Choose a page size between 1 and 500."
     case .unsupportedSchema: "This workspace version is not supported. Its data has not been reset."
     case .invalidStore: "The workspace could not be read. Its data has not been reset."
@@ -236,12 +237,34 @@ enum DomainValidation {
   }
   static func bot(_ value: Bot) throws -> Bot {
     var bot = value
-    bot.name = try name(bot.name)
-    guard bot.description.count <= 8_000 else { throw WorkspaceError.invalidDescription }
-    guard ["green", "magenta", "gray", "violet", "blue", "orange"].contains(bot.color) else {
+    let profile = try botProfile(BotProfile(bot))
+    bot.name = profile.name
+    bot.description = profile.description
+    bot.color = profile.color
+    bot.shape = profile.shape
+    return bot
+  }
+  static func botProfile(_ value: BotProfile) throws -> BotProfile {
+    var profile = value
+    profile.name = try name(profile.name)
+    guard profile.description.count <= 8_000 else {
+      throw WorkspaceError.invalidDescription
+    }
+    guard ["green", "magenta", "gray", "violet", "blue", "orange"].contains(profile.color)
+    else {
       throw WorkspaceError.invalidAvatar
     }
-    return bot
+    return profile
+  }
+  static func groupProfile(_ value: GroupProfile) throws -> GroupProfile {
+    var profile = value
+    profile.title = try name(profile.title)
+    guard (2...6).contains(profile.memberBotIDs.count),
+      Set(profile.memberBotIDs).count == profile.memberBotIDs.count
+    else {
+      throw WorkspaceError.invalidMembers
+    }
+    return profile
   }
   static func routine(_ value: Routine) throws -> Routine {
     var routine = value
