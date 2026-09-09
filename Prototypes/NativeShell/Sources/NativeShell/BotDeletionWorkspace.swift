@@ -19,7 +19,7 @@ extension PreviewWorkspace {
   }
 
   func canRetry(_ generation: Generation) -> Bool {
-    guard !isDeletingBot, !isClosing,
+    guard !isDeletingBot, !isClosing, generation.routineRunID == nil,
       let conversation = conversations.first(where: { $0.id == generation.conversationID }),
       conversation.memberIDs.contains(generation.targetBotID),
       bots.contains(where: { $0.id == generation.targetBotID })

@@ -337,7 +337,8 @@ import WorkspaceCore
     let data = try Data(contentsOf: destination)
     let document = try JSONDecoder().decode(WorkspaceExportDocument.self, from: data)
     guard store.exportError == nil, store.exportStatus != nil,
-      document.formatVersion == 1, document.summary.botCount == 2,
+      document.formatVersion == WorkspaceExportDocument.currentFormatVersion,
+      document.summary.botCount == 2,
       document.summary.conversationCount == 3, document.messages.count == 2,
       document.messages.last?.text == "Export fixture answer",
       document.drafts.contains(where: {

@@ -54,6 +54,38 @@ import XCTest
     XCTAssertTrue(f.store.canExportWorkspace)
   }
 
+  func testConfirmationIncludesAndCancelsClaimedRoutineBeforeAnyGenerationExists() async throws {
+    let f = try await fixture()
+    let snapshot = try await f.repository.snapshot()
+    let routine = try XCTUnwrap(snapshot.routines.first)
+    let run = RoutineRun(
+      routineID: routine.id, ownerBotID: f.botID, conversationID: f.directID,
+      name: routine.name, prompt: routine.prompt, providerBinding: nil, generationID: UUID())
+    try await f.repository.apply(
+      .claimRoutineRun(expected: routine, run: run, skipped: nil, nextRunAt: nil))
+    await f.store.beginBotDeletion(f.botID)?.value
+    XCTAssertEqual(f.store.botDeletionPlan?.routineRunCount, 1)
+    XCTAssertEqual(f.store.botDeletionPlan?.activeRoutineRunIDs, [run.id])
+    XCTAssertEqual(f.store.botDeletionPlan?.activeGenerationIDs, [])
+    await f.store.confirmBotDeletion()?.value
+    XCTAssertNil(f.store.botDeletionError)
+    let history = try await f.repository.routineRuns(routineID: nil)
+    let after = try await f.repository.snapshot()
+    XCTAssertTrue(history.isEmpty)
+    XCTAssertFalse(after.bots.contains { $0.id == f.botID })
+    XCTAssertEqual(after.providers, [f.provider])
+  }
+
+  func testRoutineProvenanceDisablesOrdinaryNativeRetry() async throws {
+    let f = try await fixture()
+    var generation = Generation(
+      id: UUID(), conversationID: f.directID, userMessageID: UUID(), attemptID: UUID(),
+      targetBotID: f.botID, state: .failed, lastEventSequence: 0, error: nil)
+    XCTAssertTrue(f.store.canRetry(generation))
+    generation.routineRunID = UUID()
+    XCTAssertFalse(f.store.canRetry(generation))
+  }
+
   func testDeletedSelectedConversationFallsBackWithoutGhostDraft() async throws {
     let f = try await fixture()
     f.store.selectedID = f.directID

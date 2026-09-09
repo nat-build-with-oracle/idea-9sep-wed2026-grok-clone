@@ -18,11 +18,16 @@ struct BotDeletionView: View {
           } else if let plan = store.botDeletionPlan {
             Text(plan.name).font(.headline).textSelection(.enabled)
             Text(
-              "Delete \(plan.directConversationCount) direct conversations, \(plan.messageCount) messages, \(plan.draftCount) drafts, \(plan.generationCount) generation records and \(plan.routineCount) owned routines."
+              "Delete \(plan.directConversationCount) direct conversations, \(plan.messageCount) messages, \(plan.draftCount) drafts, \(plan.generationCount) generation records, \(plan.routineCount) owned routines and \(plan.routineRunCount) routine history records."
             )
             Text(
               "Stop \(plan.activeGenerationIDs.count) active or queued replies in affected conversations. Completed and partial group history stays, with recorded speaker names."
             )
+            if !plan.activeRoutineRunIDs.isEmpty {
+              Text(
+                "Stop \(plan.activeRoutineRunIDs.count) active routine runs, including any waiting to connect."
+              )
+            }
             if !plan.affectedGroups.isEmpty {
               VStack(alignment: .leading, spacing: 7) {
                 Text("Remove from \(plan.affectedGroupCount) groups:").font(.headline)

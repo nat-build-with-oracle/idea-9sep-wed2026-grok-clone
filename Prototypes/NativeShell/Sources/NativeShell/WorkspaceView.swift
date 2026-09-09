@@ -562,6 +562,8 @@ private struct GenerationStatusView: View {
         if !generation.state.isTerminal {
           Button("Stop") { action { try await store.cancelReply(generation.id) } }
             .accessibilityIdentifier("stop-\(generation.id)")
+        } else if generation.routineRunID != nil {
+          Text("Routine run · retry unavailable here").font(.caption)
         } else {
           Button("Retry") { action { try await store.retryReply(generation.id) } }
             .help(

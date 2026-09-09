@@ -125,7 +125,11 @@ extension PreviewWorkspace {
     }
     pendingGenerationActions.insert(id)
     defer { pendingGenerationActions.remove(id) }
-    try await coordinator.cancel(id)
+    if let runID = generations.first(where: { $0.id == id })?.routineRunID {
+      try await coordinator.cancelRoutine(runID)
+    } else {
+      try await coordinator.cancel(id)
+    }
   }
 
   func retryReply(_ id: UUID) async throws {

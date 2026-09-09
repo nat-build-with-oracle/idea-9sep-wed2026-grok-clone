@@ -76,7 +76,7 @@ extension PreviewWorkspace {
         try await write(data, url)
         guard context == replyContextGeneration else { return }
         exportStatus =
-          "Exported \(document.summary.conversationCount) conversations and \(document.summary.messageCount) messages. Stored credentials excluded."
+          "Exported \(document.summary.conversationCount) conversations, \(document.summary.messageCount) messages and \(document.summary.routineRunCount) routine history records. Stored credentials excluded."
       } catch {
         guard context == replyContextGeneration else { return }
         // Filesystem errors can include paths; never display arbitrary transport/filesystem errors.
