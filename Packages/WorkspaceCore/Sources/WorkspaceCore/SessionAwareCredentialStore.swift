@@ -15,7 +15,8 @@ public enum CredentialLifetime: String, CaseIterable, Sendable, Identifiable {
 
   private static let sessionPrefix = "session-provider-"
   public static func forReference(_ reference: String) -> Self {
-    reference.hasPrefix(sessionPrefix) ? .session : .keychain
+    reference.hasPrefix(sessionPrefix) || CodexSessionCredential.isReference(reference)
+      ? .session : .keychain
   }
   public func makeReference() -> String {
     (self == .session ? Self.sessionPrefix : "provider-") + UUID().uuidString
@@ -34,7 +35,10 @@ public actor SessionAwareCredentialStore: CredentialStore {
 
   public func read(_ reference: String) async throws -> Data {
     if CredentialLifetime.forReference(reference) == .session {
-      guard let value = sessionValues[reference] else { throw ProviderError.missingCredential }
+      guard let value = sessionValues[reference] else {
+        throw CodexSessionCredential.isReference(reference)
+          ? ProviderError.codexLoginRequired : ProviderError.missingCredential
+      }
       return value
     }
     return try await persistent.read(reference)

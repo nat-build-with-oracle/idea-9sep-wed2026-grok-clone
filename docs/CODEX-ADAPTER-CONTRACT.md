@@ -1,6 +1,6 @@
 # Experimental Codex login adapter — implementation contract
 
-Status: **planned, not native functionality yet** · 2026-09-10
+Status: **implemented experimentally; release/product gates remain open** · 2026-09-10
 
 The requested outcome is ChatGPT-backed replies using an explicitly supplied
 existing Codex login, without a local command executor and without treating an
@@ -89,3 +89,55 @@ Codex credential reference  ─X→ custom chat-completions endpoint
 - Keep local account diagnostics private; commit/push only original source,
   synthetic tests and non-secret contracts. Release signing, all other R/T gates
   and remaining product features stay open until individually verified.
+
+## Implemented boundaries and current evidence
+
+- `ProviderConfig.kind` defaults legacy JSON to chat-completions. Codex metadata
+  requires its fixed root and `session-codex-` reference; generic adapters reject
+  that namespace even if kind/root metadata is changed. The protected Keychain
+  implementation also rejects direct Codex-reference writes.
+- `CodexSessionCredential` is non-Codable and redacts descriptions. Its versioned
+  memory-only envelope contains just access/account fields, never source JSON or
+  refresh/ID tokens. Session-store recreation loses imported access.
+- Native Settings has an explicit bounded user-selected file import, a stale-import
+  generation guard, fixed destination, editable model, kind-change credential
+  re-entry and memory-only/context disclosures. The durable bundle adds only
+  user-selected **read-only** file access, not broad filesystem access.
+- The fixed backend was observed returning HTTP 200 without Content-Type. Only the
+  Codex adapter accepts an absent header and then requires strict SSE/event parsing;
+  explicit non-SSE MIME types and generic missing-MIME responses are still rejected.
+  JSON/HTML bodies fail closed. URL, redirect, TLS, byte and time limits are unchanged.
+- Codex SSE framing caps line/event sizes at 1 MiB, total wire at 16 MiB and emitted
+  text at 4 MiB. Success requires explicit completed status, response ID and supported
+  output items and emitted text. The terminal output array can omit repeated messages
+  only after a validated nonempty assistant `output_item.done`; a bare delta,
+  added-only item or empty completion is insufficient. Reasoning is not rendered as assistant text; tool/unknown output,
+  malformed payloads and premature EOF fail. Refusal completion uses the `refusal`
+  field from the [official Responses streaming schema](https://platform.openai.com/docs/api-reference/responses-streaming/response/refusal).
+
+Reproducible offline native evidence:
+
+```sh
+scripts/native-app.sh test
+scripts/native-app.sh codex-smoke
+scripts/native-app.sh codex-smoke --settings
+```
+
+`codex-smoke` uses synthetic auth plus an intercepted byte-split HTTP/SSE response,
+then the real provider router, coordinator, repository and native presentation path.
+It verifies completed attribution and draft clearing without sending a real request.
+The explicit `codex-smoke-stdin` diagnostic is **not** part of normal tests: it accepts
+a deliberate auth-file handoff and makes a real minimal request in an isolated store.
+It does not refresh, read a hardcoded home path, or copy the original credential file.
+
+This slice does not close the full R01–R09/T01–T18 product contract, release signing,
+macOS 14 runtime, complete accessibility, routine execution or real 9router gates.
+
+Manual native checkpoint (2026-09-10): an explicitly authorized stdin handoff
+completed the expected minimal text reply through the built native app, provider
+router, real SSE transport, coordinator and isolated SQLite persistence. Attribution
+and draft clearing passed; the original auth file remained unchanged and no refresh
+was attempted. Diagnostic account information is private. This does not prove a
+public API guarantee, all accounts/models, native file-picker automation or release
+signing. Normal reproduction remains fixture-only unless a developer explicitly
+chooses the separately named live command.

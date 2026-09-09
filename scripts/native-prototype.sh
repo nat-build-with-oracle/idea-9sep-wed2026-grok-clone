@@ -35,13 +35,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 ENTITLEMENTS="$PACKAGE/.build/preview.entitlements"
 NETWORK_ENTITLEMENT=""
+FILE_ENTITLEMENT=""
 if [[ "${NATIVE_WORKSPACE_APP:-0}" == "1" ]]; then
   NETWORK_ENTITLEMENT='<key>com.apple.security.network.client</key><true/>'
+  FILE_ENTITLEMENT='<key>com.apple.security.files.user-selected.read-only</key><true/>'
 fi
 cat > "$ENTITLEMENTS" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/>$NETWORK_ENTITLEMENT</dict></plist>
+<plist version="1.0"><dict><key>com.apple.security.app-sandbox</key><true/>$NETWORK_ENTITLEMENT$FILE_ENTITLEMENT</dict></plist>
 PLIST
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP"
 codesign --verify --strict "$APP"

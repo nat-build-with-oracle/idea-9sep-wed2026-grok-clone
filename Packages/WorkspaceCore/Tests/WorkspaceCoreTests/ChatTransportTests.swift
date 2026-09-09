@@ -4,6 +4,146 @@ import XCTest
 @testable import WorkspaceCore
 
 final class ChatTransportTests: XCTestCase {
+  func testCodexRejectsExplicitWrongMIME() async throws {
+    let request = try codexRequest()
+    let provider = CodexResponsesProvider(configuration: fixtureConfiguration())
+    for mime in ["application/json", "text/plain", "text/html", "application/octet-stream"] {
+      URLProtocolFixture.shared.install { instance in
+        instance.respond(status: 200, contentType: mime, chunks: [])
+      }
+      await assertProviderError(.invalidResponse) {
+        _ = try await self.collect(provider.stream(request))
+      }
+    }
+  }
+
+  func testOnlyCodexMayParseMissingMIMEAndStillRejectsNonSSE() async throws {
+    URLProtocolFixture.shared.install { instance in
+      let response = HTTPURLResponse(
+        url: instance.request.url!, statusCode: 200,
+        httpVersion: "HTTP/1.1", headerFields: [:])!
+      instance.client?.urlProtocol(instance, didReceive: response, cacheStoragePolicy: .notAllowed)
+      instance.client?.urlProtocol(
+        instance,
+        didLoad: Data(
+          "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"fixture\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\"}]}]}}\n\n"
+            .utf8))
+      instance.client?.urlProtocolDidFinishLoading(instance)
+    }
+    let router = ProviderRouter(configuration: fixtureConfiguration())
+    let codex = try codexRequest()
+    let events = try await collect(router.stream(codex))
+    XCTAssertEqual(events, [.text("answer"), .finished])
+    await assertProviderError(.invalidResponse) {
+      _ = try await self.collect(router.stream(self.validRequest()))
+    }
+    for body in ["{\"error\":\"secret-echo-never-displayed\"}", "<html>not a stream</html>"] {
+      URLProtocolFixture.shared.install { instance in
+        let response = HTTPURLResponse(
+          url: instance.request.url!, statusCode: 200,
+          httpVersion: "HTTP/1.1", headerFields: [:])!
+        instance.client?.urlProtocol(
+          instance, didReceive: response, cacheStoragePolicy: .notAllowed)
+        instance.client?.urlProtocol(instance, didLoad: Data(body.utf8))
+        instance.client?.urlProtocolDidFinishLoading(instance)
+      }
+      await assertProviderError(.invalidResponse) {
+        _ = try await self.collect(router.stream(codex))
+      }
+    }
+  }
+
+  func testCodexRouterStreamsUsingFixedOriginWithoutAmbientHeaders() async throws {
+    URLProtocolFixture.shared.install { instance in
+      XCTAssertEqual(instance.request.url, CodexResponsesProvider.endpoint)
+      XCTAssertEqual(
+        instance.request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-access")
+      XCTAssertNil(instance.request.value(forHTTPHeaderField: "X-Ambient-Credential"))
+      instance.respond(
+        status: 200, contentType: "text/event-stream",
+        chunks: [
+          Data(
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"fixture\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello\"}]}]}}\n\n"
+              .utf8)
+        ])
+    }
+    let configuration = fixtureConfiguration()
+    configuration.httpAdditionalHeaders = ["X-Ambient-Credential": "must-not-forward"]
+    let router = ProviderRouter(configuration: configuration)
+    let events = try await collect(router.stream(codexRequest()))
+    XCTAssertEqual(events, [.text("Hello"), .finished])
+  }
+
+  func testCodexRejectionRequestsReimportWithoutReadingResponseBody() async throws {
+    for status in [401, 403] {
+      URLProtocolFixture.shared.install { instance in
+        instance.respond(
+          status: status, contentType: "application/json",
+          chunks: [Data("never-display-secret-echo".utf8)])
+      }
+      let provider = CodexResponsesProvider(configuration: fixtureConfiguration())
+      let request = try codexRequest()
+      await assertProviderError(.codexLoginRequired) {
+        _ = try await self.collect(provider.stream(request))
+      }
+    }
+  }
+
+  func testCodexRefusesRedirectAndPrematureEOF() async throws {
+    URLProtocolFixture.shared.install { instance in
+      instance.redirect(to: URL(string: "https://example.test/steal")!)
+    }
+    let provider = CodexResponsesProvider(configuration: fixtureConfiguration())
+    let request = try codexRequest()
+    await assertProviderError(.redirectRefused) {
+      _ = try await self.collect(provider.stream(request))
+    }
+    URLProtocolFixture.shared.install { instance in
+      instance.respond(status: 200, contentType: "text/event-stream", chunks: [])
+    }
+    await assertProviderError(.streamEnded) { _ = try await self.collect(provider.stream(request)) }
+  }
+
+  func testCodexKindMutationFailsBeforeAnyURLLoad() async throws {
+    URLProtocolFixture.shared.install { _ in XCTFail("Invalid metadata must never start a load") }
+    let original = try codexRequest()
+    var config = original.provider
+    config.kind = .chatCompletions
+    config.apiRoot = URL(string: "https://example.test/v1")!
+    let changed = ChatRequest(
+      provider: config, turns: original.turns, credential: original.credential)
+    do {
+      _ = try await collect(ProviderRouter(configuration: fixtureConfiguration()).stream(changed))
+      XCTFail("Must reject cross-provider credential")
+    } catch { XCTAssertEqual(error as? WorkspaceError, .invalidProvider) }
+  }
+
+  func testCodexFirstEventTimeoutClosesUnderlyingLoad() async throws {
+    let stopped = AsyncSignal()
+    URLProtocolFixture.shared.install(
+      handler: { instance in
+        instance.beginResponse(status: 200, contentType: "text/event-stream")
+      }, stopped: { Task { await stopped.signal() } })
+    let provider = CodexResponsesProvider(
+      configuration: fixtureConfiguration(),
+      timeouts: StreamTimeouts(firstEvent: 0.03, idle: 1, total: 1))
+    let request = try codexRequest()
+    await assertProviderError(.timedOut) { _ = try await self.collect(provider.stream(request)) }
+    await stopped.wait()
+  }
+
+  private func codexRequest() throws -> ChatRequest {
+    let config = ProviderConfig(
+      name: "Codex fixture", apiRoot: CodexResponsesProvider.apiRoot,
+      modelID: "fixture-model", credentialReference: CodexSessionCredential.makeReference(),
+      kind: .codexResponses)
+    let auth = Data(
+      "{\"auth_mode\":\"chatgpt\",\"tokens\":{\"access_token\":\"fixture-access\"}}".utf8)
+    return ChatRequest(
+      provider: config, turns: [ChatTurn(role: "user", content: "Hello")],
+      credential: try CodexSessionCredential(authFileData: auth).sessionData())
+  }
+
   func testEndpointAppendsChatCompletionsExactlyOnce() throws {
     for root in [
       "https://example.test/v1", "https://example.test/v1/",

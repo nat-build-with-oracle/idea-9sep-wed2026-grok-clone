@@ -22,7 +22,7 @@ public actor GenerationCoordinator {
 
   public init(
     repository: any WorkspaceRepository, credentials: any CredentialStore,
-    provider: any ChatProvider = ChatCompletionsProvider(),
+    provider: any ChatProvider = ProviderRouter(),
     onChange: @escaping @Sendable (UUID) async -> Void = { _ in },
     onError: @escaping @Sendable (String) async -> Void = { _ in }
   ) {
@@ -143,7 +143,7 @@ public actor GenerationCoordinator {
     if let newText { turns.append(ChatTurn(role: "user", content: newText)) }
     let request = ChatRequest(provider: configuration, turns: turns, credential: credential)
     // Validate URL, key shape and payload before clearing a draft or queuing an effect.
-    _ = try ChatCompletionsProvider.makeRequest(request)
+    _ = try ProviderRouter.makeRequest(request)
     return request
   }
 

@@ -5,6 +5,7 @@ import WorkspaceCore
 /// This view never reads a saved credential back into SwiftUI state.
 struct ProviderSettingsView: View {
   private struct FieldValues: Equatable {
+    var kind: ProviderKind
     var name: String
     var apiRoot: String
     var modelID: String
@@ -17,10 +18,14 @@ struct ProviderSettingsView: View {
   @State private var modelFilter = ""
 
   @State private var editingProviderID: UUID?
+  @State private var kind: ProviderKind = .chatCompletions
   @State private var name = ""
   @State private var apiRoot = "https://api.openai.com/v1"
   @State private var modelID = ""
   @State private var replacementSecret = ""
+  @State private var codexCredential: CodexSessionCredential?
+  @State private var codexImportGeneration = 0
+  @State private var isImportingCodexLogin = false
   @State private var allowsLoopbackHTTP = false
   @State private var credentialLifetime: CredentialLifetime = .keychain
   @State private var selectedPreset: ProviderPreset?
@@ -29,7 +34,8 @@ struct ProviderSettingsView: View {
   @State private var errorMessage: String?
   @State private var hasLoadedInitialSelection = false
   @State private var baseline = FieldValues(
-    name: "", apiRoot: "https://api.openai.com/v1", modelID: "", allowsLoopbackHTTP: false,
+    kind: .chatCompletions, name: "", apiRoot: "https://api.openai.com/v1", modelID: "",
+    allowsLoopbackHTTP: false,
     credentialLifetime: .keychain)
   @State private var pendingProviderID: UUID?
   @State private var isConfirmingDiscard = false
@@ -58,8 +64,17 @@ struct ProviderSettingsView: View {
   }
 
   private var canSave: Bool {
-    !store.isProviderSaving && !cleanName.isEmpty && !cleanRoot.isEmpty && !cleanModel.isEmpty
-      && (!isNewProvider || !replacementSecret.isEmpty)
+    guard !store.isProviderSaving, !isImportingCodexLogin, !cleanName.isEmpty,
+      !cleanModel.isEmpty
+    else { return false }
+    let changesKind = editingProvider.map { $0.kind != kind } ?? false
+    switch kind {
+    case .chatCompletions:
+      return !cleanRoot.isEmpty
+        && (!isNewProvider && !changesKind || !replacementSecret.isEmpty)
+    case .codexResponses:
+      return !isNewProvider && !changesKind || codexCredential != nil
+    }
   }
 
   private var destinationHost: String? {
@@ -108,6 +123,7 @@ struct ProviderSettingsView: View {
     .onChange(of: editingProviderID) { _, newValue in
       loadProvider(newValue)
     }
+    .onChange(of: kind) { _, _ in updateDirtyState() }
     .onChange(of: name) { _, _ in updateDirtyState() }
     .onChange(of: apiRoot) { _, _ in
       resetDiscovery()
@@ -125,7 +141,7 @@ struct ProviderSettingsView: View {
     }
     .onDisappear {
       resetDiscovery()
-      replacementSecret = ""
+      clearEnteredCredentials()
       store.providerSettingsDirty = false
     }
     .alert("Discard unsaved provider changes?", isPresented: $isConfirmingDiscard) {
@@ -157,7 +173,7 @@ struct ProviderSettingsView: View {
       Text("Model Provider")
         .font(.system(size: 24, weight: .semibold))
       Text(
-        "Add an OpenAI-compatible text chat endpoint. Choose protected Keychain storage or explicitly keep its credential in memory for this session."
+        "Add an OpenAI-compatible endpoint or use an explicitly imported Codex login with the experimental fixed-destination text adapter."
       )
       .font(.system(size: 13))
       .foregroundStyle(ShellTheme.secondary)
@@ -229,17 +245,33 @@ struct ProviderSettingsView: View {
   private var providerFields: some View {
     GroupBox("Connection") {
       VStack(alignment: .leading, spacing: 14) {
+        fieldLabel("Provider type", detail: providerKindDetail)
+        Picker("Provider type", selection: kindSelection) {
+          Text("OpenAI-compatible API").tag(ProviderKind.chatCompletions)
+          Text("Codex login (experimental)").tag(ProviderKind.codexResponses)
+        }
+        .labelsHidden()
+        .accessibilityLabel("Provider type")
+        .accessibilityIdentifier("provider-kind")
+
         fieldLabel("Name", detail: "A local label, such as Work account")
         TextField("Provider name", text: $name)
           .textFieldStyle(.roundedBorder)
           .accessibilityLabel("Provider name")
           .accessibilityIdentifier("provider-name")
 
-        fieldLabel("API base URL", detail: "HTTPS is required unless local HTTP is enabled below")
-        TextField("https://api.example.com/v1", text: $apiRoot)
-          .textFieldStyle(.roundedBorder)
-          .accessibilityLabel("API base URL")
-          .accessibilityIdentifier("provider-api-root")
+        if kind == .codexResponses {
+          fieldLabel("Fixed destination", detail: "This experimental adapter cannot be redirected")
+          Text(CodexResponsesProvider.apiRoot.absoluteString)
+            .textSelection(.enabled)
+            .accessibilityIdentifier("provider-codex-fixed-root")
+        } else {
+          fieldLabel("API base URL", detail: "HTTPS is required unless local HTTP is enabled below")
+          TextField("https://api.example.com/v1", text: $apiRoot)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("API base URL")
+            .accessibilityIdentifier("provider-api-root")
+        }
 
         fieldLabel("Model", detail: "The exact model identifier accepted by the provider")
         TextField("Model identifier", text: $modelID)
@@ -247,39 +279,128 @@ struct ProviderSettingsView: View {
           .accessibilityLabel("Model identifier")
           .accessibilityIdentifier("provider-model-id")
 
-        modelDiscovery
+        if kind == .chatCompletions {
+          modelDiscovery
 
-        Picker("Credential storage", selection: $credentialLifetime) {
-          ForEach(CredentialLifetime.allCases) { lifetime in
-            Text(lifetime.name).tag(lifetime)
+          Picker("Credential storage", selection: $credentialLifetime) {
+            ForEach(CredentialLifetime.allCases) { lifetime in
+              Text(lifetime.name).tag(lifetime)
+            }
           }
-        }
-        .accessibilityIdentifier("provider-credential-storage")
+          .accessibilityIdentifier("provider-credential-storage")
 
-        fieldLabel(
-          editingProvider == nil ? "Credential" : "Replacement credential",
-          detail: editingProvider == nil
-            ? "Required for a new configuration"
-            : "Leave blank to keep the key for the same API root and storage mode; otherwise re-enter it"
-        )
-        SecureField("Provider credential", text: $replacementSecret)
-          .textFieldStyle(.roundedBorder)
-          .accessibilityLabel(
-            editingProvider == nil ? "Provider credential" : "Replacement provider credential"
+          fieldLabel(
+            editingProvider == nil ? "Credential" : "Replacement credential",
+            detail: editingProvider == nil
+              ? "Required for a new configuration"
+              : "Leave blank to keep the key for the same API root and storage mode; otherwise re-enter it"
           )
-          .accessibilityIdentifier("provider-secret")
+          SecureField("Provider credential", text: $replacementSecret)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel(
+              editingProvider == nil ? "Provider credential" : "Replacement provider credential"
+            )
+            .accessibilityIdentifier("provider-secret")
 
-        Toggle("Allow HTTP for loopback development servers", isOn: $allowsLoopbackHTTP)
-          .toggleStyle(.checkbox)
-          .accessibilityIdentifier("provider-loopback-http")
-        Text(
-          "This exception applies only to a loopback address such as localhost. Remote providers still require HTTPS."
-        )
-        .font(.system(size: 11))
-        .foregroundStyle(ShellTheme.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+          Toggle("Allow HTTP for loopback development servers", isOn: $allowsLoopbackHTTP)
+            .toggleStyle(.checkbox)
+            .accessibilityIdentifier("provider-loopback-http")
+          Text(
+            "This exception applies only to a loopback address such as localhost. Remote providers still require HTTPS."
+          )
+          .font(.system(size: 11))
+          .foregroundStyle(ShellTheme.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        } else {
+          codexImportControls
+        }
       }
       .padding(8)
+    }
+  }
+
+  private var providerKindDetail: String {
+    switch kind {
+    case .chatCompletions: "Uses an API key with the endpoint you enter"
+    case .codexResponses: "Text-only, fixed-origin, session-only, and not a public API guarantee"
+    }
+  }
+
+  private var kindSelection: Binding<ProviderKind> {
+    Binding(
+      get: { kind },
+      set: { newKind in
+        guard newKind != kind else { return }
+        kind = newKind
+        clearEnteredCredentials()
+        resetDiscovery()
+        selectedPreset = nil
+        allowsLoopbackHTTP = false
+        credentialLifetime = newKind == .codexResponses ? .session : .keychain
+        if newKind == .codexResponses {
+          apiRoot = CodexResponsesProvider.apiRoot.absoluteString
+          if cleanModel.isEmpty { modelID = "gpt-5.6-luna" }
+        } else if cleanRoot == CodexResponsesProvider.apiRoot.absoluteString {
+          apiRoot = "https://api.openai.com/v1"
+        }
+        errorMessage = nil
+        updateDirtyState()
+      })
+  }
+
+  private var codexImportControls: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      HStack {
+        Button(codexCredential == nil ? "Import Codex auth.json…" : "Replace imported login…") {
+          importCodexLogin()
+        }
+        .disabled(isImportingCodexLogin)
+        .accessibilityIdentifier("provider-import-codex-login")
+        if isImportingCodexLogin {
+          ProgressView().controlSize(.small).accessibilityLabel("Waiting for Codex auth file")
+        }
+        if codexCredential != nil {
+          Label("Imported for this session", systemImage: "checkmark.circle.fill")
+            .foregroundStyle(.green)
+            .accessibilityIdentifier("provider-codex-imported-status")
+        }
+      }
+      Text(
+        "Choose the auth.json maintained by Codex. Only the access token and account ID are retained in memory. The raw file, refresh token, path, and account details are not saved or displayed."
+      )
+      .font(.caption).foregroundStyle(ShellTheme.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      if editingProvider != nil, codexCredential == nil {
+        Text(
+          "The saved configuration contains no login. If this app was restarted or the token expired, import a current file before sending."
+        )
+        .font(.caption2).foregroundStyle(.orange)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private func importCodexLogin() {
+    guard !isImportingCodexLogin else { return }
+    errorMessage = nil
+    codexImportGeneration += 1
+    let generation = codexImportGeneration
+    isImportingCodexLogin = true
+    Task {
+      defer {
+        if codexImportGeneration == generation { isImportingCodexLogin = false }
+      }
+      do {
+        guard let imported = try await CodexAuthFileImporter.chooseCredential() else { return }
+        guard codexImportGeneration == generation, kind == .codexResponses else { return }
+        codexCredential = imported
+        updateDirtyState()
+      } catch {
+        guard codexImportGeneration == generation, kind == .codexResponses else { return }
+        codexCredential = nil
+        errorMessage = PreviewWorkspace.providerErrorMessage(error)
+        updateDirtyState()
+      }
     }
   }
 
@@ -379,10 +500,14 @@ struct ProviderSettingsView: View {
     VStack(alignment: .leading, spacing: 8) {
       Label("Credential protection", systemImage: "key.fill")
         .font(.headline)
-      Text(credentialLifetime.guidance)
-        .font(.system(size: 12))
-        .foregroundStyle(ShellTheme.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      Text(
+        kind == .codexResponses
+          ? "The imported Codex login is kept only in this app process. It is never written to Keychain or workspace storage. Quitting requires an explicit re-import. This app never refreshes or logs out the Codex account."
+          : credentialLifetime.guidance
+      )
+      .font(.system(size: 12))
+      .foregroundStyle(ShellTheme.secondary)
+      .fixedSize(horizontal: false, vertical: true)
       Text(
         "Saving records the configuration; it does not verify the connection. Connection status is known only after a reply request succeeds."
       )
@@ -419,6 +544,10 @@ struct ProviderSettingsView: View {
 
   private var destinationDescription: String {
     let model = cleanModel.isEmpty ? "the entered model" : cleanModel
+    if kind == .codexResponses {
+      return
+        "Text-only reply requests will be sent to chatgpt.com using \(model). Tools are disabled; failures never fall back to another endpoint."
+    }
     guard let destinationHost else {
       return "Enter a valid API base URL to review the destination for \(model)."
     }
@@ -460,9 +589,10 @@ struct ProviderSettingsView: View {
   private func loadProvider(_ id: UUID?) {
     resetDiscovery()
     selectedPreset = nil
-    replacementSecret = ""
+    clearEnteredCredentials()
     errorMessage = nil
     guard let id, let provider = store.providers.first(where: { $0.id == id }) else {
+      kind = .chatCompletions
       name = ""
       apiRoot = "https://api.openai.com/v1"
       modelID = ""
@@ -472,6 +602,7 @@ struct ProviderSettingsView: View {
       store.providerSettingsDirty = false
       return
     }
+    kind = provider.kind
     name = provider.name
     apiRoot = provider.apiRoot.absoluteString
     modelID = provider.modelID
@@ -483,25 +614,35 @@ struct ProviderSettingsView: View {
 
   private var currentFieldValues: FieldValues {
     FieldValues(
-      name: name, apiRoot: apiRoot, modelID: modelID, allowsLoopbackHTTP: allowsLoopbackHTTP,
+      kind: kind, name: name, apiRoot: apiRoot, modelID: modelID,
+      allowsLoopbackHTTP: allowsLoopbackHTTP,
       credentialLifetime: credentialLifetime)
   }
 
   private func applyPreset(_ preset: ProviderPreset) {
     resetDiscovery()
+    kind = .chatCompletions
     selectedPreset = preset
     name = preset == .custom ? "" : preset.name
     apiRoot = preset.apiRoot
     modelID = preset.suggestedModel
     // Even a local template needs an explicit HTTP opt-in. Never carry entered keys across roots.
     allowsLoopbackHTTP = false
-    replacementSecret = ""
+    clearEnteredCredentials()
     errorMessage = nil
     updateDirtyState()
   }
 
   private func updateDirtyState() {
-    store.providerSettingsDirty = currentFieldValues != baseline || !replacementSecret.isEmpty
+    store.providerSettingsDirty =
+      currentFieldValues != baseline || !replacementSecret.isEmpty || codexCredential != nil
+  }
+
+  private func clearEnteredCredentials() {
+    codexImportGeneration += 1
+    isImportingCodexLogin = false
+    replacementSecret = ""
+    codexCredential = nil
   }
 
   private func save() {
@@ -514,6 +655,8 @@ struct ProviderSettingsView: View {
     let submittedSecret = replacementSecret
     let submittedLoopback = allowsLoopbackHTTP
     let submittedLifetime = credentialLifetime
+    let submittedKind = kind
+    let submittedCodexCredential = codexCredential
 
     Task {
       do {
@@ -524,9 +667,11 @@ struct ProviderSettingsView: View {
           modelID: submittedModel,
           secret: submittedSecret,
           allowsLoopbackHTTP: submittedLoopback,
-          credentialLifetime: submittedLifetime
+          credentialLifetime: submittedLifetime,
+          kind: submittedKind,
+          codexCredential: submittedCodexCredential
         )
-        replacementSecret = ""
+        clearEnteredCredentials()
         editingProviderID = savedID
         store.selectedProviderID = savedID
         loadProvider(savedID)

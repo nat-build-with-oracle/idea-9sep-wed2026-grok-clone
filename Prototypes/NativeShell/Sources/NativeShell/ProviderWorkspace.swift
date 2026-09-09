@@ -2,7 +2,8 @@ import Foundation
 import WorkspaceCore
 
 enum ProviderSetupError: Error, LocalizedError {
-  case noProvider, targetRequired, busy, changedDestination, changedCredentialLifetime
+  case noProvider, targetRequired, busy, changedDestination, changedCredentialLifetime,
+    changedProviderKind, unexpectedCredential
   var errorDescription: String? {
     switch self {
     case .noProvider: "Choose a provider in Settings before sending. Your draft is kept."
@@ -12,6 +13,10 @@ enum ProviderSetupError: Error, LocalizedError {
       "The destination changed. Re-enter the key to authorize its use with this API root."
     case .changedCredentialLifetime:
       "The credential storage choice changed. Re-enter the key; saved credentials are never copied between storage modes."
+    case .changedProviderKind:
+      "The provider type changed. Import or enter a fresh credential; credentials are never copied between provider types."
+    case .unexpectedCredential:
+      "The supplied credential does not belong to the selected provider type. Nothing was saved."
     }
   }
 }
@@ -126,7 +131,8 @@ extension PreviewWorkspace {
   @discardableResult
   func saveProvider(
     id: UUID?, name: String, apiRoot: String, modelID: String, secret: String,
-    allowsLoopbackHTTP: Bool, credentialLifetime: CredentialLifetime? = nil
+    allowsLoopbackHTTP: Bool, credentialLifetime: CredentialLifetime? = nil,
+    kind: ProviderKind = .chatCompletions, codexCredential: CodexSessionCredential? = nil
   ) async throws -> UUID {
     guard !isClosing, !isProviderSaving else { throw ProviderSetupError.busy }
     guard let repository, let credentials else { throw WorkspaceError.storeUnavailable }
@@ -141,32 +147,78 @@ extension PreviewWorkspace {
     let old = snapshot.providers.first { $0.id == id }
     guard id == nil || old != nil else { throw WorkspaceError.missingRecord }
     let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard (1...80).contains(cleanName.count),
-      let root = URL(string: apiRoot.trimmingCharacters(in: .whitespacesAndNewlines))
-    else { throw WorkspaceError.invalidProvider }
-    let replacement = !secret.isEmpty
-    guard replacement || old != nil else { throw ProviderError.missingCredential }
-    if replacement {
+    guard (1...80).contains(cleanName.count) else { throw WorkspaceError.invalidProvider }
+    let isKindChange = old.map { $0.kind != kind } ?? false
+    let apiSecretReplacement = !secret.isEmpty
+    let codexReplacement = codexCredential != nil
+    guard !(apiSecretReplacement && codexReplacement) else {
+      throw ProviderSetupError.unexpectedCredential
+    }
+    switch kind {
+    case .chatCompletions:
+      guard codexCredential == nil else { throw ProviderSetupError.unexpectedCredential }
+      guard apiSecretReplacement || old != nil else { throw ProviderError.missingCredential }
+      if isKindChange && !apiSecretReplacement { throw ProviderSetupError.changedProviderKind }
+    case .codexResponses:
+      guard secret.isEmpty else { throw ProviderSetupError.unexpectedCredential }
+      guard codexReplacement || old != nil else { throw ProviderError.codexLoginRequired }
+      if isKindChange && !codexReplacement { throw ProviderSetupError.changedProviderKind }
+    }
+    if apiSecretReplacement {
       guard secret.utf8.count <= 16_384, !secret.contains(where: { $0.isNewline || $0 == "\0" }),
         !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       else { throw ProviderError.invalidCredential }
     }
-    let lifetime =
-      credentialLifetime ?? old.map { CredentialLifetime.forReference($0.credentialReference) }
-      ?? .keychain
+    let lifetime: CredentialLifetime =
+      kind == .codexResponses
+      ? .session
+      : credentialLifetime ?? old.map { CredentialLifetime.forReference($0.credentialReference) }
+        ?? .keychain
+    let replacement = apiSecretReplacement || codexReplacement
     if let old, !replacement, lifetime != CredentialLifetime.forReference(old.credentialReference) {
       throw ProviderSetupError.changedCredentialLifetime
     }
-    let reference = replacement ? lifetime.makeReference() : old!.credentialReference
+    let reference: String
+    if codexReplacement {
+      reference = CodexSessionCredential.makeReference()
+    } else if apiSecretReplacement {
+      reference = lifetime.makeReference()
+    } else {
+      reference = old!.credentialReference
+    }
+    let root: URL
+    switch kind {
+    case .chatCompletions:
+      guard
+        let enteredRoot = URL(
+          string: apiRoot.trimmingCharacters(in: .whitespacesAndNewlines))
+      else { throw WorkspaceError.invalidProvider }
+      root = enteredRoot
+    case .codexResponses:
+      guard
+        let enteredRoot = URL(
+          string: apiRoot.trimmingCharacters(in: .whitespacesAndNewlines)),
+        enteredRoot.absoluteString == CodexResponsesProvider.apiRoot.absoluteString,
+        !allowsLoopbackHTTP
+      else { throw WorkspaceError.invalidProvider }
+      root = enteredRoot
+    }
     let configuration = ProviderConfig(
       id: old?.id ?? UUID(), name: cleanName, apiRoot: root,
       modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines),
-      credentialReference: reference, allowsLoopbackHTTP: allowsLoopbackHTTP)
-    _ = try ProviderEndpoint.chatCompletions(configuration)
+      credentialReference: reference,
+      allowsLoopbackHTTP: allowsLoopbackHTTP, kind: kind)
+    switch kind {
+    case .chatCompletions: _ = try ProviderEndpoint.chatCompletions(configuration)
+    case .codexResponses: try CodexResponsesProvider.validateConfiguration(configuration)
+    }
     if let old, old.apiRoot != configuration.apiRoot, !replacement {
       throw ProviderSetupError.changedDestination
     }
-    if replacement { try await credentials.write(Data(secret.utf8), for: reference) }
+    if apiSecretReplacement { try await credentials.write(Data(secret.utf8), for: reference) }
+    if let codexCredential {
+      try await credentials.write(try codexCredential.sessionData(), for: reference)
+    }
     do {
       guard !isClosing else { throw WorkspaceError.storeClosed }
       try await repository.apply(.saveProvider(configuration))

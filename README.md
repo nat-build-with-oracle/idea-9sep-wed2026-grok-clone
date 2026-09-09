@@ -7,8 +7,9 @@ The repository name preserves its original [grok-clone idea capsule](PROPOSAL.md
 **Experimental source release, not a finished AI client.** Bots, groups, drafts
 and paused routines persist locally. Native provider settings, streamed replies,
 explicit group targeting, Stop and Retry are wired to the provider core and tested
-with offline fixtures. Real Keychain/signing and live-provider verification remain
-open. No Grok Bot/Cursor service, subscription,
+with offline fixtures. An experimental, fixed-origin Codex text adapter accepts an explicitly imported
+ChatGPT `auth.json` for this session only. Real Keychain/signing and broad provider
+compatibility remain open. No Grok Bot/Cursor service, subscription,
 remote computer or private API is included; this project is not affiliated with them.
 
 ## Run the local app
@@ -18,9 +19,10 @@ scripts/native-app.sh run
 scripts/native-app.sh test
 scripts/native-app.sh smoke
 scripts/native-app.sh provider-smoke # offline fixture; no key or live network
+scripts/native-app.sh codex-smoke    # synthetic auth + intercepted Responses SSE
 ```
 
-The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Settings offers Z.ai general API, local 9router, OpenAI Platform and custom setup templates. Enter the endpoint/model/key, then select the provider and (for groups) the replying bot in the composer. Without a usable credential, the draft is retained.
+The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Settings offers Z.ai general API, local 9router, OpenAI Platform and custom setup templates. A separate **Codex login (experimental)** provider type imports a user-selected auth JSON into memory only; it is not an OpenAI Platform API key. Enter the endpoint/model/key for compatible providers, then select the provider and (for groups) the replying bot in the composer. Without a usable credential, the draft is retained.
 
 Protected Keychain access requires authorized signing. For an ad-hoc local build, explicitly choose **This session only** to keep the key in process memory until quitting; re-enter it on the next launch. There is no automatic fallback or plaintext credential file. See [provider setup](docs/PROVIDER-SETUP.md) and [integration/signing limits](docs/PROVIDER-CORE.md).
 
@@ -43,12 +45,14 @@ third-party dependency installation is needed for the current app or tests.
 | Native UI | Three-pane workspace, bot/group creation, search, hide/show, native text composer |
 | Local data | Core Data persistence, drafts, message pagination, paused routine records |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
-| Credentials | Protected Keychain by default, explicit session-only memory option; no automatic fallback; authorized signing/Keychain access still unverified |
-| Remaining gates | Live-provider validation, routine execution, attachments/export, remaining edit/delete and native accessibility flows |
+| Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
+| Remaining gates | Broad provider/9router validation, routine execution, attachments/export, remaining edit/delete and native accessibility flows |
 
-Verification: **144 tests** (83 core + 61 shell), desktop/narrow native persistence
+Verification: **185 tests** (115 core + 70 shell), desktop/narrow native persistence
 and offline provider smokes, Settings rendering, build/signature and formatting checks. See the evidence
-and limitations below for the current test counts and scope.
+and limitations below for the current test counts and scope. An explicitly authorized
+manual native Codex check also completed a minimal reply with persistence and
+attribution; one account/time is not broad compatibility or release certification.
 
 ## Architecture and contracts
 
@@ -62,6 +66,7 @@ Native provider settings + composer → GenerationCoordinator
 - [Product and acceptance contract](docs/NATIVE-REWRITE-CONTRACT.md)
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
 - [Provider core and verification gaps](docs/PROVIDER-CORE.md)
+- [Experimental Codex adapter contract](docs/CODEX-ADAPTER-CONTRACT.md)
 - [Native prototype, pages and layout](docs/NATIVE-PROTOTYPE.md)
 - [Product scope](PRODUCT.md) · [Design](DESIGN.md) · [Contributing](CONTRIBUTING.md)
 

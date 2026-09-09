@@ -69,7 +69,7 @@ public final class ChatCompletionsProvider: ChatProvider, @unchecked Sendable {
 }
 
 /// All mutable parser/session state is confined to `queue`, including delegate callbacks and timers.
-private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
   private let queue = DispatchQueue(label: "BotWorkspace.provider-stream")
   private let configuration: URLSessionConfiguration
   private let request: URLRequest
@@ -78,6 +78,8 @@ private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked 
   private var session: URLSession?
   private var task: URLSessionDataTask?
   private var parser = ChatSSEParser()
+  private var codexParser = CodexSSEParser()
+  private let kind: ProviderKind
   private var finished = false
   private var responseAccepted = false
   private var eventTimer: DispatchWorkItem?
@@ -85,9 +87,17 @@ private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked 
 
   init(
     configuration: URLSessionConfiguration, request: URLRequest, timeouts: StreamTimeouts,
-    continuation: AsyncThrowingStream<ChatEvent, Error>.Continuation
+    continuation: AsyncThrowingStream<ChatEvent, Error>.Continuation,
+    kind: ProviderKind = .chatCompletions
   ) {
     self.configuration = configuration.copy() as! URLSessionConfiguration
+    self.configuration.httpCookieStorage = nil
+    self.configuration.httpShouldSetCookies = false
+    self.configuration.urlCache = nil
+    self.configuration.urlCredentialStorage = nil
+    self.configuration.httpAdditionalHeaders = nil
+    self.configuration.connectionProxyDictionary = [:]
+    self.kind = kind
     self.request = request
     self.timeouts = timeouts
     self.continuation = continuation
@@ -114,6 +124,26 @@ private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked 
   func cancel() { queue.async { self.finish(ProviderError.cancelled) } }
 
   func urlSession(
+    _ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+    completionHandler:
+      @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+  ) {
+    completionHandler(
+      challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust
+        ? .performDefaultHandling : .cancelAuthenticationChallenge, nil)
+  }
+
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+    completionHandler:
+      @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+  ) {
+    completionHandler(
+      challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust
+        ? .performDefaultHandling : .cancelAuthenticationChallenge, nil)
+  }
+
+  func urlSession(
     _ session: URLSession, task: URLSessionTask,
     willPerformHTTPRedirection response: HTTPURLResponse,
     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void
@@ -133,10 +163,22 @@ private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked 
     }
     guard (200...299).contains(http.statusCode) else {
       completionHandler(.cancel)
-      finish(ProviderError.http(http.statusCode))
+      finish(
+        kind == .codexResponses && [401, 403].contains(http.statusCode)
+          ? ProviderError.codexLoginRequired : ProviderError.http(http.statusCode))
       return
     }
-    guard http.mimeType?.lowercased() == "text/event-stream" else {
+    guard kind != .codexResponses || http.url == CodexResponsesProvider.endpoint else {
+      completionHandler(.cancel)
+      finish(ProviderError.invalidResponse)
+      return
+    }
+    // The fixed Codex backend has been observed omitting Content-Type on a 200 stream.
+    // Only that adapter may validate missing-MIME bytes with its bounded, fail-closed SSE parser.
+    // An explicitly different MIME type and all generic missing-MIME responses still fail.
+    let missingCodexMIME =
+      kind == .codexResponses && http.value(forHTTPHeaderField: "Content-Type") == nil
+    guard http.mimeType?.lowercased() == "text/event-stream" || missingCodexMIME else {
       completionHandler(.cancel)
       finish(ProviderError.invalidResponse)
       return
@@ -146,7 +188,9 @@ private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked 
   }
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
     guard !finished, responseAccepted else { return }
-    do { try deliver(parser.append(data)) } catch { finish(error) }
+    do {
+      try deliver(kind == .codexResponses ? codexParser.append(data) : parser.append(data))
+    } catch { finish(error) }
   }
   func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
     guard !finished else { return }
@@ -155,7 +199,7 @@ private final class SessionStream: NSObject, URLSessionDataDelegate, @unchecked 
       return
     }
     do {
-      try deliver(parser.finish())
+      try deliver(kind == .codexResponses ? codexParser.finish() : parser.finish())
       if !finished { finish(nil) }
     } catch { finish(error) }
   }

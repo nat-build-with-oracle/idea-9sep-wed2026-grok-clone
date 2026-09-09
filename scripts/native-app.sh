@@ -8,10 +8,12 @@ if [[ "$MODE" == "test" ]]; then
   exec "$ROOT/scripts/native-prototype.sh" test
 fi
 export NATIVE_WORKSPACE_APP=1
-if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" ]]; then
+if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" ]]; then
   "$ROOT/scripts/native-prototype.sh" build
   VERIFY_ARGS=(--verify-workspace)
   VERIFY_MODELS=0
+  if [[ "$MODE" == "codex-smoke" ]]; then VERIFY_ARGS+=(--verify-codex-fixture); fi
+  if [[ "$MODE" == "codex-smoke-stdin" ]]; then VERIFY_ARGS+=(--verify-codex-stdin); fi
   if [[ "$MODE" == "provider-smoke" ]]; then VERIFY_ARGS+=(--verify-provider); fi
   if [[ "$MODE" == "provider-smoke" && " $* " == *" --router-models "* ]]; then
     VERIFY_ARGS+=(--settings)
@@ -22,6 +24,7 @@ if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" ]]; then
   grep -q '^NATIVE_PERSISTENCE_SMOKE=PASS ' <<< "$OUTPUT"
   if [[ "$MODE" == "provider-smoke" ]]; then grep -q '^NATIVE_PROVIDER_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$VERIFY_MODELS" == "1" ]]; then grep -q '^NATIVE_MODEL_CATALOG_SMOKE=PASS ' <<< "$OUTPUT"; fi
+  if [[ "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" ]]; then grep -q '^NATIVE_CODEX_SMOKE=PASS ' <<< "$OUTPUT"; fi
   exit
 fi
 exec "$ROOT/scripts/native-prototype.sh" "$MODE" --workspace "$@"

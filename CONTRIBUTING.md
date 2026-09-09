@@ -18,6 +18,7 @@ scripts/native-app.sh smoke --small
 scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --settings
 scripts/native-app.sh provider-smoke --router-models
+scripts/native-app.sh codex-smoke --settings
 xcrun swift-format lint --strict --recursive \
   Packages/WorkspaceCore/Sources Packages/WorkspaceCore/Tests \
   Prototypes/NativeShell/Sources Prototypes/NativeShell/Tests
@@ -37,7 +38,9 @@ This removes generated build output, not the application's workspace data.
 - Never commit workspace databases, Keychain exports, personal conversations,
   `.env` files, runtime logs, or `.omx` state. Use temporary synthetic fixtures.
 - Keep provider tests offline with `URLProtocol`/protocol fixtures. Do not require
-  contributor secrets or make billable live requests in tests.
+  contributor secrets or make billable live requests in tests. `codex-smoke` is
+  offline; `codex-smoke-stdin` is a separately authorized live diagnostic and must
+  never run automatically or in CI.
 - Preserve draft/save-failure behavior. Do not simulate successful model replies
   or scheduled work in the durable app when those services are disconnected.
 - Document verification gaps. Local ad-hoc signing is not notarized distribution.

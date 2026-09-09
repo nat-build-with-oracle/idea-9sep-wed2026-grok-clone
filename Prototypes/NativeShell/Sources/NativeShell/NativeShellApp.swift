@@ -168,6 +168,14 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-codex-fixture")
+          || arguments.contains("--verify-codex-stdin")
+        {
+          try await verifyCodexFlow(
+            repository: reopened, conversationID: groupID, targetID: botID,
+            live: arguments.contains("--verify-codex-stdin"))
+          if arguments.contains("--settings") { showSettings() }
+        }
         if arguments.contains("--verify-provider") {
           let routerFixture = arguments.contains("--router-models")
           try await verifyProviderFlow(
@@ -210,6 +218,56 @@ import WorkspaceCore
   }
 
   /// Explicitly injected, offline fixtures, available only in the isolated smoke workspace.
+  private func verifyCodexFlow(
+    repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID, live: Bool
+  ) async throws {
+    let credential: CodexSessionCredential
+    if live {
+      // Explicit stdin handoff only. No startup home scan, pathname argument, file copy, or refresh.
+      credential = try await Task.detached {
+        var data = Data()
+        while let chunk = try FileHandle.standardInput.read(upToCount: 16_384), !chunk.isEmpty {
+          data.append(chunk)
+          guard data.count <= CodexSessionCredential.maximumFileBytes else {
+            throw ProviderError.invalidCodexLogin
+          }
+        }
+        return try CodexSessionCredential(authFileData: data)
+      }.value
+    } else {
+      credential = try CodexSessionCredential(
+        authFileData: Data(
+          "{\"auth_mode\":\"chatgpt\",\"tokens\":{\"access_token\":\"offline-codex-fixture\"}}".utf8
+        ))
+    }
+    let configuration = URLSessionConfiguration.ephemeral
+    if !live { configuration.protocolClasses = [SmokeCodexURLProtocol.self] }
+    try await store.connect(
+      repository,
+      credentials: SessionAwareCredentialStore(persistent: SmokeCredentials()),
+      provider: ProviderRouter(configuration: configuration), displayName: "Smoke workspace")
+    _ = try await store.saveProvider(
+      id: nil, name: "Experimental Codex login",
+      apiRoot: CodexResponsesProvider.apiRoot.absoluteString,
+      modelID: live ? "gpt-5.6-luna" : "offline-model", secret: "", allowsLoopbackHTTP: false,
+      credentialLifetime: .session, kind: .codexResponses, codexCredential: credential)
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    store.draft = "Reply with only READY. This is a text-only compatibility check."
+    _ = try await store.submitDraft()
+    await store.coordinator?.waitForIdle()
+    let snapshot = try await repository.snapshot()
+    let page = try await repository.messages(conversationID: conversationID)
+    guard snapshot.generations.count == 1, snapshot.generations.first?.state == .completed,
+      page.messages.count == 2,
+      page.messages.last?.text.trimmingCharacters(in: .whitespacesAndNewlines) == "READY",
+      store.currentMessages.last?.speakerName == "Research Partner", store.draft.isEmpty
+    else { throw ProviderError.invalidResponse }
+    print(
+      "NATIVE_CODEX_SMOKE=PASS live=\(live) completed=true attributed=true sessionOnly=true fixedOrigin=true toolsEnabled=false"
+    )
+  }
+
   private func verifyProviderFlow(
     repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID,
     routerFixture: Bool = false
@@ -359,14 +417,16 @@ import WorkspaceCore
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--verify-provider")
-      ? (arguments.contains("--settings")
-        ? (arguments.contains("--router-models") ? "router-model-settings" : "provider-settings")
-        : "provider-chat")
-      : arguments.contains("--verify-workspace")
-        ? "durable-workspace"
-        : arguments.contains("--group")
-          ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--verify-codex-fixture") || arguments.contains("--verify-codex-stdin")
+      ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+      : arguments.contains("--verify-provider")
+        ? (arguments.contains("--settings")
+          ? (arguments.contains("--router-models") ? "router-model-settings" : "provider-settings")
+          : "provider-chat")
+        : arguments.contains("--verify-workspace")
+          ? "durable-workspace"
+          : arguments.contains("--group")
+            ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

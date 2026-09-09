@@ -3,8 +3,9 @@
 The Swift package's transport and generation coordinator are now wired to the
 native app. Settings opens a separate native window; the composer exposes provider,
 destination/model and an explicit single-bot target for groups. Streamed text is
-persisted and attributed, and generation rows expose Stop/Retry. These paths are
-verified with **offline fixtures**, not a live account. Without a configuration or
+persisted and attributed, and generation rows expose Stop/Retry. The normal suite verifies these paths with
+**offline fixtures**; the separate experimental Codex adapter also has explicit
+user-directed auth-file ingress. Without a configuration or
 usable credential, Send preserves the draft and does not fabricate a reply.
 
 ## Native settings, credentials and data flow
@@ -44,10 +45,13 @@ Real authorized signing/profile setup and a Keychain roundtrip remain release
 gates. [Apple's entitlement diagnostic](https://developer.apple.com/documentation/security/errsecmissingentitlement)
 explains inspecting the built executable's entitlements.
 
-The durable app now requests App Sandbox plus **outgoing network client** access;
+The durable app requests App Sandbox, **outgoing network client**, and
+**user-selected read-only files** for explicit Codex auth import;
 the sample-only bundle still has only App Sandbox. No incoming server, broad file
 access, or unprovisioned Keychain access-group entitlement is added. Credential
-entry is explicit; no real key or existing Keychain record is used by tests/smokes.
+entry is explicit; no real key or existing Keychain record is used by normal tests
+or offline smokes. The separately named `codex-smoke-stdin` is a deliberate live
+diagnostic, not an automated test.
 
 ## Implemented in `Packages/WorkspaceCore`
 
@@ -65,6 +69,12 @@ entry is explicit; no real key or existing Keychain record is used by tests/smok
 - `LocalRouterModelCatalog.swift` and native `ModelDiscoveryController.swift`:
   explicit credential-free loopback model discovery, bounded JSON, redirect refusal,
   cancellation and stale-result protection. A listed model is not a verified chat connection.
+- `CodexSessionCredential.swift`, `CodexResponsesProvider.swift`, `CodexSSEParser.swift`:
+  bounded explicit ChatGPT auth import, Codex-only session references, fixed-origin
+  text requests with tools disabled, and fail-closed Responses SSE. `ProviderRouter`
+  dispatches by kind; old provider JSON defaults to chat-completions. Native file
+  import does not retain the source file or use refresh tokens. See the
+  [Codex contract](CODEX-ADAPTER-CONTRACT.md) for compatibility and privacy limits.
 - `GenerationCoordinator.swift`: persist the user message and queued generation
   before transport; one active request per conversation, at most three globally;
   cancellation, retry with a new attempt, and orderly shutdown.
@@ -90,27 +100,45 @@ and other non-text output are not supported.
 
 ## Verification and limits
 
-The core suite has **83 tests**: 29 repository, 11 generation/coordinator,
-15 SSE parser, 8 transport/request, 8 provider-setup/credential-routing and 12 model-catalog tests. Transport tests use URLProtocol;
-coordinator tests use fake providers and credentials with temporary SQLite stores.
-The shell adds 16 provider-presentation and 7 model-discovery lifecycle tests to its 38 existing tests, for **144 total tests** across core and shell. They include key/metadata rollback, destination/storage-mode key re-entry, session-only sends and key expiration after reconnect, group targeting, concurrent draft edits, cancellation/retry, stale discovery results, and recovery after a shutdown save failure.
+The core suite has **115 tests**: 29 repository, 11 generation/coordinator,
+15 Chat Completions SSE, 15 transport/request, 8 provider-setup/credential-routing,
+12 model-catalog, 9 Codex credential/request and 16 Codex SSE tests. Transport tests
+use URLProtocol; coordinator tests use fake providers and credentials with
+actual temporary SQLite stores. The shell has **70 tests**: 38 original tests,
+16 provider-presentation, 7 model-discovery lifecycle and 9 Codex settings/flow tests.
+Total: **185**. Codex additions cover explicit bounded import, unchanged source files,
+no refresh/ID-token retention, backwards metadata decoding, fixed-origin/namespace
+isolation, expiry/draft preservation, Stop/Retry attribution and credential rollback.
 
-These automated tests/smokes make no live requests or billable calls and use no real
-credentials or existing Keychain records. Separate manual account diagnostics are
-not native-app success evidence and are not published. Transport tests also passed
+Normal automated tests/offline smokes make no live requests or billable calls and
+use no real credentials or existing Keychain records. Manual diagnostics are
+separate and account details are not published; a script-level HTTP probe alone
+is not native-app success evidence. Transport tests also passed
 ten consecutive runs during the earlier development checkpoint.
+
+An explicitly authorized manual **native app** Codex check completed a minimal
+text reply, persisted it with bot attribution and cleared the submitted draft in
+an isolated workspace. The source auth file was unchanged and no token refresh
+was attempted. Local account details stay private. This establishes one account/time,
+not an official supported API, all models, the file-picker interaction, 9router or
+Keychain/release-signing success.
 
 Coverage includes Unicode at every byte split, CR/LF/CRLF, BOM/comments, terminal
 events, malformed/early-ended streams, size limits, unsafe URLs, request encoding,
 HTTP failures, content types, redirect refusal, cancellation, queue limits,
 save-failure/no-transmission and shutdown behavior.
 
-Not verified: live TLS/proxy/provider behavior; wall-clock timeout behavior;
+Not fully verified: broad live TLS/proxy/provider compatibility; all wall-clock
+timeout modes (a first-event timeout now has a transport regression);
 real Keychain access and signing entitlements (including local ad-hoc signing);
 full keyboard/VoiceOver settings and streaming interaction; and a sentinel-secret
 end-to-end store/export/log audit.
 Do not call these release gates passed. Keychain errors must remain actionable
 without weakening storage protections.
+
+Timeouts currently measure first **user-visible text** (30 seconds), subsequent
+visible-text idle time (60 seconds) and total request time (300 seconds). Reasoning
+or lifecycle-only events do not extend those timers; long reasoning may time out.
 
 Context is limited to up to 100 prior messages and is captured when work is
 enqueued; a queued request therefore does not acquire replies completed later.
@@ -127,6 +155,7 @@ scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --small
 scripts/native-app.sh provider-smoke --settings
 scripts/native-app.sh provider-smoke --router-models
+scripts/native-app.sh codex-smoke --settings
 ```
 
 Provider smoke uses a new isolated temporary workspace, the explicit session credential route

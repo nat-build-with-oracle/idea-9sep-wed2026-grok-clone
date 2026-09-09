@@ -5,7 +5,7 @@ extension PreviewWorkspace {
   func connect(
     _ repository: any WorkspaceRepository,
     credentials: any CredentialStore = SessionAwareCredentialStore(),
-    provider: any ChatProvider = ChatCompletionsProvider(), displayName: String? = nil
+    provider: any ChatProvider = ProviderRouter(), displayName: String? = nil
   ) async throws {
     try await coordinator?.shutdown()
     isPersistent = true

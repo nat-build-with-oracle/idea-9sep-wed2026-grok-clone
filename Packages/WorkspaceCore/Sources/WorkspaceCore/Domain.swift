@@ -139,6 +139,10 @@ public struct Routine: Codable, Sendable, Equatable, Identifiable {
 }
 
 /// Configuration metadata only. No credential value belongs in this type or the repository.
+public enum ProviderKind: String, Codable, Sendable, CaseIterable {
+  case chatCompletions, codexResponses
+}
+
 public struct ProviderConfig: Codable, Sendable, Equatable, Identifiable {
   public let id: UUID
   public var name: String
@@ -146,10 +150,12 @@ public struct ProviderConfig: Codable, Sendable, Equatable, Identifiable {
   public var modelID: String
   public var credentialReference: String
   public var allowsLoopbackHTTP: Bool
+  public var kind: ProviderKind
 
   public init(
     id: UUID = UUID(), name: String, apiRoot: URL, modelID: String,
-    credentialReference: String, allowsLoopbackHTTP: Bool = false
+    credentialReference: String, allowsLoopbackHTTP: Bool = false,
+    kind: ProviderKind = .chatCompletions
   ) {
     self.id = id
     self.name = name
@@ -157,6 +163,22 @@ public struct ProviderConfig: Codable, Sendable, Equatable, Identifiable {
     self.modelID = modelID
     self.credentialReference = credentialReference
     self.allowsLoopbackHTTP = allowsLoopbackHTTP
+    self.kind = kind
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, name, apiRoot, modelID, credentialReference, allowsLoopbackHTTP, kind
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    name = try values.decode(String.self, forKey: .name)
+    apiRoot = try values.decode(URL.self, forKey: .apiRoot)
+    modelID = try values.decode(String.self, forKey: .modelID)
+    credentialReference = try values.decode(String.self, forKey: .credentialReference)
+    allowsLoopbackHTTP = try values.decode(Bool.self, forKey: .allowsLoopbackHTTP)
+    kind = try values.decodeIfPresent(ProviderKind.self, forKey: .kind) ?? .chatCompletions
   }
 }
 
@@ -251,6 +273,14 @@ enum DomainValidation {
       !provider.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       (1...200).contains(provider.credentialReference.count)
     else { throw WorkspaceError.invalidProvider }
+    switch provider.kind {
+    case .chatCompletions:
+      guard !CodexSessionCredential.isReference(provider.credentialReference) else {
+        throw WorkspaceError.invalidProvider
+      }
+    case .codexResponses:
+      try CodexResponsesProvider.validateConfiguration(provider)
+    }
     return provider
   }
 }

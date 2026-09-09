@@ -21,6 +21,9 @@ public actor KeychainCredentialStore: CredentialStore {
     ]
   }
   public func read(_ reference: String) throws -> Data {
+    guard !CodexSessionCredential.isReference(reference) else {
+      throw ProviderError.codexLoginRequired
+    }
     var attributes = query(reference)
     attributes[kSecReturnData as String] = true
     attributes[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -33,6 +36,9 @@ public actor KeychainCredentialStore: CredentialStore {
     return data
   }
   public func write(_ secret: Data, for reference: String) throws {
+    guard !CodexSessionCredential.isReference(reference) else {
+      throw ProviderError.invalidCodexLogin
+    }
     guard !secret.isEmpty else { throw ProviderError.invalidCredential }
     let attributes = query(reference)
     let status = SecItemUpdate(
@@ -48,6 +54,7 @@ public actor KeychainCredentialStore: CredentialStore {
     }
   }
   public func remove(_ reference: String) throws {
+    guard !CodexSessionCredential.isReference(reference) else { return }
     let status = SecItemDelete(query(reference) as CFDictionary)
     guard status == errSecSuccess || status == errSecItemNotFound else {
       throw ProviderError.keychain(status)

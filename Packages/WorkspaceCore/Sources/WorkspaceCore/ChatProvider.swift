@@ -32,6 +32,7 @@ public protocol ChatProvider: Sendable {
 
 public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
   case missingCredential, invalidCredential
+  case codexLoginRequired, invalidCodexLogin
   case keychain(Int32)
   case invalidResponse, streamEnded
   case http(Int)
@@ -39,6 +40,10 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
     storageFailure
   public var errorDescription: String? {
     switch self {
+    case .codexLoginRequired:
+      "Import an updated Codex ChatGPT auth.json in Settings. This app does not refresh your login; imported access expires when the app quits or the provider rejects it."
+    case .invalidCodexLogin:
+      "Choose a valid Codex ChatGPT auth JSON file (at most 1 MiB). Only a header-safe access token and optional account ID are imported."
     case .missingCredential:
       "No API key is available for this provider. Session keys expire when the app quits. Open Settings to add one."
     case .invalidCredential: "The API key must be a nonempty single-line value."
@@ -79,6 +84,7 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
 public enum ProviderEndpoint {
   public static func chatCompletions(_ provider: ProviderConfig) throws -> URL {
     let provider = try DomainValidation.provider(provider)
+    guard provider.kind == .chatCompletions else { throw WorkspaceError.invalidProvider }
     guard var components = URLComponents(url: provider.apiRoot, resolvingAgainstBaseURL: false)
     else {
       throw WorkspaceError.invalidProvider

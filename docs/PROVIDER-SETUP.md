@@ -96,18 +96,50 @@ Existing Codex ChatGPT login (`auth.json` or OS credential storage) is a differe
 authentication flow. Do not paste those tokens into the provider credential field.
 [Official Codex authentication](https://learn.chatgpt.com/docs/auth).
 
-The intended separate integration is Codex App Server, letting Codex own login and
-refresh, using `account/read` for account state and thread/turn APIs for requests.
-This is **not implemented** yet. The protocol inspected does not provide a single
-enforced tool-free turn switch. `approvalPolicy: never` and a read-only sandbox are
-not equivalent to disabling all tools, MCP servers, plugins and commands.
-App Server-backed chat requires an enforced, version-checked restricted server
-boundary before enabling it in this non-executing chat app. A separate
-[experimental fixed-origin adapter contract](CODEX-ADAPTER-CONTRACT.md) now records
-the direct text-only alternative and its implementation/verification gates; it is
-not yet wired into the native app and is not a supported public API claim.
+### Experimental native Codex login
+
+1. In Settings, choose **New configuration → Provider type → Codex login (experimental)**.
+2. Give it a name and choose a model supported by your Codex account. The initial
+   suggestion is `gpt-5.6-luna`; availability is not assumed or discovered automatically.
+3. Click **Import Codex auth.json…** and explicitly select the file maintained by
+   your Codex login. In the macOS file picker, Show Hidden Files is ⇧⌘. and Go to
+   Folder is ⇧⌘G. No home-folder scan or startup credential import occurs.
+4. **Save and use**, then send from the composer. Saving is not a connection test.
+
+The importer accepts ChatGPT-mode JSON up to 1 MiB and retains only the access
+token and optional account ID in process memory. It never copies the file, keeps
+its pathname, uses its refresh/ID token, writes OAuth material to Keychain, or
+changes Codex's login. Quit/relaunch or provider rejection requires explicit
+re-import of a current file; Codex remains the only refresh owner. The API-key
+field is never used for this login, and switching provider kind requires fresh,
+kind-matching credentials rather than copying a stored value.
+
+Requests go only to `https://chatgpt.com/backend-api/codex/responses`, with normal
+TLS, no redirects, and this app's own client identity. Text input includes the
+same disclosed conversation context as other providers. Tools are explicitly
+empty/disabled; unknown or tool output fails closed. `store: false` is a request
+setting, not a promise about the provider's retention policy. There is no shell,
+MCP, browser, computer, file-action or tool interpreter in this adapter.
+
+This is implementation-level compatibility with Codex's backend, **not a supported
+public third-party API or subscription-entitlement guarantee**. Backend/model changes
+can break it. There is no automatic fallback to another endpoint/account/transport.
+[Adapter contract and source references](CODEX-ADAPTER-CONTRACT.md).
+
+Codex App Server is the documented managed-login integration surface but is not
+used here. The inspected protocol does not establish one universal tool-free turn
+switch; `approvalPolicy: never` is not equivalent to disabling tools.
 [Official App Server documentation](https://learn.chatgpt.com/docs/app-server).
 
-Neither the app nor tests scan `pass`, read `auth.json`, import credentials from
-other apps, or publish local account diagnostics. Keep keys out of command arguments,
-screenshots, logs, repository fixtures and source control.
+Normal automated tests and `codex-smoke` use only synthetic credentials and an
+intercepted URL load. An explicit `codex-smoke-stdin` developer command is separate:
+it reads a deliberately supplied auth JSON from stdin, makes a minimal **real**
+fixed-origin reply request, verifies native persistence/attribution in a temporary
+workspace, and exits. It does not open the normal workspace, refresh the login,
+or put secrets in arguments or files. Do not run it in CI or pipe credentials to
+an unreviewed binary. It can consume account quota. Local account diagnostics stay
+private; no `pass` scanning or credential lookup is performed by the app.
+
+Keep keys and auth files out of screenshots, logs, repository fixtures and source
+control. Swift process memory does not guarantee secure zeroization or protection
+against OS swap, debuggers, crash dumps or a compromised process.
