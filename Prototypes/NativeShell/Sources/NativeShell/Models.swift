@@ -41,11 +41,16 @@ struct PreviewMessage: Identifiable {
   let role: Role
   let text: String
   let timestamp: String?
-  init(_ role: Role, _ text: String, timestamp: String? = nil, id: UUID = UUID()) {
+  let speakerName: String?
+  init(
+    _ role: Role, _ text: String, timestamp: String? = nil, id: UUID = UUID(),
+    speakerName: String? = nil
+  ) {
     self.id = id
     self.role = role
     self.text = text
     self.timestamp = timestamp
+    self.speakerName = speakerName
   }
 }
 
@@ -111,10 +116,27 @@ enum ComposerInputPolicy {
   @Published var isClosing = false
   @Published var hasOlderMessages = false
   @Published var persistentSearchIDs: Set<UUID>?
+  @Published var providers: [ProviderConfig] = []
+  @Published var selectedProviderID: UUID?
+  @Published var selectedTargetBotIDs: [UUID: UUID] = [:]
+  @Published var generations: [Generation] = []
+  @Published var isSubmitting = false
+  @Published var isProviderSaving = false
+  @Published var providerSettingsDirty = false
+  @Published var pendingGenerationActions: Set<UUID> = []
+  var coordinator: GenerationCoordinator?
+  var credentials: (any CredentialStore)?
+  var chatProvider: (any ChatProvider)?
+  var sendTask: Task<Void, Never>?
+  var providerSaveWaiters: [CheckedContinuation<Void, Never>] = []
+  var coordinatorStopped = false
+  var providerShutdownStarted = false
+  var openSettingsAction: (() -> Void)?
   var repository: (any WorkspaceRepository)?
   var dirtyDrafts: Set<UUID> = []
   var draftVersions: [UUID: Int] = [:]
   var draftSaveTask: Task<Void, Never>?
+  var draftFlushTask: Task<Void, Error>?
   var selectionRequest = 0
   var olderCursor: Int64?
   var retryOpening: (() -> Void)?

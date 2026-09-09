@@ -2,22 +2,37 @@ import Foundation
 import WorkspaceCore
 
 extension PreviewWorkspace {
-  func connect(_ repository: any WorkspaceRepository) async throws {
+  func connect(
+    _ repository: any WorkspaceRepository,
+    credentials: any CredentialStore = KeychainCredentialStore(),
+    provider: any ChatProvider = ChatCompletionsProvider()
+  ) async throws {
+    try await coordinator?.shutdown()
     isPersistent = true
     isLoading = true
     defer { isLoading = false }
     self.repository = repository
+    self.credentials = credentials
+    self.chatProvider = provider
     name = UserDefaults.standard.string(forKey: "workspace.displayName") ?? "Your workspace"
     // Never silently replay an unfinished request after restart.
     try await repository.apply(.interruptPendingGenerations)
     try await refreshPersistent()
     selectedID = conversations.first?.id
     if let selectedID { try await loadMessages(selectedID) }
+    makeCoordinator()
   }
 
   func refreshPersistent() async throws {
     guard let repository else { throw WorkspaceError.storeUnavailable }
     let snapshot = try await repository.snapshot()
+    providers = snapshot.providers.sorted {
+      $0.name.localizedStandardCompare($1.name) == .orderedAscending
+    }
+    if !providers.contains(where: { $0.id == selectedProviderID }) {
+      selectedProviderID = providers.count == 1 ? providers.first?.id : nil
+    }
+    generations = snapshot.generations
     bots = snapshot.bots.map { bot in
       var projected = PreviewBot(
         id: bot.id, name: bot.name, description: bot.description,
@@ -90,7 +105,8 @@ extension PreviewWorkspace {
     }
     return PreviewMessage(
       role, message.text,
-      timestamp: message.createdAt.formatted(date: .abbreviated, time: .shortened), id: message.id)
+      timestamp: message.createdAt.formatted(date: .abbreviated, time: .shortened), id: message.id,
+      speakerName: message.speakerNameSnapshot)
   }
 
   func scheduleDraftSave(_ id: UUID) {
@@ -108,6 +124,22 @@ extension PreviewWorkspace {
 
   func flushDrafts() async throws {
     guard isPersistent, let repository else { return }
+    // One in-flight writer: an older paused flush must never restore a sent draft later.
+    while !dirtyDrafts.isEmpty || draftFlushTask != nil {
+      if let draftFlushTask {
+        try await draftFlushTask.value
+      } else {
+        let task = Task { @MainActor in
+          defer { self.draftFlushTask = nil }
+          try await self.writeDirtyDrafts(to: repository)
+        }
+        draftFlushTask = task
+        try await task.value
+      }
+    }
+  }
+
+  private func writeDirtyDrafts(to repository: any WorkspaceRepository) async throws {
     while !dirtyDrafts.isEmpty {
       for id in Array(dirtyDrafts) {
         let version = draftVersions[id]
@@ -181,9 +213,16 @@ extension PreviewWorkspace {
       do { try saveLocalMessage() } catch { notice = error.localizedDescription }
       return
     }
-    // The provider core is not connected to this UI yet. Preserve the editable draft.
-    notice = "No AI provider is connected. Your draft is saved locally; no message has been sent."
-    Task { do { try await flushDrafts() } catch { storageError = error.localizedDescription } }
+    guard selectedProvider != nil else {
+      notice = "No AI provider is connected. Your draft is saved locally; no message has been sent."
+      Task { do { try await flushDrafts() } catch { storageError = error.localizedDescription } }
+      return
+    }
+    guard sendTask == nil, !isClosing else { return }
+    sendTask = Task {
+      defer { sendTask = nil }
+      do { _ = try await submitDraft() } catch { notice = Self.providerErrorMessage(error) }
+    }
   }
 
   func saveDisplayName(_ value: String) {

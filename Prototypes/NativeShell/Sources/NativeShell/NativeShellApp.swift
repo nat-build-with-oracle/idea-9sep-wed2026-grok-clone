@@ -12,10 +12,11 @@ import WorkspaceCore
   }
 }
 
-@MainActor final class ShellAppDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class ShellAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   private let store = PreviewWorkspace(seed: false)
   private var persistentRepository: CoreDataWorkspaceRepository?
   private var window: NSWindow?
+  private var settingsWindow: NSWindow?
   private var preparingToQuit = false
   private var readyToQuit = false
 
@@ -47,6 +48,7 @@ import WorkspaceCore
     window.isReleasedWhenClosed = false
     window.contentView = NSHostingView(rootView: WorkspaceView(store: store))
     self.window = window
+    store.openSettingsAction = { [weak self] in self?.showSettings() }
     installMenus()
     window.center()
     window.makeKeyAndOrderFront(nil)
@@ -85,6 +87,7 @@ import WorkspaceCore
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard store.isPersistent, !readyToQuit else { return .terminateNow }
     guard !preparingToQuit else { return .terminateCancel }
+    guard discardProviderChangesIfNeeded() else { return .terminateCancel }
     preparingToQuit = true
     window?.makeFirstResponder(nil)
     store.isClosing = true
@@ -92,13 +95,14 @@ import WorkspaceCore
     // Cancel this request, flush asynchronously, then issue a prepared synchronous termination.
     Task {
       do {
-        try await store.flushDrafts()
+        try await store.prepareForClose()
         try await persistentRepository?.close()
         readyToQuit = true
         sender.terminate(nil)
       } catch {
         preparingToQuit = false
         store.isClosing = false
+        store.resumeAfterCloseFailure()
         store.storageError = error.localizedDescription
         window?.makeKeyAndOrderFront(nil)
       }
@@ -164,6 +168,11 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-provider") {
+          try await verifyProviderFlow(
+            repository: reopened, conversationID: groupID, targetID: botID)
+          if arguments.contains("--settings") { showSettings() }
+        }
         try await Task.sleep(for: .milliseconds(300))
         writeSnapshot(small: small, arguments: arguments)
         print(
@@ -182,6 +191,33 @@ import WorkspaceCore
     }
   }
 
+  /// Explicitly injected, offline fixtures, available only in the isolated smoke workspace.
+  private func verifyProviderFlow(
+    repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID
+  ) async throws {
+    try await store.connect(
+      repository, credentials: SmokeCredentials(), provider: SmokeChatProvider())
+    _ = try await store.saveProvider(
+      id: nil, name: "Offline fixture provider", apiRoot: "https://fixture.invalid/v1",
+      modelID: "smoke-text", secret: "offline-fixture-credential", allowsLoopbackHTTP: false)
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = targetID
+    store.draft = "Summarize this fictional project."
+    store.performSend()
+    await store.sendTask?.value
+    await store.coordinator?.waitForIdle()
+    let snapshot = try await repository.snapshot()
+    let page = try await repository.messages(conversationID: conversationID)
+    guard snapshot.generations.count == 1, snapshot.generations.first?.state == .completed,
+      page.messages.count == 2, page.messages.last?.text == SmokeChatProvider.reply,
+      store.currentMessages.last?.text == SmokeChatProvider.reply,
+      store.currentMessages.last?.speakerName == "Research Partner", store.draft.isEmpty
+    else { throw WorkspaceError.invalidStore }
+    print(
+      "NATIVE_PROVIDER_SMOKE=PASS offlineFixture=true userMessages=1 assistantMessages=1 attributed=true completed=true"
+    )
+  }
+
   private func installMenus() {
     let menu = NSMenu()
     let appMenu = NSMenu()
@@ -193,7 +229,7 @@ import WorkspaceCore
 
     let file = NSMenu()
     file.addItem(item("New Chat", #selector(newChat), "n"))
-    file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", target: window))
+    file.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "w", target: nil))
     menu.addItem(submenu("File", file))
 
     let edit = NSMenu()
@@ -231,7 +267,56 @@ import WorkspaceCore
   }
 
   @objc private func newChat() { store.openPicker() }
-  @objc private func settings() { store.panel = .settings }
+  @objc private func settings() { store.openSettings() }
+
+  private func showSettings() {
+    guard store.isPersistent else {
+      store.panel = .settings
+      return
+    }
+    guard !store.isLoading, !store.isClosing else { return }
+    if let settingsWindow {
+      settingsWindow.makeKeyAndOrderFront(nil)
+      return
+    }
+    let settings = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 580, height: 740),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
+    )
+    settings.title = "Bot Workspace Settings"
+    settings.contentMinSize = NSSize(width: 520, height: 620)
+    settings.isReleasedWhenClosed = false
+    settings.appearance = NSAppearance(named: .darkAqua)
+    settings.contentView = NSHostingView(rootView: ProviderSettingsView(store: store))
+    settings.delegate = self
+    settingsWindow = settings
+    settings.center()
+    settings.makeKeyAndOrderFront(nil)
+  }
+
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    guard sender === settingsWindow else { return true }
+    return !store.isProviderSaving && discardProviderChangesIfNeeded()
+  }
+
+  func windowWillClose(_ notification: Notification) {
+    guard let closing = notification.object as? NSWindow, closing === settingsWindow else { return }
+    closing.contentView = nil
+    settingsWindow = nil
+    store.providerSettingsDirty = false
+  }
+
+  private func discardProviderChangesIfNeeded() -> Bool {
+    guard store.providerSettingsDirty, !store.isProviderSaving else { return true }
+    let alert = NSAlert()
+    alert.messageText = "Discard unsaved provider changes?"
+    alert.informativeText = "The entered credential and configuration edits have not been saved."
+    alert.addButton(withTitle: "Keep Editing")
+    alert.addButton(withTitle: "Discard Changes")
+    guard alert.runModal() == .alertSecondButtonReturn else { return false }
+    store.providerSettingsDirty = false
+    return true
+  }
   @objc private func search() {
     store.sidebarVisible = true
     store.searchFocusRequest += 1
@@ -240,15 +325,19 @@ import WorkspaceCore
   @objc private func toggleDetails() { store.inspectorPreferred.toggle() }
 
   private func writeSnapshot(small: Bool, arguments: [String]) {
-    guard let view = window?.contentView?.superview else { return }
+    let target = arguments.contains("--settings") ? settingsWindow : window
+    guard let view = target?.contentView?.superview else { return }
     view.layoutSubtreeIfNeeded()
     guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
-      arguments.contains("--verify-workspace")
-      ? "durable-workspace"
-      : arguments.contains("--group") ? "group" : arguments.contains("--picker") ? "picker" : "chat"
+      arguments.contains("--verify-provider")
+      ? (arguments.contains("--settings") ? "provider-settings" : "provider-chat")
+      : arguments.contains("--verify-workspace")
+        ? "durable-workspace"
+        : arguments.contains("--group")
+          ? "group" : arguments.contains("--picker") ? "picker" : "chat"
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

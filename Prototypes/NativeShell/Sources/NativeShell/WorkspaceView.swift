@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WorkspaceCore
 
 struct WorkspaceView: View {
   @ObservedObject var store: PreviewWorkspace
@@ -53,7 +54,7 @@ struct WorkspaceView: View {
           if store.repository != nil {
             Button("Retry saving drafts") {
               Task {
-                do { try await store.flushDrafts() } catch {
+                do { try await store.recoverStorage() } catch {
                   store.storageError = error.localizedDescription
                 }
               }
@@ -190,7 +191,8 @@ private struct SidebarView: View {
           Circle().fill(Color.orange.opacity(0.85)).frame(width: 5, height: 5)
           Text(
             store.isPersistent
-              ? "Saved on this Mac · AI not connected" : "Sample workspace · not connected"
+              ? "Saved on this Mac · \(store.selectedProvider == nil ? "choose a provider" : "provider configured")"
+              : "Sample workspace · not connected"
           ).font(.system(size: 10))
           Spacer(minLength: 0)
         }.foregroundStyle(ShellTheme.secondary)
@@ -312,6 +314,13 @@ private struct ConversationView: View {
             }
             ForEach(store.currentMessages) { message in
               MessageBubble(message: message).id(message.id)
+              ForEach(
+                store.generations.filter {
+                  $0.userMessageID == message.id && $0.state != .completed
+                }
+              ) { generation in
+                GenerationStatusView(store: store, generation: generation)
+              }
             }
             if store.currentMessages.isEmpty {
               VStack(spacing: 15) {
@@ -326,7 +335,7 @@ private struct ConversationView: View {
                 Text("A new conversation").font(.system(size: 21, weight: .medium))
                 Text(
                   store.isPersistent
-                    ? "Your drafts are saved on this Mac. AI integration is not connected yet, so sending preserves your draft without contacting a provider."
+                    ? "Your drafts are saved on this Mac. Choose a provider below to send a message. Only the selected bot will reply."
                     : "Try the composer below. This native preview saves messages only for this session; it does not contact an AI provider."
                 )
                 .foregroundStyle(ShellTheme.secondary).multilineTextAlignment(.center).frame(
@@ -360,12 +369,16 @@ private struct ConversationView: View {
         .onChange(of: store.currentMessages.count) { _, _ in
           if nearBottom { reader.scrollTo("bottom", anchor: .bottom) }
         }
+        .onChange(of: store.currentMessages.last?.text) { _, _ in
+          if nearBottom { reader.scrollTo("bottom", anchor: .bottom) }
+        }
       }
     }
   }
 
   private var composer: some View {
     VStack(spacing: 8) {
+      if store.isPersistent { providerControls }
       if let notice = store.notice {
         HStack(alignment: .top, spacing: 8) {
           Text(notice).font(.system(size: 12)).foregroundStyle(ShellTheme.secondary)
@@ -409,14 +422,14 @@ private struct ConversationView: View {
               store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? Color.gray : Color.white, in: Circle())
         }.buttonStyle(.plain).disabled(
-          store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSubmitting
         )
         .padding(.bottom, 1).help(
           store.isPersistent
-            ? "Check provider availability (Return)" : "Add preview message (Return)"
+            ? "Send to selected provider (Return)" : "Add preview message (Return)"
         )
         .accessibilityLabel(
-          store.isPersistent ? "Check provider availability" : "Add preview message"
+          store.isPersistent ? "Send message" : "Add preview message"
         ).accessibilityIdentifier("send-message")
       }
       .padding(.horizontal, 9).padding(.vertical, 7)
@@ -427,6 +440,81 @@ private struct ConversationView: View {
 
   private func send() {
     store.performSend()
+  }
+
+  private var providerControls: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Picker("Provider", selection: $store.selectedProviderID) {
+          Text("Choose provider").tag(Optional<UUID>.none)
+          ForEach(store.providers) { Text($0.name).tag(Optional($0.id)) }
+        }.accessibilityIdentifier("send-provider")
+        Button {
+          store.openSettings()
+        } label: {
+          Image(systemName: "gearshape")
+        }
+        .buttonStyle(.plain).accessibilityLabel("Configure model provider")
+      }
+      if let conversation = store.current, conversation.kind == .group {
+        Picker(
+          "Reply as",
+          selection: Binding<UUID?>(
+            get: { store.selectedTargetBotIDs[conversation.id] },
+            set: { store.selectedTargetBotIDs[conversation.id] = $0 }
+          )
+        ) {
+          Text("Choose one bot").tag(Optional<UUID>.none)
+          ForEach(store.bots.filter { conversation.memberIDs.contains($0.id) }) {
+            Text($0.name).tag(Optional($0.id))
+          }
+        }.accessibilityIdentifier("send-target")
+      }
+      if let provider = store.selectedProvider {
+        Text("To: \(provider.apiRoot.absoluteString) · \(provider.modelID)")
+          .font(.system(size: 11)).textSelection(.enabled)
+          .accessibilityIdentifier("send-destination")
+        Text("Sends draft + up to 100 prior messages + bot description. No attachments.")
+          .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+      } else {
+        Text("No provider selected. Sending keeps your draft; nothing leaves this Mac.")
+          .font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
+      }
+    }.foregroundStyle(ShellTheme.secondary).padding(.horizontal, 6)
+      .disabled(store.isSubmitting)
+  }
+}
+
+private struct GenerationStatusView: View {
+  @ObservedObject var store: PreviewWorkspace
+  let generation: Generation
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      HStack {
+        Text(
+          "\(store.bots.first { $0.id == generation.targetBotID }?.name ?? "Bot") · \(generation.state.rawValue.capitalized)"
+        )
+        Spacer()
+        if !generation.state.isTerminal {
+          Button("Stop") { action { try await store.cancelReply(generation.id) } }
+            .accessibilityIdentifier("stop-\(generation.id)")
+        } else {
+          Button("Retry") { action { try await store.retryReply(generation.id) } }
+            .help(
+              "Retry using the currently selected provider. The original user message and partial reply are retained."
+            )
+            .disabled(store.selectedProvider == nil)
+            .accessibilityIdentifier("retry-\(generation.id)")
+        }
+      }
+      if let error = generation.error { Text(error).foregroundStyle(.orange) }
+    }.font(.system(size: 12)).foregroundStyle(ShellTheme.secondary)
+      .disabled(store.pendingGenerationActions.contains(generation.id))
+  }
+  private func action(_ work: @escaping @MainActor () async throws -> Void) {
+    Task {
+      do { try await work() } catch { store.notice = PreviewWorkspace.providerErrorMessage(error) }
+    }
   }
 }
 
@@ -449,14 +537,22 @@ private struct MessageBubble: View {
       } else {
         HStack {
           if message.role == .user { Spacer(minLength: 40) }
-          Text(message.text).font(.system(size: 16)).lineSpacing(4)
-            .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 15).padding(.vertical, 11)
-            .background(
-              message.role == .user ? Color(hex: 0x5a5a5a) : ShellTheme.bubble,
-              in: RoundedRectangle(cornerRadius: 22)
-            )
-            .frame(maxWidth: 550, alignment: message.role == .user ? .trailing : .leading)
+          VStack(alignment: .leading, spacing: 5) {
+            if let speaker = message.speakerName {
+              Text(speaker).font(.system(size: 11, weight: .medium)).foregroundStyle(
+                ShellTheme.secondary
+              )
+              .accessibilityLabel("Reply from \(speaker)")
+            }
+            Text(message.text).font(.system(size: 16)).lineSpacing(4)
+              .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+              .padding(.horizontal, 15).padding(.vertical, 11)
+              .background(
+                message.role == .user ? Color(hex: 0x5a5a5a) : ShellTheme.bubble,
+                in: RoundedRectangle(cornerRadius: 22)
+              )
+              .frame(maxWidth: 550, alignment: message.role == .user ? .trailing : .leading)
+          }
           if message.role != .user { Spacer(minLength: 40) }
         }.frame(maxWidth: .infinity)
       }
@@ -470,7 +566,7 @@ private struct InspectorView: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack {
         Spacer()
-        ShellIconButton(symbol: "gearshape", label: "Settings") { store.panel = .settings }
+        ShellIconButton(symbol: "gearshape", label: "Settings") { store.openSettings() }
         ShellIconButton(symbol: "chevron.right.2", label: "Hide conversation details") {
           store.inspectorPreferred = false
         }

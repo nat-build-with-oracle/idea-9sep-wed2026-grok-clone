@@ -69,7 +69,7 @@ struct PrototypePanel: View {
       }
       Text(
         store.isPersistent
-          ? "This bot is saved on this Mac. No provider or computer is connected."
+          ? "This bot is saved on this Mac. Choose a provider in the composer before sending. No computer is connected."
           : "This creates a local preview bot. No provider or computer is connected."
       )
       .foregroundStyle(ShellTheme.secondary).font(.system(size: 12))
