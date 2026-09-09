@@ -5,8 +5,10 @@ Built with **SwiftUI, AppKit and Core Data**, using only Apple frameworks.
 The repository name preserves its original [grok-clone idea capsule](PROPOSAL.md).
 
 **Experimental source release, not a finished AI client.** Bots, groups, drafts
-and paused routines persist locally. A tested provider/streaming core exists, but
-it is **not connected to the app UI yet**. No Grok Bot/Cursor service, subscription,
+and paused routines persist locally. Native provider settings, streamed replies,
+explicit group targeting, Stop and Retry are wired to the provider core and tested
+with offline fixtures. Real Keychain/signing and live-provider verification remain
+open. No Grok Bot/Cursor service, subscription,
 remote computer or private API is included; this project is not affiliated with them.
 
 ## Run the local app
@@ -15,9 +17,10 @@ remote computer or private API is included; this project is not affiliated with 
 scripts/native-app.sh run
 scripts/native-app.sh test
 scripts/native-app.sh smoke
+scripts/native-app.sh provider-smoke # offline fixture; no key or live network
 ```
 
-The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No AI provider is connected yet:** Send preserves your locally saved draft rather than pretending to send a message. See [durable workspace implementation and evidence](docs/DURABLE-WORKSPACE.md).
+The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Configure an endpoint/model/key in Settings, then select the provider and (for groups) the replying bot in the composer. Without a provider or usable key, the draft is retained. Protected Keychain access requires authorized signing; a local ad-hoc build may refuse credential storage rather than fall back to plaintext. See [provider integration and signing limits](docs/PROVIDER-CORE.md).
 
 ## Try the native prototype
 
@@ -37,20 +40,21 @@ third-party dependency installation is needed for the current app or tests.
 |---|---|
 | Native UI | Three-pane workspace, bot/group creation, search, hide/show, native text composer |
 | Local data | Core Data persistence, drafts, message pagination, paused routine records |
-| Provider core | URLSession/SSE transport, generation queue, cancellation/retry; fixture-tested, not UI-integrated |
-| Credentials | Keychain adapter source exists; real Keychain/signing behavior is not verified |
-| Not yet implemented end-to-end | Live model replies, routine execution, attachments/export, remaining edit/delete flows |
+| Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
+| Credentials | Secure input and Keychain adapter; no plaintext fallback; actual authorized signing/Keychain access not yet verified |
+| Remaining gates | Live-provider validation, routine execution, attachments/export, remaining edit/delete and native accessibility flows |
 
-Verification: **99 tests** (62 core + 37 shell), desktop/narrow native persistence
-smokes, build/signature and formatting checks. See the evidence and limitations below.
+Verification: **113 tests** (63 core + 50 shell), desktop/narrow native persistence
+and offline provider smokes, Settings rendering, build/signature and formatting checks. See the evidence
+and limitations below for the current test counts and scope.
 
 ## Architecture and contracts
 
 ```text
 SwiftUI + AppKit → presentation adapter → WorkspaceRepository → Core Data
 
-Provider core (not wired to UI):
-GenerationCoordinator → CredentialStore + ChatProvider → URLSession / SSE
+Native provider settings + composer → GenerationCoordinator
+  → CredentialStore + ChatProvider → URLSession / SSE
 ```
 
 - [Product and acceptance contract](docs/NATIVE-REWRITE-CONTRACT.md)

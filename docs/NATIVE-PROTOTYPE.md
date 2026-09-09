@@ -54,10 +54,10 @@ At 800×650pt the inspector is absent and the composer remains visible; at 1280�
 
 Host: macOS 26.5.1, Apple Silicon, Xcode 26.6, Swift 6.3.3. Deployment target is macOS 14; that OS has **not** been runtime-tested.
 
-- The original **25 model/input-policy tests** remain passing, with one additional synthetic-fixture regression test. Five AppKit tests cover plain-text/undo/accessibility configuration, marked-text preservation across SwiftUI updates, selector refusal without a key event, composer replacement/teardown, and disabled-editor behavior. They do not simulate or claim a live IME session. Six durable UI-adapter tests bring the shell suite to **37 passing tests**.
+- The original **25 model/input-policy tests** remain passing, with one additional synthetic-fixture regression test. Five AppKit tests cover plain-text/undo/accessibility configuration, marked-text preservation across SwiftUI updates, selector refusal without a key event, composer replacement/teardown, and disabled-editor behavior. They do not simulate or claim a live IME session. Six durable UI-adapter tests bring the base shell suite to **37 passing tests**. A further 13 provider-presentation tests now bring the shell package to **50 tests**; see [provider integration](PROVIDER-CORE.md).
 - Native `.app` was launched normally through Launch Services and in snapshot mode, producing chat, narrow-chat, recipient and group renders. An initial latest-message clipping defect was found visually and corrected with the native default bottom scroll anchor; desktop and narrow confirmation renders show the final bubble above the composer.
 - Local code-signature verification passes. Extracted entitlement is only `com.apple.security.app-sandbox=true`; no network/file-access privilege was added. This is ad-hoc development signing, **not** Developer ID, notarization, or distribution readiness.
-- Source scan finds no HTTP URLs, URLSession calls, WKWebView, or subprocess invocation in prototype Swift sources. This is static evidence, not network packet capture.
+- Shared source now includes provider settings/fixture URLs and a provider integration service. The sample-only bundle does not connect that service and still lacks outgoing network entitlement. The durable bundle explicitly enables outgoing network access. Neither embeds a WebView or invokes a command-execution backend; this is not a network packet-capture claim.
 - Swift formatting lint, shell syntax check and whitespace validation are part of the verification commands below.
 
 ```sh
@@ -73,7 +73,7 @@ git diff --check
 - Real keyboard event routing: IME candidate acceptance, Shift+Return, shortcuts, picker arrows, focus restoration, undo, text selection and VoiceOver. Pure input-policy tests are not end-to-end IME evidence.
 - Full accessibility tree audit, interactive pane dragging, large text and reduced-motion checks.
 - T13: 10,000 **persisted** messages, paginated initial 100, 50 updates/sec and Instruments timing. Small fixture rendering proves none of those thresholds.
-- Historical schema migrations, file attachment/export boundaries, native provider/Keychain integration, routine execution and remaining lifecycle recovery. Persistence and provider core now have separate implementation evidence in [durable workspace](DURABLE-WORKSPACE.md) and [provider core](PROVIDER-CORE.md); those are not full UI/release completion.
-- Remaining production bot/group edits and lifecycle semantics; separate settings window; macOS 14 execution; release signing/notarization.
+- Historical schema migrations, file attachment/export boundaries, live provider/Keychain signing verification and full native provider interaction, routine execution and remaining lifecycle recovery. Persistence and provider core now have separate implementation evidence in [durable workspace](DURABLE-WORKSPACE.md) and [provider core](PROVIDER-CORE.md); those are not full UI/release completion.
+- Remaining production bot/group edits and lifecycle semantics; full Settings-window keyboard/discard/a11y verification; macOS 14 execution; release signing/notarization.
 
 Full R01–R09 / T01–T18 acceptance remains governed by the production contract. This milestone neither completes the full rewrite nor replaces the remaining work with a mock UI.

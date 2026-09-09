@@ -31,7 +31,7 @@ Reference fidelity over decorative invention. Keep one primary focus per view. S
 - User reference is kept unchanged locally for design/testing, excluded from public source and never shipped as live content. The computer panel uses an explicit disconnected state until an adapter is connected.
 
 ## Components
-Avatar, icon button, conversation row, message bubble, timeline separator, composer, recipient picker, inspector, routine row, sheet, settings section. Production ownership and test seams are defined in docs/NATIVE-REWRITE-CONTRACT.md. The shell under Prototypes/NativeShell supports a sample-only bundle and a durable bundle through Packages/WorkspaceCore. Source-directory naming is transitional; model and scheduler effects remain unimplemented.
+Avatar, icon button, conversation row, message bubble, timeline separator, composer, recipient picker, inspector, routine row, sheet, settings section. Production ownership and test seams are defined in docs/NATIVE-REWRITE-CONTRACT.md. The shell under Prototypes/NativeShell supports a sample-only bundle and a durable bundle through Packages/WorkspaceCore. Source-directory naming is transitional; provider effects now run through an injected, fixture-tested coordinator; real-provider/signing checks and scheduler execution remain open.
 
 ## Accessibility
 Semantic controls with names; keyboard submit and Escape; visible focus; dialog focus trapping/restoration; live status announcements; readable contrast; no keyboard-only hidden actions. Respect reduced motion.
@@ -50,4 +50,4 @@ No third-party dependencies without explicit adoption. Proposed Xcode app plus S
 
 ## Open questions
 - SwiftUI versus Tauri: recommendation pending macOS-only versus cross-platform priority.
-- Desired model/backend: adapter contract planned; no private Grok Bot API dependency.
+- Desired model/backend: configurable text-only Chat Completions adapter; live-provider compatibility unverified; no private Grok Bot API dependency.

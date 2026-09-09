@@ -29,7 +29,7 @@ Honor the supplied dark, three-column macOS messaging reference. Use original im
 - A user-supplied screenshot was retained unchanged as a private design reference. It is excluded from the public repository and is not needed to build or test the app.
 - Earlier conversation: sidebar, new-chat and group-picker screenshots and read-only installed-bundle findings.
 - No existing product source, API credentials, or live-computer backend provided.
-- The SwiftUI/AppKit shell now has separate sample and durable modes. `scripts/native-app.sh` packages the durable app; `scripts/native-prototype.sh` retains the session-only visual fixture. `Packages/WorkspaceCore` provides validated Core Data persistence. See `docs/DURABLE-WORKSPACE.md` for verified scope and missing features.
+- The SwiftUI/AppKit shell now has separate sample and durable modes. `scripts/native-app.sh` packages the durable app; `scripts/native-prototype.sh` retains the session-only visual fixture. `Packages/WorkspaceCore` provides validated Core Data persistence and the streaming generation coordinator; native provider settings/chat are wired and fixture-tested. Real Keychain/signing and provider checks remain open. See `docs/DURABLE-WORKSPACE.md` for verified scope and missing features.
 
 ## Product Principles
 - A conversation is the primary work surface.
