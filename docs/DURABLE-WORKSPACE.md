@@ -48,7 +48,7 @@ The repository confines managed objects to its private queue; only Codable/Senda
 
 - `Packages/WorkspaceCore/Sources/WorkspaceCore/Domain.swift`, `ProfileEditing.swift`: stable UUID DTOs plus validated, editable-only bot and group profile snapshots.
 - `WorkspaceRepository.swift`: typed mutations, explicit revision precondition and paginated-message contract.
-- `CoreDataWorkspaceRepository.swift`: normalized entity records with versioned Codable payloads; indexed conversation/sequence message access; atomic save/rollback; immutable v1 model and explicit v2 migration; corruption/incompatibility rejection; cross-process lease.
+- `CoreDataWorkspaceRepository.swift`: normalized entity records with versioned Codable payloads; indexed conversation/sequence message access; atomic save/rollback; immutable v1/v2 models and explicit v3 migration; corruption/incompatibility rejection; cross-process lease.
 - `GenerationCoordinator.swift`, `ChatProvider.swift`, `ChatCompletionsProvider.swift`, `CredentialStore.swift`: provider and generation core, connected through `ProviderWorkspace.swift` and `ProviderSettingsView.swift`. See [provider checkpoint](PROVIDER-CORE.md) for tested scope and Keychain/live-network gaps.
 - `Prototypes/NativeShell/Sources/NativeShell/PersistentWorkspace.swift`, `EditingWorkspace.swift`: UI projection and awaited mutations, debounced drafts, profile-edit snapshots, storage-error state, search and paged transcript reads.
 - `ProfileEditorView.swift`: native bot fields and ordered group membership editing, dirty-discard/reload confirmation, and stable-target controller state.
@@ -62,32 +62,35 @@ The repository confines managed objects to its private queue; only Codable/Senda
 | Create bot | Bot and direct conversation commit together with different stable IDs; trimmed name, description/color and provider references validated |
 | Edit/hide bot | Native editor changes name, description, color and shape; direct title follows the normalized name. Identity, creation date, provider assignment, visibility, routines, drafts and transcript remain intact; hide/unhide stays separate |
 | Create/update group | Native editor changes the title and ordered 2–6-member list. Existing hidden members may remain, but hidden/missing bots cannot be newly added; future target choices follow the new list without rewriting an in-flight reply or recorded attribution |
-| Save draft | Native conversation-scoped Unicode text/reply selection, cancellation and original-message navigation; persisted on debounce/flush; unsupported attachment references are rejected rather than dropped |
+| Save draft | Native conversation-scoped Unicode text/reply selection, cancellation and original-message navigation; persisted on debounce/flush; stored attachment IDs are preserved on native text edits; invalid references are rejected, and file selection/removal controls remain pending |
 | Begin generation | User message, queued generation/attempt, monotonically assigned sequence and matching-draft clear are atomic; newer draft text is preserved |
 | Cancel/reconcile | Stale attempt cannot cancel current work; restart reconciliation marks pending work interrupted without replaying it |
 | Routines | Native interval/daily editor with explicit owner/provider consent; Run Now, pause/resume, Stop, confirmed deletion, visible history, awake reconciliation. No work is promised while closed/asleep |
 | Save provider | Metadata/reference only; reject URL userinfo/query/fragment, non-HTTPS except explicitly opted-in loopback; native settings/credential entry/send are wired; **real signing/Keychain and broad provider verification remain open; a minimal native Codex reply has passed** |
 | Message page | Latest 100 by default, limits 1–500; exclusive sequence cursor; older page stable when newer messages arrive |
 | Search | Case/diacritic-insensitive title/message search, with hidden conversations excluded by default |
-| Export | One-revision, all-history text-only JSON with explicit provider allowlist; native save dialog, draft flush and single-flight failure handling. No credential reads or import; see [format/privacy limits](WORKSPACE-EXPORT.md) |
+| Export | One-revision, all-history JSON including exact referenced attachment payloads with explicit provider allowlist; native save dialog, draft flush and single-flight failure handling. No credential reads or import; see [format/privacy limits](WORKSPACE-EXPORT.md) |
 | Delete bot | Explicit impact confirmation, scoped cancel/join, atomic direct-record/routine deletion; shared providers and group history kept; 0/1-member groups require repair. See [deletion contract](BOT-DELETION.md) |
 | Open/close | One owner per canonical store path; incompatible/corrupt store errors preserve bytes, never reset to sample data |
 
 No managed object, API secret, HTTP request, shell command, or cloud-computer capability is exposed through the repository. Provider metadata validation does not prove compatibility with a real endpoint.
 
-The [routine flow](ROUTINES.md) uses schema v2 with tested migration/recovery, native interval/daily editing, explicit transmission consent, run controls/history, and launch/wake/awake-timer scheduling. Previously paused routines are not silently enabled.
+The [routine flow](ROUTINES.md), introduced in schema v2, is preserved by schema v3 with tested migration/recovery, native interval/daily editing, explicit transmission consent, run controls/history, and launch/wake/awake-timer scheduling. Previously paused routines are not silently enabled.
 
 ## Verification evidence
 
 Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 
-- **199 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
+- **225 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
   generation/coordinator, provider/transport, model catalog, Codex, profiles, reply context,
-  export/deletion, calendar boundaries and routine claims/lifecycle. All use offline credentials,
+  export/deletion, calendar boundaries and routine claims/lifecycle. Attachment coverage adds
+  13 content/repository tests, 5 historical migration/recovery tests, 7 pre-credential
+  transmission guards and legacy export-summary decoding. All use offline credentials,
   URLProtocol/provider fixtures and/or actual temporary stores.
-- **165 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
+- **170 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
   profiles/replies/export/deletion, **11 routine editor** tests and **14 routine workspace/lifecycle**
-  tests. Total: **364 tests**. Routine coverage includes explicit owner/binding consent, provider
+  tests, plus 5 attachment draft/reply/reopen/disclosure tests. Total: **395 tests**.
+  Routine coverage includes explicit owner/binding consent, provider
   drift, dirty/cancel/reload/save races, catch-up/wake, direct-chat output, draft preservation,
   Stop/partial text, confirmed deletion, active history after clock rollback, and quit joining.
 
@@ -105,10 +108,10 @@ Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 
 ## Explicit remaining gates
 
-- A Core Data **close/reopen** test is not a process-kill/power-loss test. Explicit v1→v2 migration and injected replacement/recovery failures are covered with synthetic historical stores; logical payload preservation does not certify arbitrary I/O failure, fsync/power loss, or byte-identical SQLite/WAL layouts.
+- A Core Data **close/reopen** test is not a process-kill/power-loss test. Explicit v1/v2→v3 migration and injected replacement/recovery failures are covered with synthetic historical stores; logical payload preservation does not certify arbitrary I/O failure, fsync/power loss, or byte-identical SQLite/WAL layouts.
 - T08 injects a failure at the transaction save boundary. This proves rollback and draft retention; a coordinator fake also verifies zero provider calls after a failed save. Neither is a real disk-full OS test.
 - Message rows are paginated, but snapshot generation history is not yet bounded. T13's persisted 10k-message native rendering/50 updates/sec/Instruments budget remains **unverified**.
 - Actual IME candidate input, full VoiceOver/focus/shortcuts/divider interaction, and macOS 14 runtime coverage remain open.
-- Attachment packaging/import flows, real provider/Keychain signing verification, physical routine sleep/wake checks, complete profile/settings/delete/routine a11y interaction, XCUITest coverage, and release signing/notarization are incomplete. Native bot/group profile editing and confirmed bot deletion have unit, persistence, concurrency and smoke coverage, but this does not close every R02/UI acceptance gate.
+- Native attachment selection/chips and confirmed provider transmission, real provider/Keychain signing verification, physical routine sleep/wake checks, complete profile/settings/delete/routine a11y interaction, XCUITest coverage, and release signing/notarization are incomplete. Native bot/group profile editing and confirmed bot deletion have unit, persistence, concurrency and smoke coverage, but this does not close every R02/UI acceptance gate.
 
 The full R01–R09 / T01–T18 contract stays active. This durable offline milestone is progress toward it, not a smaller replacement finish line.

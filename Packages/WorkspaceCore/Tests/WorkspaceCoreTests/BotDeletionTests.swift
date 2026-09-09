@@ -266,9 +266,10 @@ import XCTest
       repository, conversationID: conversationID, botID: bot.id)
     try await repository.injectUnsupportedAttachmentReferenceForTesting(
       messageID: command.userMessageID)
-    await assertDeletionError(.unsupportedAttachments) {
+    do {
       _ = try await repository.botDeletionPlan(botID: bot.id)
-    }
+      XCTFail("Expected dangling attachment to fail closed")
+    } catch { XCTAssertEqual(error as? AttachmentError, .missingAttachment) }
     let message = try await repository.message(id: command.userMessageID)
     let snapshot = try await repository.snapshot()
     XCTAssertEqual(message.attachmentIDs.count, 1)

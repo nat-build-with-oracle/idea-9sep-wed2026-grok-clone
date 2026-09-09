@@ -470,10 +470,23 @@ private struct ConversationView: View {
           .buttonStyle(.plain).accessibilityLabel("Dismiss notice")
         }.padding(.horizontal, 8).accessibilityIdentifier("workspace-notice")
       }
+      if !store.currentDraftAttachmentIDs.isEmpty {
+        Text(
+          AttachmentPresentation.storedCount(store.currentDraftAttachmentIDs.count)
+            + " File controls and provider transmission are not available yet; these references stay in the local draft."
+        )
+        .font(.system(size: 11)).foregroundStyle(ShellTheme.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .accessibilityIdentifier("draft-attachment-disclosure")
+      }
       HStack(alignment: .bottom, spacing: 10) {
         Button {
           store.notice =
-            "File attachments are planned for the production app. This feasibility preview does not read files."
+            store.isPersistent
+            ? "Existing text attachments are kept locally. Adding, removing, previewing and transmitting files are not available yet."
+            : "File attachments are planned for the production app. This feasibility preview does not read files."
         } label: {
           Image(systemName: "plus").font(.system(size: 23, weight: .light)).frame(
             width: 33, height: 33
@@ -499,9 +512,11 @@ private struct ConversationView: View {
             .frame(width: 33, height: 33).foregroundStyle(ShellTheme.background)
             .background(
               store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && store.currentDraftAttachmentIDs.isEmpty
                 ? Color.gray : Color.white, in: Circle())
         }.buttonStyle(.plain).disabled(
-          store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSubmitting
+          (store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && store.currentDraftAttachmentIDs.isEmpty) || store.isSubmitting
             || store.isDeletingBot || store.currentNeedsMembershipRepair
         )
         .padding(.bottom, 1).help(
@@ -555,7 +570,9 @@ private struct ConversationView: View {
           .font(.system(size: 11)).textSelection(.enabled)
           .accessibilityIdentifier("send-destination")
         Text(
-          "Sends draft, bot description, up to 100 recent messages, and the original message if replying. No attachments."
+          store.currentDraftAttachmentIDs.isEmpty
+            ? "Sends draft, bot description, up to 100 recent text messages, and the original message if replying. Stored attachments are not transmitted."
+            : "This draft has stored attachments. Attachment transmission is not available, so Send will stop before credentials are read or any network request begins."
         )
         .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
       } else {
@@ -652,25 +669,39 @@ private struct MessageBubble: View {
               .frame(maxWidth: 520, alignment: .leading)
               .accessibilityIdentifier("reply-reference-\(message.id)")
             }
-            Text(message.text).font(.system(size: 16)).lineSpacing(4)
-              .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-              .padding(.horizontal, 15).padding(.vertical, 11)
-              .background(
-                message.role == .user ? Color(hex: 0x5a5a5a) : ShellTheme.bubble,
-                in: RoundedRectangle(cornerRadius: 22)
-              )
-              .frame(maxWidth: 550, alignment: message.role == .user ? .trailing : .leading)
+            VStack(alignment: .leading, spacing: 7) {
+              if !message.text.isEmpty {
+                Text(message.text).font(.system(size: 16)).lineSpacing(4)
+                  .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+              }
+              if !message.attachmentIDs.isEmpty {
+                Label(
+                  AttachmentPresentation.storedCount(message.attachmentIDs.count),
+                  systemImage: "doc.text"
+                )
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ShellTheme.secondary)
+                .accessibilityIdentifier("message-attachment-disclosure-\(message.id)")
+              }
+            }
+            .padding(.horizontal, 15).padding(.vertical, 11)
+            .background(
+              message.role == .user ? Color(hex: 0x5a5a5a) : ShellTheme.bubble,
+              in: RoundedRectangle(cornerRadius: 22)
+            )
+            .frame(maxWidth: 550, alignment: message.role == .user ? .trailing : .leading)
             HStack(spacing: 12) {
               Button("Reply", action: onReply)
                 .accessibilityLabel("Reply to message")
                 .accessibilityIdentifier("reply-message-\(message.id)")
-                .disabled(message.text.isEmpty)
+                .disabled(message.text.isEmpty && message.attachmentIDs.isEmpty)
               Button("Copy") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(message.text, forType: .string)
               }
               .accessibilityLabel("Copy message text")
               .accessibilityIdentifier("copy-message-\(message.id)")
+              .disabled(message.text.isEmpty)
             }
             .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(ShellTheme.secondary)
           }
@@ -678,6 +709,12 @@ private struct MessageBubble: View {
         }.frame(maxWidth: .infinity)
       }
     }
+  }
+}
+
+enum AttachmentPresentation {
+  static func storedCount(_ count: Int) -> String {
+    "\(count) stored text attachment\(count == 1 ? "" : "s")"
   }
 }
 

@@ -74,8 +74,8 @@ import XCTest
     }
 
     let document = try await repository.exportSnapshot()
-    XCTAssertEqual(document.formatVersion, 2)
-    XCTAssertEqual(document.sourceSchemaVersion, 2)
+    XCTAssertEqual(document.formatVersion, 3)
+    XCTAssertEqual(document.sourceSchemaVersion, 3)
     XCTAssertEqual(document.summary.routineRunCount, 0)
     XCTAssertEqual(document.bots.count, 2)
     XCTAssertEqual(document.bots.first { $0.id == second.id }?.hiddenAt, date)
@@ -130,13 +130,13 @@ import XCTest
       try WorkspaceExportDocument(
         exportedAt: date, revision: 1, bots: [], conversations: [], messages: [message],
         drafts: [], generations: [], routines: [], providers: [])
-    ) { XCTAssertEqual($0 as? WorkspaceExportError, .unsupportedAttachments) }
+    ) { XCTAssertEqual($0 as? AttachmentError, .missingAttachment) }
     let draft = Draft(conversationID: UUID(), text: "Staged", attachmentIDs: [UUID()])
     XCTAssertThrowsError(
       try WorkspaceExportDocument(
         exportedAt: date, revision: 1, bots: [], conversations: [], messages: [],
         drafts: [draft], generations: [], routines: [], providers: [])
-    ) { XCTAssertEqual($0 as? WorkspaceExportError, .unsupportedAttachments) }
+    ) { XCTAssertEqual($0 as? AttachmentError, .missingAttachment) }
 
     let document = try WorkspaceExportDocument(
       exportedAt: date, revision: 0, bots: [], conversations: [], messages: [], drafts: [],
@@ -186,6 +186,20 @@ import XCTest
     } catch {
       XCTAssertEqual(error as? WorkspaceExportError, .unsupportedRepository)
     }
+  }
+
+  func testLegacySummaryDecodesNewAttachmentCountsAsZero() throws {
+    let summary = WorkspaceExportSummary(
+      botCount: 1, conversationCount: 2, messageCount: 3, draftCount: 4,
+      generationCount: 5, routineCount: 6, routineRunCount: 7, providerCount: 8)
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(summary)) as? [String: Any])
+    object.removeValue(forKey: "attachmentCount")
+    object.removeValue(forKey: "attachmentBytes")
+    let decoded = try JSONDecoder().decode(
+      WorkspaceExportSummary.self, from: JSONSerialization.data(withJSONObject: object))
+    XCTAssertEqual(decoded.attachmentCount, 0)
+    XCTAssertEqual(decoded.attachmentBytes, 0)
   }
 }
 

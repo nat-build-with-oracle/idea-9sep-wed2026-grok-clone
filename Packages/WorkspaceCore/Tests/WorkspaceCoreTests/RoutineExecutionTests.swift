@@ -171,8 +171,8 @@ import XCTest
     let document = try await f.repository.exportSnapshot()
     let data = try document.encoded()
     let decoded = try JSONDecoder().decode(WorkspaceExportDocument.self, from: data)
-    XCTAssertEqual(decoded.formatVersion, 2)
-    XCTAssertEqual(decoded.sourceSchemaVersion, 2)
+    XCTAssertEqual(decoded.formatVersion, 3)
+    XCTAssertEqual(decoded.sourceSchemaVersion, 3)
     XCTAssertEqual(decoded.summary.routineRunCount, 1)
     XCTAssertEqual(decoded.routineRuns, [run])
     XCTAssertEqual(

@@ -143,6 +143,7 @@ extension PreviewWorkspace {
     for id in removed {
       drafts[id] = nil
       draftReplyIDs[id] = nil
+      draftAttachmentIDs[id] = nil
       dirtyDrafts.remove(id)
       draftVersions[id] = nil
       messages[id] = nil

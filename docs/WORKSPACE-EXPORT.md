@@ -1,14 +1,15 @@
-# Text-only workspace export
+# Workspace export v3
 
 **Implemented scope:** File → Export Workspace… or Settings → Workspace export
 creates a versioned JSON snapshot of the current persisted workspace. This is an
-experimental source-build feature, not a restore tool or a complete attachment backup.
+experimental source-build feature, not a restore tool or a database-file backup.
 
 ## Included and excluded
 
 Included: all bots (including hidden ones), direct/group conversations and ordered
 membership, **all** message pages, attribution and reply references, unsent drafts,
-generation state/partial text, routine definitions/run history and public provider configuration.
+generation state/partial text, routine definitions/run history, public provider configuration,
+and exact bytes/metadata for every referenced stored attachment, including draft files.
 The snapshot captures one repository revision on its serialized Core Data queue;
 streaming may continue afterward, so later deltas are not part of that revision.
 Current composer drafts are flushed before capture. Detached, unsaved profile or
@@ -20,18 +21,23 @@ masked. Export has no credential-service or network dependency and does not read
 Keychain. Credential-store API key values, imported login/refresh tokens and transport
 auth headers are not exported; auth files are never copied.
 User-entered text and endpoint paths are not secret-scrubbed: a secret pasted into a
-message, prompt or name remains user content. The native UI warns to review before sharing.
+message, prompt, name or selected attachment remains user content. The native UI warns to review before sharing.
 
-Routine-run history is included in format 2, including immutable provider bindings and typed outcomes.
-There is still no persisted attachment subsystem: format 2 rejects message/draft attachment
-references instead of silently losing files. Attachment packaging and import/restore remain open;
+Routine-run history includes immutable provider bindings and typed outcomes. Format 3
+adds the [attachment storage foundation](ATTACHMENTS.md): exact content once per
+referenced ID, with metadata/hash/reference validation. Missing or corrupt content
+rejects capture rather than silently losing files. Native file selection/chips and
+confirmed provider transmission, as well as import/restore, are still unimplemented;
 this does not close all R04/R06/T11 acceptance requirements.
 
 ## Format contract
 
-- `formatVersion: 2`, `sourceSchemaVersion: 2`, `revision`, `exportedAt`, `summary`.
+- `formatVersion: 3`, `sourceSchemaVersion: 3`, `revision`, `exportedAt`, `summary`.
 - Arrays: `bots`, `conversations`, `messages`, `drafts`, `generations`, `routines`,
-  `routineRuns`, `providers`. `summary.routineRunCount` counts all history records. Counts in `summary` describe those arrays.
+  `routineRuns`, `providers`, `attachments`. Counts in `summary` describe those arrays.
+  `summary.attachmentBytes` is the total raw byte count, not base64/JSON size.
+  Each attachment entry has `attachment` metadata and a `data` base64 string.
+  Its SHA-256 covers the decoded raw bytes. No original or internal file path is included.
 - UUID order is stable; messages sort by conversation UUID then ascending sequence.
   Group member order is preserved. JSON object keys are sorted.
 - Dates are JSON numbers: **seconds since 2001-01-01 00:00:00 UTC**, Foundation's
@@ -43,12 +49,15 @@ this does not close all R04/R06/T11 acceptance requirements.
   `exportedAt` values and may have different revisions. This is not a standard
   canonical-JSON signature format, database-file backup, or supported import contract.
 - Default encoded-file limit: **100 MiB**, rejected without truncation. Capture
-  materializes records and encoding allocates the JSON before checking its size;
+  preflights attachment metadata against the base64 lower bound before loading
+  payloads when they alone cannot fit. Otherwise capture materializes records/content
+  and encoding allocates the JSON before checking its final size;
   this is an output limit, **not a hard peak-memory bound**. Encoding/file I/O run
   away from the main actor. Large-workspace performance remains unbenchmarked.
 
-Format 1 did not contain run history. This release writes format 2; there is no promise
-that a format-1-only consumer can decode it. No import/restore feature is implied.
+Format 1 did not contain run history; format 2 did not contain attachment content.
+This release writes format 3. Consumers must check the format version rather than
+assume their format-1/2 representation can preserve the new fields. No import/restore feature is implied.
 See the [routine data contract](ROUTINES.md) for occurrence and provider-binding semantics.
 
 ## Native save and failure contract
@@ -90,14 +99,18 @@ scripts/native-app.sh export-smoke
 scripts/native-app.sh export-smoke --small
 ```
 
-Original export milestone suite: **263 tests passed** (137 core + 126 native shell), including
+Original text-only export milestone suite: **263 tests passed** (137 core + 126 native shell), including
 5 core export tests and 23 native export tests.
 
 Core tests cover full history beyond 100 messages, hidden bots, group order, drafts,
 reply references, partial generations, routines/provider metadata, credential-reference
-exclusion, exact round-trip encoding, size/attachment rejection and concurrent revision
+exclusion, exact round-trip encoding, size/dangling-reference rejection and concurrent revision
 consistency. Native tests cover destination cancellation, single-flight/lifecycle guards,
 draft-save/size/write failures, stale workspaces and actual temporary-file writes.
+
+New core/native attachment tests extend this baseline with content persistence,
+reference-safe deletion/export and preservation by native text editing. They do not
+exercise a selected-file chooser or provider attachment transmission.
 
 The sandboxed native smoke uses synthetic data and an **injected destination inside
 its own temporary directory**, real encoding/atomic replacement and a rendered Settings

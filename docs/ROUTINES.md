@@ -4,6 +4,11 @@ Status: **native routine editing, execution controls, history and awake lifecycl
 Verified with synthetic temporary stores and offline providers. This is not a claim of 24/7
 background service, live-provider certification, physical sleep testing, or complete accessibility coverage.
 
+Schema v3 preserves this routine ledger and adds attachment storage. Existing routine
+consent is not file-transmission consent: runs whose recent context includes stored
+attachments are recorded as blocked before credential reads or network calls until
+the [attachment confirmation flow](ATTACHMENTS.md) is implemented.
+
 ## Execution boundary
 
 ```text

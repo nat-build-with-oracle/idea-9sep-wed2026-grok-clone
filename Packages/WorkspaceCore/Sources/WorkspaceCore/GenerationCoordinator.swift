@@ -54,6 +54,11 @@ public actor GenerationCoordinator {
   public func submit(_ command: SendCommand, configuration: ProviderConfig) async throws -> UUID {
     let epoch = try captureEpoch(
       botID: command.targetBotID, conversationID: command.conversationID)
+    // Storage support is not permission to send file content. Fail before credentials,
+    // persistence or effects until the explicit attachment disclosure flow is implemented.
+    guard command.attachmentIDs.isEmpty else {
+      throw ProviderError.attachmentTransmissionUnavailable
+    }
     let request = try await prepare(
       configuration: configuration, conversationID: command.conversationID,
       targetBotID: command.targetBotID, beforeSequence: nil, newText: command.text,
@@ -99,6 +104,9 @@ public actor GenerationCoordinator {
     try requireCurrent(epoch)
     let message = try await repository.message(id: generation.userMessageID)
     try requireCurrent(epoch)
+    guard message.attachmentIDs.isEmpty else {
+      throw ProviderError.attachmentTransmissionUnavailable
+    }
     let request = try await prepare(
       configuration: configuration, conversationID: generation.conversationID,
       targetBotID: generation.targetBotID, beforeSequence: message.sequence + 1, newText: nil,
@@ -387,10 +395,16 @@ public actor GenerationCoordinator {
     }
     let replyTarget = try await loadReplyTarget(id: replyToID, conversationID: conversationID)
     try requireCurrent(epoch)
-    let credential = try await credentials.read(configuration.credentialReference)
-    try requireCurrent(epoch)
     let page = try await repository.messages(
       conversationID: conversationID, beforeSequence: beforeSequence, limit: 100)
+    try requireCurrent(epoch)
+    // Include attachment-only messages in the check before filtering text. Existing routine
+    // consent covers text context, not newly stored files; do not silently omit those files
+    // or widen that consent. An explicitly selected old reply is checked outside the page too.
+    guard page.messages.allSatisfy({ $0.attachmentIDs.isEmpty }),
+      replyTarget?.attachmentIDs.isEmpty != false
+    else { throw ProviderError.attachmentTransmissionUnavailable }
+    let credential = try await credentials.read(configuration.credentialReference)
     try requireCurrent(epoch)
     var contextMessages = page.messages.filter { $0.role != .event && !$0.text.isEmpty }
     if let replyTarget, !contextMessages.contains(where: { $0.id == replyTarget.id }) {
@@ -457,7 +471,8 @@ public actor GenerationCoordinator {
     } catch WorkspaceError.missingRecord {
       throw WorkspaceError.invalidDraft
     }
-    guard message.conversationID == conversationID, message.role != .event, !message.text.isEmpty
+    guard message.conversationID == conversationID, message.role != .event,
+      !message.text.isEmpty || !message.attachmentIDs.isEmpty
     else {
       throw WorkspaceError.invalidDraft
     }

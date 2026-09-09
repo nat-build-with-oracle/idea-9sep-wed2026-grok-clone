@@ -1,4 +1,5 @@
 import SwiftUI
+import WorkspaceCore
 
 private struct BotDeletionSheetPolicy: NSViewRepresentable {
   func makeNSView(context: Context) -> ProfileSheetPolicyView { ProfileSheetPolicyView() }
@@ -20,6 +21,7 @@ struct BotDeletionView: View {
             Text(
               "Delete \(plan.directConversationCount) direct conversations, \(plan.messageCount) messages, \(plan.draftCount) drafts, \(plan.generationCount) generation records, \(plan.routineCount) owned routines and \(plan.routineRunCount) routine history records."
             )
+            Text(BotDeletionPresentation.attachmentImpact(plan))
             Text(
               "Stop \(plan.activeGenerationIDs.count) active or queued replies in affected conversations. Completed and partial group history stays, with recorded speaker names."
             )
@@ -72,5 +74,11 @@ struct BotDeletionView: View {
     .interactiveDismissDisabled(true)
     .onExitCommand { store.cancelBotDeletion() }
     .accessibilityIdentifier("bot-delete-sheet")
+  }
+}
+
+enum BotDeletionPresentation {
+  static func attachmentImpact(_ plan: BotDeletionPlan) -> String {
+    "Delete \(plan.attachmentCount) stored text attachments (\(plan.attachmentBytes) bytes). Attachments still referenced by preserved group history or drafts stay in the workspace."
   }
 }

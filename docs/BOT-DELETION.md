@@ -7,7 +7,7 @@ use isolated synthetic workspaces only, never the user's saved workspace.
 ## Confirmation and affected records
 
 The native sheet names the bot and counts its direct conversations, messages,
-drafts, generation records, owned routine definitions and run history. It also counts active or
+drafts, generation records, owned routine definitions, run history, and unreferenced attachment counts/bytes. It also counts active or
 queued affected replies, lists groups with remaining member counts, and warns when
 a group will need repair. Cancel/Escape closes without deleting. There is no default
 Return shortcut for the destructive action; **Delete Bot** is explicit.
@@ -26,18 +26,20 @@ Current Impact** loads a fresh plan. Export is a separate action: cancel first t
 | Group conversations | Retained with this bot removed from future membership |
 | Group messages/drafts/generation history | Retained, including partial replies and immutable speaker-name snapshots |
 | Shared provider configuration and credentials | Not deleted or read by deletion |
-| Unexpected direct attachment references | Reject deletion rather than silently orphan unsupported file bytes |
+| Direct attachment content | Delete only IDs with no surviving message/draft reference; confirmation includes count and total bytes |
+| Missing/corrupt affected attachment content | Reject deletion rather than silently lose or miscount content |
 
-The [routine occurrence ledger](ROUTINES.md) is persisted in schema v2. Confirmation
+The [routine occurrence ledger](ROUTINES.md), introduced in schema v2, is retained in schema v3. Confirmation
 includes owned history and active claims, even claims still waiting for credentials before a
-generation exists. Native routine execution controls are connected with explicit consent and awake-only scheduling. Attachment storage is
-still unimplemented; future unreferenced attachment bytes must extend the cleanup contract.
+generation exists. Native routine execution controls are connected with explicit consent and awake-only scheduling.
+The [attachment foundation](ATTACHMENTS.md) stores exact text bytes under the same transaction boundary;
+shared/surviving references protect those bytes from deletion.
 
 ## Transaction and concurrency contract
 
 `WorkspaceRepository.botDeletionPlan(botID:)` captures the affected identities and
 counts in one serialized Core Data operation. `BotDeletionPlan.hasSameContent(as:)`
-compares destructive structure—bot name, direct record IDs, routine/run IDs and group
+compares destructive structure—bot name, direct record IDs, routine/run IDs, deleted attachment IDs/total bytes, and group
 titles/remaining ordered membership—not the global workspace revision. Unrelated
 provider edits or another conversation's stream do not invalidate consent. Content
 changes within an already counted message/draft remain part of that record; this is

@@ -123,7 +123,7 @@ import XCTest
     XCTAssertEqual(exported.summary.providerCount, 1)
     XCTAssertEqual(exported.providers, [WorkspaceExportProvider(fixture.provider)])
     XCTAssertTrue(runs.isEmpty)
-    XCTAssertEqual(exported.sourceSchemaVersion, 2)
+    XCTAssertEqual(exported.sourceSchemaVersion, 3)
     try await repository.close()
   }
 

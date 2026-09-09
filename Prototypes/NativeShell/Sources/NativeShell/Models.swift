@@ -44,9 +44,11 @@ struct PreviewMessage: Identifiable {
   let speakerName: String?
   let replyToID: UUID?
   let sequence: Int64?
+  let attachmentIDs: [UUID]
   init(
     _ role: Role, _ text: String, timestamp: String? = nil, id: UUID = UUID(),
-    speakerName: String? = nil, replyToID: UUID? = nil, sequence: Int64? = nil
+    speakerName: String? = nil, replyToID: UUID? = nil, sequence: Int64? = nil,
+    attachmentIDs: [UUID] = []
   ) {
     self.id = id
     self.role = role
@@ -55,6 +57,7 @@ struct PreviewMessage: Identifiable {
     self.speakerName = speakerName
     self.replyToID = replyToID
     self.sequence = sequence
+    self.attachmentIDs = attachmentIDs
   }
 }
 
@@ -99,6 +102,7 @@ enum ComposerInputPolicy {
   @Published var messages: [UUID: [PreviewMessage]] = [:]
   @Published var drafts: [UUID: String] = [:]
   @Published var draftReplyIDs: [UUID: UUID] = [:]
+  @Published var draftAttachmentIDs: [UUID: [UUID]] = [:]
   @Published var replyPreviews: [UUID: [UUID: ReplyPreview]] = [:]
   @Published var transcriptJumpRequest: TranscriptJumpRequest?
   @Published var isJumpingToReply = false
@@ -210,6 +214,10 @@ enum ComposerInputPolicy {
         if isPersistent { scheduleDraftSave(selectedID) }
       }
     }
+  }
+
+  var currentDraftAttachmentIDs: [UUID] {
+    selectedID.flatMap { draftAttachmentIDs[$0] } ?? []
   }
 
   var visibleConversations: [PreviewConversation] {

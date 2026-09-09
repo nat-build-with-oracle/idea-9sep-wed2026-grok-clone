@@ -40,7 +40,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         attributes: [.posixPermissions: 0o700])
     } catch { throw WorkspaceError.storeUnavailable }
     lease = try StoreLease(url: canonical.appendingPathExtension("lock"))
-    let model = Self.modelV2()
+    let model = Self.modelV3()
     let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
     let existingStore = FileManager.default.fileExists(atPath: canonical.path)
     if existingStore {
@@ -51,10 +51,19 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         )
       } catch { throw WorkspaceError.invalidStore }
       if !model.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
-        guard Self.modelV1().isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata)
-        else { throw WorkspaceError.unsupportedSchema }
-        try Self.migrateV1Store(
-          at: canonical, failureForTesting: migrationFailureForTesting)
+        let source: (NSManagedObjectModel, Int64)
+        if Self.modelV2().isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
+          source = (Self.modelV2(), 2)
+        } else if Self.modelV1().isConfiguration(
+          withName: nil, compatibleWithStoreMetadata: metadata)
+        {
+          source = (Self.modelV1(), 1)
+        } else {
+          throw WorkspaceError.unsupportedSchema
+        }
+        try Self.migrateLegacyStore(
+          at: canonical, sourceModel: source.0, sourceVersion: source.1,
+          failureForTesting: migrationFailureForTesting)
       }
     }
     do {
@@ -75,11 +84,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         guard !existingStore else { throw WorkspaceError.invalidStore }
         let metadata = NSEntityDescription.insertNewObject(forEntityName: "Metadata", into: context)
         metadata.setValue("workspace", forKey: "id")
-        metadata.setValue(Int64(2), forKey: "schemaVersion")
+        metadata.setValue(Int64(3), forKey: "schemaVersion")
         metadata.setValue(Int64(0), forKey: "revision")
         try context.save()
       }
-      guard try self.metadata().value(forKey: "schemaVersion") as? Int64 == 2 else {
+      guard try self.metadata().value(forKey: "schemaVersion") as? Int64 == 3 else {
         throw WorkspaceError.unsupportedSchema
       }
     }
@@ -113,17 +122,41 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   public func exportSnapshot() async throws -> WorkspaceExportDocument {
     return try await context.perform {
       try self.requireOpen()
+      let messages = try self.all("Message", as: Message.self)
+      let drafts = try self.all("Draft", as: Draft.self)
+      let referencedIDs = try self.referencedAttachmentIDs(messages: messages, drafts: drafts)
+      let metadata = try referencedIDs.map { try self.readAttachmentMetadata(id: $0) }
+      try self.validateAttachmentMetadataReferences(
+        messages: messages, drafts: drafts, attachments: metadata)
+      let encodedPayloadLowerBound = try metadata.reduce(0) { total, attachment in
+        let (padded, paddingOverflow) = attachment.byteCount.addingReportingOverflow(2)
+        let (base64Bytes, multiplyOverflow) = (padded / 3).multipliedReportingOverflow(by: 4)
+        let (sum, sumOverflow) = total.addingReportingOverflow(base64Bytes)
+        guard !paddingOverflow, !multiplyOverflow, !sumOverflow else {
+          throw WorkspaceExportError.exceedsByteLimit(
+            limit: WorkspaceExportDocument.defaultMaxEncodedBytes, actual: Int.max)
+        }
+        return sum
+      }
+      // The encoded attachment data alone cannot fit at this lower bound. Reject before Core Data
+      // faults any binary content into memory; metadata and JSON structure add further bytes.
+      guard encodedPayloadLowerBound < WorkspaceExportDocument.defaultMaxEncodedBytes else {
+        throw WorkspaceExportError.exceedsByteLimit(
+          limit: WorkspaceExportDocument.defaultMaxEncodedBytes,
+          actual: encodedPayloadLowerBound)
+      }
+      let attachments = try referencedIDs.map { try self.readAttachmentContent(id: $0) }
       // Every row and the revision are captured in this single serialized Core Data turn.
       return try WorkspaceExportDocument(
         exportedAt: Date(), revision: self.revision(),
         bots: self.all("Bot", as: Bot.self),
         conversations: self.all("Conversation", as: Conversation.self),
-        messages: self.all("Message", as: Message.self),
-        drafts: self.all("Draft", as: Draft.self),
+        messages: messages, drafts: drafts,
         generations: self.all("Generation", as: Generation.self),
         routines: self.all("Routine", as: Routine.self),
         routineRuns: self.all("RoutineRun", as: RoutineRun.self),
-        providers: self.all("Provider", as: ProviderConfig.self).map(WorkspaceExportProvider.init))
+        providers: self.all("Provider", as: ProviderConfig.self).map(WorkspaceExportProvider.init),
+        attachments: attachments)
     }
   }
 
@@ -169,6 +202,21 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     try await context.perform {
       try self.requireOpen()
       return try self.read("RoutineRun", id: id)
+    }
+  }
+
+  public func attachments(ids: [UUID]) async throws -> [Attachment] {
+    try AttachmentValidation.orderedUnique(ids)
+    return try await context.perform {
+      try self.requireOpen()
+      return try ids.map { try self.readAttachmentMetadata(id: $0) }
+    }
+  }
+
+  public func attachmentContent(id: UUID) async throws -> AttachmentContent {
+    try await context.perform {
+      try self.requireOpen()
+      return try self.readAttachmentContent(id: id)
     }
   }
 
@@ -279,6 +327,17 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
   }
 
+  func injectAttachmentCorruptionForTesting(id: UUID, data: Data) async throws {
+    try await context.perform {
+      try self.requireOpen()
+      guard let record = try self.find("Attachment", id: id.uuidString) else {
+        throw AttachmentError.missingAttachment
+      }
+      record.setValue(data, forKey: "content")
+      try self.context.save()
+    }
+  }
+
   private func mutate(_ mutation: WorkspaceMutation) throws {
     switch mutation {
     case .createBot(let input, let conversationID):
@@ -343,6 +402,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       for id in current.routineRunIDs { try delete("RoutineRun", id: id) }
       for id in current.routineIDs { try delete("Routine", id: id) }
       for id in current.directConversationIDs { try delete("Conversation", id: id) }
+      for id in current.attachmentIDs { try delete("Attachment", id: id) }
       for affected in current.affectedGroups {
         var group: Conversation = try read("Conversation", id: affected.id)
         group.memberBotIDs = affected.remainingMemberBotIDs
@@ -389,10 +449,48 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
 
     case .saveDraft(let draft):
       let _: Conversation = try read("Conversation", id: draft.conversationID)
-      // Attachment staging has not shipped yet. Refuse dangling references instead of silently dropping them.
-      guard draft.attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
+      let previousIDs =
+        try find("Draft", id: draft.conversationID.uuidString).map {
+          try decode($0, as: Draft.self).attachmentIDs
+        } ?? []
+      try validateAttachmentReferences(
+        draft.attachmentIDs, conversationID: draft.conversationID)
       try validateReply(draft.replyToID, conversationID: draft.conversationID)
       try put("Draft", value: draft)
+      try pruneUnreferencedAttachments(
+        candidates: Set(previousIDs).subtracting(draft.attachmentIDs))
+
+    case .saveDraftWithAttachments(let draft, let attachments):
+      let _: Conversation = try read("Conversation", id: draft.conversationID)
+      let previousIDs =
+        try find("Draft", id: draft.conversationID.uuidString).map {
+          try decode($0, as: Draft.self).attachmentIDs
+        } ?? []
+      try AttachmentValidation.orderedUnique(draft.attachmentIDs)
+      let incomingIDs = attachments.map(\.attachment.id)
+      try AttachmentValidation.orderedUnique(incomingIDs)
+      guard Set(incomingIDs).isSubset(of: Set(draft.attachmentIDs)) else {
+        throw AttachmentError.foreignAttachment
+      }
+      for content in attachments {
+        guard content.attachment.conversationID == draft.conversationID else {
+          throw AttachmentError.foreignAttachment
+        }
+        try AttachmentValidation.content(content.attachment, data: content.data)
+        if let existing = try find("Attachment", id: content.attachment.id.uuidString) {
+          let stored = try decodeAttachment(existing)
+          guard stored == content else { throw AttachmentError.identityConflict }
+        } else {
+          try ensureIdentityAvailable(content.attachment.id)
+          try putAttachment(content)
+        }
+      }
+      try validateAttachmentReferences(
+        draft.attachmentIDs, conversationID: draft.conversationID)
+      try validateReply(draft.replyToID, conversationID: draft.conversationID)
+      try put("Draft", value: draft)
+      try pruneUnreferencedAttachments(
+        candidates: Set(previousIDs).subtracting(draft.attachmentIDs))
 
     case .beginGeneration(let command):
       try beginGeneration(command, clearMatchingDraft: true, routineRunID: nil)
@@ -605,7 +703,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       var run: RoutineRun = try read("RoutineRun", id: runID)
       guard run.status == .queued, run.generationID == command.generationID,
         run.ownerBotID == command.targetBotID, run.conversationID == command.conversationID,
-        run.prompt == command.text, command.replyToID == nil
+        run.prompt == command.text, command.replyToID == nil, command.attachmentIDs.isEmpty
       else { throw WorkspaceError.invalidRoutine }
       guard let binding = run.providerBinding else { throw WorkspaceError.invalidProvider }
       let provider: ProviderConfig = try read("Provider", id: binding.providerID)
@@ -665,7 +763,9 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   ) throws {
     var conversation: Conversation = try read("Conversation", id: command.conversationID)
     let text = command.text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !text.isEmpty else { throw WorkspaceError.invalidDraft }
+    try validateAttachmentReferences(
+      command.attachmentIDs, conversationID: command.conversationID)
+    guard !text.isEmpty || !command.attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
     if conversation.kind == .group {
       try validateMembers(conversation.memberBotIDs, allowHidden: true)
     }
@@ -688,7 +788,8 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       id: command.userMessageID, conversationID: conversation.id,
       sequence: conversation.nextSequence, role: .user, speakerBotID: nil,
       speakerNameSnapshot: nil, text: text, createdAt: command.createdAt,
-      replyToID: command.replyToID, attachmentIDs: [], generationID: command.generationID)
+      replyToID: command.replyToID, attachmentIDs: command.attachmentIDs,
+      generationID: command.generationID)
     let generation = Generation(
       id: command.generationID, conversationID: conversation.id,
       userMessageID: command.userMessageID, attemptID: command.attemptID,
@@ -703,7 +804,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
     let draft = try decode(record, as: Draft.self)
     if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
-      draft.replyToID == command.replyToID, draft.attachmentIDs.isEmpty
+      draft.replyToID == command.replyToID, draft.attachmentIDs == command.attachmentIDs
     {
       context.delete(record)
     }
@@ -797,16 +898,34 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       $0.kind == .direct && $0.memberBotIDs.contains(botID)
     }
     let directIDs = Set(directConversations.map(\.id))
-    let messages = try all("Message", as: Message.self).filter {
+    let allMessages = try all("Message", as: Message.self)
+    let allDrafts = try all("Draft", as: Draft.self)
+    let allAttachmentIDs = try referencedAttachmentIDs(messages: allMessages, drafts: allDrafts)
+    let allAttachmentMetadata = try allAttachmentIDs.map { try readAttachmentMetadata(id: $0) }
+    try validateAttachmentMetadataReferences(
+      messages: allMessages, drafts: allDrafts, attachments: allAttachmentMetadata)
+    let messages = allMessages.filter {
       directIDs.contains($0.conversationID)
     }
-    let drafts = try all("Draft", as: Draft.self).filter {
+    let drafts = allDrafts.filter {
       directIDs.contains($0.conversationID)
     }
-    // Attachment persistence has not shipped. Refuse destructive cleanup if unexpected references
-    // exist rather than deleting bytes that this repository cannot account for.
-    guard messages.allSatisfy(\.attachmentIDs.isEmpty), drafts.allSatisfy(\.attachmentIDs.isEmpty)
-    else { throw BotDeletionError.unsupportedAttachments }
+    let removedReferenceIDs = Set(
+      messages.flatMap(\.attachmentIDs) + drafts.flatMap(\.attachmentIDs))
+    let survivingReferenceIDs = Set(
+      allMessages.filter { !directIDs.contains($0.conversationID) }
+        .flatMap(\.attachmentIDs)
+        + allDrafts.filter { !directIDs.contains($0.conversationID) }
+        .flatMap(\.attachmentIDs))
+    let deletedAttachmentIDs = sortedIDs(
+      Array(removedReferenceIDs.subtracting(survivingReferenceIDs)))
+    var attachmentBytes = 0
+    for id in deletedAttachmentIDs {
+      let content = try readAttachmentContent(id: id)
+      let (sum, overflow) = attachmentBytes.addingReportingOverflow(content.attachment.byteCount)
+      guard !overflow else { throw WorkspaceError.invalidStore }
+      attachmentBytes = sum
+    }
 
     let generations = try all("Generation", as: Generation.self)
     let deletedGenerations = generations.filter { directIDs.contains($0.conversationID) }
@@ -842,7 +961,8 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       activeGenerationIDs: sortedIDs(activeGenerations.map(\.id)),
       cancellationConversationIDs: sortedIDs(Array(cancellationConversationIDs)),
       routineRunIDs: sortedIDs(routineRuns.map(\.id)),
-      activeRoutineRunIDs: sortedIDs(activeRoutineRuns.map(\.id)))
+      activeRoutineRunIDs: sortedIDs(activeRoutineRuns.map(\.id)),
+      attachmentIDs: deletedAttachmentIDs, attachmentBytes: attachmentBytes)
   }
 
   private func sortedIDs(_ ids: [UUID]) -> [UUID] {
@@ -875,12 +995,14 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       throw WorkspaceError.invalidDraft
     }
     let message = try decode(record, as: Message.self)
-    guard message.conversationID == conversationID, message.role != .event, !message.text.isEmpty
+    guard message.conversationID == conversationID, message.role != .event,
+      !message.text.isEmpty || !message.attachmentIDs.isEmpty
     else { throw WorkspaceError.invalidDraft }
   }
   private func ensureIdentityAvailable(_ id: UUID) throws {
     for entity in [
       "Bot", "Conversation", "Message", "Generation", "Routine", "RoutineRun", "Provider",
+      "Attachment",
     ] {
       if try find(entity, id: id.uuidString) != nil { throw WorkspaceError.identityConflict }
     }
@@ -919,6 +1041,109 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     request.sortDescriptors = [NSSortDescriptor(key: "id", ascending: true)]
     return try context.fetch(request).map { try decode($0, as: type) }
   }
+  private func readAttachmentMetadata(id: UUID) throws -> Attachment {
+    let payload: Data
+    if let inserted = context.insertedObjects.first(where: {
+      $0.entity.name == "Attachment" && $0.value(forKey: "id") as? String == id.uuidString
+    }) {
+      guard let value = inserted.value(forKey: "payload") as? Data else {
+        throw AttachmentError.corruptAttachment
+      }
+      payload = value
+    } else {
+      let request = NSFetchRequest<NSDictionary>(entityName: "Attachment")
+      request.resultType = .dictionaryResultType
+      request.propertiesToFetch = ["payload"]
+      request.predicate = NSPredicate(format: "id == %@", id.uuidString)
+      request.fetchLimit = 1
+      request.includesPendingChanges = false
+      guard let value = try context.fetch(request).first?["payload"] as? Data else {
+        throw AttachmentError.missingAttachment
+      }
+      payload = value
+    }
+    let attachment: Attachment
+    do { attachment = try JSONDecoder().decode(Attachment.self, from: payload) } catch {
+      throw AttachmentError.corruptAttachment
+    }
+    guard attachment.id == id else { throw AttachmentError.corruptAttachment }
+    try AttachmentValidation.metadata(attachment)
+    return attachment
+  }
+  private func readAttachmentContent(id: UUID) throws -> AttachmentContent {
+    guard let record = try find("Attachment", id: id.uuidString) else {
+      throw AttachmentError.missingAttachment
+    }
+    return try decodeAttachment(record)
+  }
+  private func decodeAttachment(_ record: NSManagedObject) throws -> AttachmentContent {
+    guard let idString = record.value(forKey: "id") as? String, let id = UUID(uuidString: idString),
+      let data = record.value(forKey: "content") as? Data
+    else { throw AttachmentError.corruptAttachment }
+    let attachment = try readAttachmentMetadata(id: id)
+    return try AttachmentContent(attachment: attachment, data: data)
+  }
+  private func putAttachment(_ content: AttachmentContent) throws {
+    let attachment = content.attachment
+    try AttachmentValidation.content(attachment, data: content.data)
+    let record = NSEntityDescription.insertNewObject(forEntityName: "Attachment", into: context)
+    record.setValue(attachment.id.uuidString, forKey: "id")
+    record.setValue(try JSONEncoder().encode(attachment), forKey: "payload")
+    record.setValue(content.data, forKey: "content")
+  }
+  private func validateAttachmentReferences(_ ids: [UUID], conversationID: UUID) throws {
+    try AttachmentValidation.orderedUnique(ids)
+    var total = 0
+    for id in ids {
+      let content = try readAttachmentContent(id: id)
+      guard content.attachment.conversationID == conversationID else {
+        throw AttachmentError.foreignAttachment
+      }
+      let (sum, overflow) = total.addingReportingOverflow(content.attachment.byteCount)
+      guard !overflow, sum <= AttachmentLimits.maxDraftBytes else {
+        throw AttachmentError.draftTooLarge
+      }
+      total = sum
+    }
+  }
+  private func referencedAttachmentIDs(messages: [Message], drafts: [Draft]) throws -> [UUID] {
+    let references = messages.flatMap(\.attachmentIDs) + drafts.flatMap(\.attachmentIDs)
+    return Set(references).sorted { $0.uuidString < $1.uuidString }
+  }
+  private func validateAttachmentMetadataReferences(
+    messages: [Message], drafts: [Draft], attachments: [Attachment]
+  ) throws {
+    let byID = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, $0) })
+    for (conversationID, ids) in messages.map({ ($0.conversationID, $0.attachmentIDs) })
+      + drafts.map({ ($0.conversationID, $0.attachmentIDs) })
+    {
+      try AttachmentValidation.orderedUnique(ids)
+      var total = 0
+      for id in ids {
+        guard let attachment = byID[id] else { throw AttachmentError.missingAttachment }
+        guard attachment.conversationID == conversationID else {
+          throw AttachmentError.foreignAttachment
+        }
+        let (sum, overflow) = total.addingReportingOverflow(attachment.byteCount)
+        guard !overflow, sum <= AttachmentLimits.maxDraftBytes else {
+          throw AttachmentError.draftTooLarge
+        }
+        total = sum
+      }
+    }
+  }
+  private func pruneUnreferencedAttachments(candidates: Set<UUID>) throws {
+    guard !candidates.isEmpty else { return }
+    let messages = try all("Message", as: Message.self)
+    let drafts = try all("Draft", as: Draft.self)
+    let referenced = Set(messages.flatMap(\.attachmentIDs) + drafts.flatMap(\.attachmentIDs))
+    for id in candidates where !referenced.contains(id) {
+      guard let record = try find("Attachment", id: id.uuidString) else {
+        throw AttachmentError.missingAttachment
+      }
+      context.delete(record)
+    }
+  }
   private func decode<T: Decodable>(_ record: NSManagedObject, as type: T.Type) throws -> T {
     guard let data = record.value(forKey: "payload") as? Data else {
       throw WorkspaceError.invalidStore
@@ -944,15 +1169,15 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
   }
 
-  private static func migrateV1Store(
-    at sourceURL: URL, failureForTesting: MigrationFailureForTesting?
+  private static func migrateLegacyStore(
+    at sourceURL: URL, sourceModel: NSManagedObjectModel, sourceVersion: Int64,
+    failureForTesting: MigrationFailureForTesting?
   ) throws {
     let directory = sourceURL.deletingLastPathComponent()
     let token = UUID().uuidString
     let migratedURL = directory.appendingPathComponent(".workspace-migration-\(token).sqlite")
     let backupURL = directory.appendingPathComponent(".workspace-recovery-\(token).sqlite")
-    let sourceModel = modelV1()
-    let destinationModel = modelV2()
+    let destinationModel = modelV3()
     let fileManager = FileManager.default
     var preserveBackup = false
     defer {
@@ -965,7 +1190,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       }
     }
     do {
-      try validateV1Store(at: sourceURL, model: sourceModel)
+      try validateLegacyStore(at: sourceURL, model: sourceModel, version: sourceVersion)
       let mapping = try NSMappingModel.inferredMappingModel(
         forSourceModel: sourceModel, destinationModel: destinationModel)
       let manager = NSMigrationManager(sourceModel: sourceModel, destinationModel: destinationModel)
@@ -974,7 +1199,8 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         options: [NSReadOnlyPersistentStoreOption: true],
         with: mapping, toDestinationURL: migratedURL, destinationType: NSSQLiteStoreType,
         destinationOptions: nil)
-      try setMigratedSchemaVersionAndValidate(at: migratedURL, model: destinationModel)
+      try setMigratedSchemaVersionAndValidate(
+        at: migratedURL, model: destinationModel, sourceVersion: sourceVersion)
       if failureForTesting == .beforeReplacement { throw WorkspaceError.storeUnavailable }
 
       let replacement = NSPersistentStoreCoordinator(managedObjectModel: destinationModel)
@@ -1008,7 +1234,9 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
   }
 
-  private static func validateV1Store(at url: URL, model: NSManagedObjectModel) throws {
+  private static func validateLegacyStore(
+    at url: URL, model: NSManagedObjectModel, version: Int64
+  ) throws {
     let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
     let store = try coordinator.addPersistentStore(
       ofType: NSSQLiteStoreType, configurationName: nil, at: url,
@@ -1022,34 +1250,43 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       metadataRequest.fetchLimit = 2
       let metadata = try context.fetch(metadataRequest)
       guard metadata.count == 1,
-        metadata[0].value(forKey: "schemaVersion") as? Int64 == 1
+        metadata[0].value(forKey: "schemaVersion") as? Int64 == version
       else { throw WorkspaceError.unsupportedSchema }
 
-      for entity in [
+      var entities = [
         "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "Provider",
-      ] {
+      ]
+      if version == 2 { entities.append("RoutineRun") }
+      for entity in entities {
         let request = NSFetchRequest<NSManagedObject>(entityName: entity)
         for record in try context.fetch(request) {
           guard let payload = record.value(forKey: "payload") as? Data else {
             throw WorkspaceError.invalidStore
           }
-          try validateV1Payload(payload, entity: entity)
+          try validateLegacyPayload(payload, entity: entity)
         }
       }
     }
   }
 
-  private static func validateV1Payload(_ payload: Data, entity: String) throws {
+  private static func validateLegacyPayload(_ payload: Data, entity: String) throws {
     let decoder = JSONDecoder()
     do {
       switch entity {
       case "Bot": _ = try decoder.decode(Bot.self, from: payload)
       case "Conversation": _ = try decoder.decode(Conversation.self, from: payload)
-      case "Draft": _ = try decoder.decode(Draft.self, from: payload)
-      case "Message": _ = try decoder.decode(Message.self, from: payload)
+      case "Draft":
+        guard try decoder.decode(Draft.self, from: payload).attachmentIDs.isEmpty else {
+          throw WorkspaceError.invalidStore
+        }
+      case "Message":
+        guard try decoder.decode(Message.self, from: payload).attachmentIDs.isEmpty else {
+          throw WorkspaceError.invalidStore
+        }
       case "Generation": _ = try decoder.decode(Generation.self, from: payload)
       case "Routine": _ = try decoder.decode(Routine.self, from: payload)
       case "Provider": _ = try decoder.decode(ProviderConfig.self, from: payload)
+      case "RoutineRun": _ = try decoder.decode(RoutineRun.self, from: payload)
       default: throw WorkspaceError.invalidStore
       }
     } catch let error as WorkspaceError {
@@ -1060,7 +1297,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   }
 
   private static func setMigratedSchemaVersionAndValidate(
-    at url: URL, model: NSManagedObjectModel
+    at url: URL, model: NSManagedObjectModel, sourceVersion: Int64
   ) throws {
     let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
     let store = try coordinator.addPersistentStore(
@@ -1076,13 +1313,15 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       guard let metadata = try context.fetch(request).first else {
         throw WorkspaceError.invalidStore
       }
-      guard metadata.value(forKey: "schemaVersion") as? Int64 == 1 else {
+      guard metadata.value(forKey: "schemaVersion") as? Int64 == sourceVersion else {
         throw WorkspaceError.unsupportedSchema
       }
-      metadata.setValue(Int64(2), forKey: "schemaVersion")
-      for entity in [
+      metadata.setValue(Int64(3), forKey: "schemaVersion")
+      var entities = [
         "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "Provider",
-      ] {
+      ]
+      if sourceVersion == 2 { entities.append("RoutineRun") }
+      for entity in entities {
         let request = NSFetchRequest<NSManagedObject>(entityName: entity)
         for record in try context.fetch(request) {
           guard record.value(forKey: "payload") is Data else { throw WorkspaceError.invalidStore }
@@ -1183,6 +1422,73 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
               NSFetchIndexElementDescription(
                 property: attributes.first { $0.name == "conversationID" }!,
                 collationType: .binary),
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "sequence" }!, collationType: .binary),
+            ])
+        ]
+      } else if name == "RoutineRun" {
+        entity.indexes = [
+          NSFetchIndexDescription(
+            name: "routineRunRoutineCreatedAt",
+            elements: [
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "routineID" }!, collationType: .binary),
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "createdAt" }!, collationType: .binary),
+            ])
+        ]
+      }
+      entities.append(entity)
+    }
+    model.entities = entities
+    return model
+  }
+  static func modelV3() -> NSManagedObjectModel {
+    let model = NSManagedObjectModel()
+    model.versionIdentifiers = ["WorkspaceCore.v3"]
+    var entities: [NSEntityDescription] = []
+    for name in [
+      "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "RoutineRun",
+      "Provider", "Attachment", "Metadata",
+    ] {
+      let entity = NSEntityDescription()
+      entity.name = name
+      entity.managedObjectClassName = "NSManagedObject"
+      var attributes = [attribute("id", .stringAttributeType)]
+      if name == "Metadata" {
+        attributes += [
+          attribute("schemaVersion", .integer64AttributeType),
+          attribute("revision", .integer64AttributeType),
+        ]
+      } else {
+        attributes += [attribute("payload", .binaryDataAttributeType)]
+      }
+      if name == "Message" {
+        attributes += [
+          attribute("conversationID", .stringAttributeType),
+          attribute("sequence", .integer64AttributeType),
+          attribute("searchText", .stringAttributeType),
+        ]
+      } else if name == "RoutineRun" {
+        attributes += [
+          attribute("routineID", .stringAttributeType),
+          attribute("createdAt", .dateAttributeType),
+        ]
+      } else if name == "Attachment" {
+        let content = attribute("content", .binaryDataAttributeType)
+        content.allowsExternalBinaryDataStorage = true
+        attributes += [content]
+      }
+      entity.properties = attributes
+      entity.uniquenessConstraints = [["id"]]
+      if name == "Message" {
+        entity.uniquenessConstraints.append(["conversationID", "sequence"])
+        entity.indexes = [
+          NSFetchIndexDescription(
+            name: "messageConversationSequence",
+            elements: [
+              NSFetchIndexElementDescription(
+                property: attributes.first { $0.name == "conversationID" }!, collationType: .binary),
               NSFetchIndexElementDescription(
                 property: attributes.first { $0.name == "sequence" }!, collationType: .binary),
             ])

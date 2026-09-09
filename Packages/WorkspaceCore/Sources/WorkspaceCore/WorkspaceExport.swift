@@ -29,10 +29,13 @@ public struct WorkspaceExportSummary: Codable, Sendable, Equatable {
   public let routineCount: Int
   public let routineRunCount: Int
   public let providerCount: Int
+  public let attachmentCount: Int
+  public let attachmentBytes: Int
 
   public init(
     botCount: Int, conversationCount: Int, messageCount: Int, draftCount: Int,
-    generationCount: Int, routineCount: Int, routineRunCount: Int, providerCount: Int
+    generationCount: Int, routineCount: Int, routineRunCount: Int, providerCount: Int,
+    attachmentCount: Int = 0, attachmentBytes: Int = 0
   ) {
     self.botCount = botCount
     self.conversationCount = conversationCount
@@ -42,6 +45,27 @@ public struct WorkspaceExportSummary: Codable, Sendable, Equatable {
     self.routineCount = routineCount
     self.routineRunCount = routineRunCount
     self.providerCount = providerCount
+    self.attachmentCount = attachmentCount
+    self.attachmentBytes = attachmentBytes
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case botCount, conversationCount, messageCount, draftCount, generationCount, routineCount,
+      routineRunCount, providerCount, attachmentCount, attachmentBytes
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    botCount = try values.decode(Int.self, forKey: .botCount)
+    conversationCount = try values.decode(Int.self, forKey: .conversationCount)
+    messageCount = try values.decode(Int.self, forKey: .messageCount)
+    draftCount = try values.decode(Int.self, forKey: .draftCount)
+    generationCount = try values.decode(Int.self, forKey: .generationCount)
+    routineCount = try values.decode(Int.self, forKey: .routineCount)
+    routineRunCount = try values.decode(Int.self, forKey: .routineRunCount)
+    providerCount = try values.decode(Int.self, forKey: .providerCount)
+    attachmentCount = try values.decodeIfPresent(Int.self, forKey: .attachmentCount) ?? 0
+    attachmentBytes = try values.decodeIfPresent(Int.self, forKey: .attachmentBytes) ?? 0
   }
 }
 
@@ -60,16 +84,16 @@ public enum WorkspaceExportError: Error, Sendable, Equatable, LocalizedError {
     case .invalidByteLimit:
       "Choose a positive export size limit."
     case .exceedsByteLimit(let limit, let actual):
-      "The export is \(actual) bytes, exceeding the \(limit)-byte limit."
+      "The export requires at least \(actual) bytes, exceeding the \(limit)-byte limit."
     }
   }
 }
 
-/// Version 2 is a complete, text-only snapshot including routine execution history.
+/// Version 3 is a complete snapshot including routine history and referenced attachment payloads.
 /// It is an export format, not a persistence backup or an import contract.
 public struct WorkspaceExportDocument: Codable, Sendable, Equatable {
-  public static let currentFormatVersion = 2
-  public static let currentSourceSchemaVersion = 2
+  public static let currentFormatVersion = 3
+  public static let currentSourceSchemaVersion = 3
   public static let defaultMaxEncodedBytes = 100 * 1_024 * 1_024
 
   public let formatVersion: Int
@@ -85,16 +109,14 @@ public struct WorkspaceExportDocument: Codable, Sendable, Equatable {
   public let routines: [Routine]
   public let routineRuns: [RoutineRun]
   public let providers: [WorkspaceExportProvider]
+  public let attachments: [AttachmentContent]
 
   public init(
     exportedAt: Date, revision: Int64, bots: [Bot], conversations: [Conversation],
     messages: [Message], drafts: [Draft], generations: [Generation], routines: [Routine],
-    routineRuns: [RoutineRun] = [], providers: [WorkspaceExportProvider]
+    routineRuns: [RoutineRun] = [], providers: [WorkspaceExportProvider],
+    attachments: [AttachmentContent] = []
   ) throws {
-    guard messages.allSatisfy(\.attachmentIDs.isEmpty),
-      drafts.allSatisfy(\.attachmentIDs.isEmpty)
-    else { throw WorkspaceExportError.unsupportedAttachments }
-
     formatVersion = Self.currentFormatVersion
     sourceSchemaVersion = Self.currentSourceSchemaVersion
     self.exportedAt = exportedAt
@@ -113,11 +135,48 @@ public struct WorkspaceExportDocument: Codable, Sendable, Equatable {
     self.routines = routines.sorted { Self.uuidLess($0.id, $1.id) }
     self.routineRuns = routineRuns.sorted { Self.uuidLess($0.id, $1.id) }
     self.providers = providers.sorted { Self.uuidLess($0.id, $1.id) }
+    self.attachments = attachments.sorted {
+      Self.uuidLess($0.attachment.id, $1.attachment.id)
+    }
+    let referencedIDs = Set(messages.flatMap(\.attachmentIDs) + drafts.flatMap(\.attachmentIDs))
+    guard attachments.count == referencedIDs.count,
+      Set(attachments.map(\.attachment.id)).count == attachments.count,
+      Set(attachments.map(\.attachment.id)) == referencedIDs
+    else { throw AttachmentError.missingAttachment }
+    for content in attachments {
+      try AttachmentValidation.content(content.attachment, data: content.data)
+    }
+    let attachmentByID = Dictionary(
+      uniqueKeysWithValues: attachments.map { ($0.attachment.id, $0.attachment) })
+    for reference in messages.map({ ($0.conversationID, $0.attachmentIDs) })
+      + drafts.map({ ($0.conversationID, $0.attachmentIDs) })
+    {
+      try AttachmentValidation.orderedUnique(reference.1)
+      var bytes = 0
+      for id in reference.1 {
+        guard let attachment = attachmentByID[id] else { throw AttachmentError.missingAttachment }
+        guard attachment.conversationID == reference.0 else {
+          throw AttachmentError.foreignAttachment
+        }
+        let (sum, overflow) = bytes.addingReportingOverflow(attachment.byteCount)
+        guard !overflow, sum <= AttachmentLimits.maxDraftBytes else {
+          throw AttachmentError.draftTooLarge
+        }
+        bytes = sum
+      }
+    }
+    let attachmentBytes = try attachments.reduce(0) { total, content in
+      let (sum, overflow) = total.addingReportingOverflow(content.attachment.byteCount)
+      guard !overflow else { throw AttachmentError.corruptAttachment }
+      return sum
+    }
     summary = WorkspaceExportSummary(
       botCount: bots.count, conversationCount: conversations.count,
       messageCount: messages.count, draftCount: drafts.count,
       generationCount: generations.count, routineCount: routines.count,
-      routineRunCount: routineRuns.count, providerCount: providers.count)
+      routineRunCount: routineRuns.count, providerCount: providers.count,
+      attachmentCount: attachments.count,
+      attachmentBytes: attachmentBytes)
   }
 
   /// Produces canonical JSON with lossless Foundation reference-date seconds and a hard,

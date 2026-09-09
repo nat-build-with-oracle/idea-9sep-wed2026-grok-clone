@@ -44,7 +44,8 @@ This removes generated build output, not the application's workspace data.
 - Use original code and assets. Do not submit extracted Grok Bot/Cursor code,
   private endpoints, third-party screenshots, or credentials.
 - Never commit workspace databases, Keychain exports, personal conversations,
-  `.env` files, runtime logs, or `.omx` state. Use temporary synthetic fixtures.
+  `.env` files, signing keys/certificates/provisioning profiles, runtime logs, or `.omx`
+  state. Generated `.app`/`.dmg`/archive bundles are not source. Use temporary synthetic fixtures.
 - Keep provider tests offline with `URLProtocol`/protocol fixtures. Do not require
   contributor secrets or make billable live requests in tests. `codex-smoke` is
   offline; `codex-smoke-stdin` is a separately authorized live diagnostic and must
@@ -67,6 +68,10 @@ This removes generated build output, not the application's workspace data.
 - Keep export provider fields allowlisted and credential-service independent. Test complete
   history, exact date round trips, draft/write failures, cancellation and stale workspaces.
   Export fixtures must be synthetic and temporary; never commit real exported conversations.
+
+Attachment storage is not permission to transmit files. Preserve the fail-closed provider
+guards until destination/model/content-bound confirmation and native file controls are
+implemented and tested; see the [attachment contract](docs/ATTACHMENTS.md).
 
 Private design references are intentionally absent from this repository. Build,
 test and smoke commands do not need them. The `ψ/` placeholder directories and

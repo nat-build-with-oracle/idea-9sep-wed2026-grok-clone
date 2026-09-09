@@ -268,6 +268,8 @@ func routineFailureLabel(_ failure: RoutineRun.Failure) -> String {
   case .rateLimited: "The provider rate-limited this run. No automatic retry."
   case .invalidResponse: "The provider returned an invalid response."
   case .unsupportedContent: "The provider does not support this content."
+  case .attachmentTransmissionUnavailable:
+    "Recent context includes stored attachments. Attachment transmission is not available yet; nothing was sent."
   case .outputLimit: "The response exceeded the output limit."
   case .storageUnavailable: "Local storage was unavailable."
   case .invalidSchedule: "The schedule is invalid. Edit the routine."

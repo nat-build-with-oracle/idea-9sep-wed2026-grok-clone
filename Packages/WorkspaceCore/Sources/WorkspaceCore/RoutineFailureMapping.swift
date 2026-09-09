@@ -10,6 +10,7 @@ enum RoutineFailureMapping {
       }
     }
     switch ProviderError.sanitized(error) {
+    case .attachmentTransmissionUnavailable: return .attachmentTransmissionUnavailable
     case .missingCredential, .keychain: return .missingCredential
     case .invalidCredential, .http(401), .http(403): return .invalidCredential
     case .codexLoginRequired, .invalidCodexLogin: return .loginRequired

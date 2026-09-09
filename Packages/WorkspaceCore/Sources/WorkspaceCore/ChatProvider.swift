@@ -33,6 +33,7 @@ public protocol ChatProvider: Sendable {
 public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
   case missingCredential, invalidCredential
   case codexLoginRequired, invalidCodexLogin
+  case attachmentTransmissionUnavailable
   case keychain(Int32)
   case invalidResponse, streamEnded
   case http(Int)
@@ -40,6 +41,8 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
     storageFailure
   public var errorDescription: String? {
     switch self {
+    case .attachmentTransmissionUnavailable:
+      "This conversation or draft includes stored attachments. Attachment transmission and its confirmation UI are not available yet; no files or message were sent."
     case .codexLoginRequired:
       "Import an updated Codex ChatGPT auth.json in Settings. This app does not refresh your login; imported access expires when the app quits or the provider rejects it."
     case .invalidCodexLogin:

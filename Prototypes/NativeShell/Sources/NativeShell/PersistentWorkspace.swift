@@ -37,6 +37,7 @@ extension PreviewWorkspace {
     isPersistent = true
     drafts = [:]
     draftReplyIDs = [:]
+    draftAttachmentIDs = [:]
     dirtyDrafts = []
     draftVersions = [:]
     messages = [:]
@@ -81,6 +82,7 @@ extension PreviewWorkspace {
     for draft in snapshot.drafts where !dirtyDrafts.contains(draft.conversationID) {
       drafts[draft.conversationID] = draft.text
       draftReplyIDs[draft.conversationID] = draft.replyToID
+      draftAttachmentIDs[draft.conversationID] = draft.attachmentIDs
     }
     routineDefinitions = snapshot.routines
     routines = snapshot.routines.map { routine in
@@ -147,7 +149,7 @@ extension PreviewWorkspace {
       role, message.text,
       timestamp: message.createdAt.formatted(date: .abbreviated, time: .shortened), id: message.id,
       speakerName: message.speakerNameSnapshot, replyToID: message.replyToID,
-      sequence: message.sequence)
+      sequence: message.sequence, attachmentIDs: message.attachmentIDs)
   }
 
   func scheduleDraftSave(_ id: UUID) {
@@ -185,7 +187,8 @@ extension PreviewWorkspace {
       for id in Array(dirtyDrafts) {
         let version = draftVersions[id]
         let draft = Draft(
-          conversationID: id, text: drafts[id] ?? "", replyToID: draftReplyIDs[id])
+          conversationID: id, text: drafts[id] ?? "",
+          attachmentIDs: draftAttachmentIDs[id] ?? [], replyToID: draftReplyIDs[id])
         try await repository.apply(.saveDraft(draft))
         if version == draftVersions[id] { dirtyDrafts.remove(id) }
       }

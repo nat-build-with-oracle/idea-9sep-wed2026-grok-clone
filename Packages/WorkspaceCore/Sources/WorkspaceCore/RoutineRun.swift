@@ -48,6 +48,7 @@ public struct RoutineRun: Codable, Sendable, Equatable, Identifiable {
   public enum Failure: String, Codable, Sendable, Equatable {
     case missingProvider, providerChanged, missingCredential, invalidCredential, loginRequired
     case unavailable, rateLimited, invalidResponse, unsupportedContent, outputLimit
+    case attachmentTransmissionUnavailable
     case storageUnavailable, invalidSchedule, cancelled, interrupted, supersededOccurrence
   }
 

@@ -31,11 +31,13 @@ public struct SendCommand: Sendable {
   public let targetBotID: UUID
   public let text: String
   public let replyToID: UUID?
+  public let attachmentIDs: [UUID]
   public let createdAt: Date
 
   public init(
     conversationID: UUID, userMessageID: UUID = UUID(), generationID: UUID = UUID(),
     attemptID: UUID = UUID(), targetBotID: UUID, text: String, replyToID: UUID? = nil,
+    attachmentIDs: [UUID] = [],
     createdAt: Date = Date()
   ) {
     self.conversationID = conversationID
@@ -45,6 +47,7 @@ public struct SendCommand: Sendable {
     self.targetBotID = targetBotID
     self.text = text
     self.replyToID = replyToID
+    self.attachmentIDs = attachmentIDs
     self.createdAt = createdAt
   }
 }
@@ -63,6 +66,7 @@ public enum WorkspaceMutation: Sendable {
   /// Atomically replaces only editable group fields when they still match `expected`.
   case editGroup(id: UUID, expected: GroupProfile, replacement: GroupProfile)
   case saveDraft(Draft)
+  case saveDraftWithAttachments(Draft, attachments: [AttachmentContent])
   /// Commits user message, initial generation, sequence allocation and draft clear in one save.
   /// Transport is deliberately outside the repository; this does not itself contact any provider.
   case beginGeneration(SendCommand)
@@ -93,6 +97,8 @@ public protocol WorkspaceRepository: Sendable {
   func routineRuns(routineID: UUID?, limit: Int) async throws -> [RoutineRun]
   func routineDeletionPlan(routineID: UUID) async throws -> RoutineDeletionPlan
   func routineRun(id: UUID) async throws -> RoutineRun
+  func attachments(ids: [UUID]) async throws -> [Attachment]
+  func attachmentContent(id: UUID) async throws -> AttachmentContent
   @discardableResult func apply(_ mutation: WorkspaceMutation, expectedRevision: Int64?)
     async throws -> Int64
   func messages(conversationID: UUID, beforeSequence: Int64?, limit: Int) async throws
@@ -124,6 +130,14 @@ extension WorkspaceRepository {
 
   public func routineRun(id: UUID) async throws -> RoutineRun {
     throw WorkspaceError.storeUnavailable
+  }
+
+  public func attachments(ids: [UUID]) async throws -> [Attachment] {
+    throw AttachmentError.unsupportedRepository
+  }
+
+  public func attachmentContent(id: UUID) async throws -> AttachmentContent {
+    throw AttachmentError.unsupportedRepository
   }
 
   public func message(id: UUID) async throws -> Message {

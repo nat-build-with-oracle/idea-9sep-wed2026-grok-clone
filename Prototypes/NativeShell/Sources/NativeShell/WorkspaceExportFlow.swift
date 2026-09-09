@@ -75,8 +75,7 @@ extension PreviewWorkspace {
         isExportWriting = true
         try await write(data, url)
         guard context == replyContextGeneration else { return }
-        exportStatus =
-          "Exported \(document.summary.conversationCount) conversations, \(document.summary.messageCount) messages and \(document.summary.routineRunCount) routine history records. Stored credentials excluded."
+        exportStatus = Self.workspaceExportStatus(document.summary)
       } catch {
         guard context == replyContextGeneration else { return }
         // Filesystem errors can include paths; never display arbitrary transport/filesystem errors.
@@ -90,5 +89,9 @@ extension PreviewWorkspace {
       }
     }
     return exportTask
+  }
+
+  static func workspaceExportStatus(_ summary: WorkspaceExportSummary) -> String {
+    "Exported \(summary.conversationCount) conversations, \(summary.messageCount) messages, \(summary.routineRunCount) routine history records and \(summary.attachmentCount) stored text attachments (\(summary.attachmentBytes) bytes). Stored credentials excluded."
   }
 }

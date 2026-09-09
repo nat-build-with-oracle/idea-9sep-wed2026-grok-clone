@@ -22,7 +22,7 @@ scripts/native-app.sh provider-smoke # offline fixture; no key or live network
 scripts/native-app.sh codex-smoke    # synthetic auth + intercepted Responses SSE
 scripts/native-app.sh profile-smoke  # bot edit + group edit + close/reopen
 scripts/native-app.sh reply-smoke    # reply draft restart + referenced fixture send
-scripts/native-app.sh export-smoke   # text-only JSON export + atomic file replacement
+scripts/native-app.sh export-smoke   # JSON export + atomic file replacement (text fixture)
 scripts/native-app.sh deletion-smoke # confirmed bot deletion + retained group/restart
 scripts/native-app.sh routine-smoke  # daily editor + offline run + pause/resume/history restart
 ```
@@ -48,14 +48,15 @@ third-party dependency installation is needed for the current app or tests.
 | Area | Current status |
 |---|---|
 | Native UI | Three-pane workspace, bot/group creation and profile editing, search, hide/show, confirmed bot deletion/group repair, native text composer, message replies |
-| Local data | Core Data v2 with tested v1 migration, text/reply drafts, message pagination, routine occurrence ledger, text-only JSON export v2 |
+| Local data | Core Data v3 with tested v1/v2 migration, text/reply drafts, message pagination, routine ledger, JSON export v3 including stored attachment bytes |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
 | Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
 | Routines | Native interval/daily editor, explicit owner/provider consent, Run Now, pause/resume, Stop/delete and history; launch/wake/30-second awake scheduling, offline tested |
-| Remaining gates | Broad provider/9router validation, attachments and remaining native accessibility flows |
+| Attachment foundation | Atomic UTF-8 storage, reference-safe cleanup and export; native file selection/chips and confirmed transmission are still pending |
+| Remaining gates | Broad provider/9router validation, complete attachment workflow and remaining native accessibility flows |
 
-Verification: **364 tests** (199 core + 165 shell), desktop/narrow native persistence,
-offline provider smokes, profile-edit and reply close/reopen smokes, text-only export, confirmed deletion and routine editor/run/restart smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
+Verification: **395 tests** (225 core + 170 shell), desktop/narrow native persistence,
+offline provider smokes, profile-edit and reply close/reopen smokes, attachment storage/migration and no-transmission guards, text-fixture export, confirmed deletion and routine editor/run/restart smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
 and limitations below for the current test counts and scope. An explicitly authorized
 manual native Codex check also completed a minimal reply with persistence and
 attribution; one account/time is not broad compatibility or release certification.
@@ -71,6 +72,7 @@ Native provider settings + composer → GenerationCoordinator
 
 - [Product and acceptance contract](docs/NATIVE-REWRITE-CONTRACT.md)
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
+- [Attachment storage decision and remaining workflow](docs/ATTACHMENTS.md)
 - [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)
 - [Confirmed bot deletion and group repair](docs/BOT-DELETION.md)
 - [Routine execution, native controls and scheduling limits](docs/ROUTINES.md)

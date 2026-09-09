@@ -99,7 +99,8 @@ extension PreviewWorkspace {
     guard let target = selectedTargetBotID else { throw ProviderSetupError.targetRequired }
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     let replyToID = draftReplyIDs[conversationID]
-    guard !text.isEmpty else { throw WorkspaceError.invalidDraft }
+    let attachmentIDs = draftAttachmentIDs[conversationID] ?? []
+    guard !text.isEmpty || !attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
     let version = draftVersions[conversationID]
     isSubmitting = true
     defer { isSubmitting = false }
@@ -108,11 +109,13 @@ extension PreviewWorkspace {
     guard !isClosing else { throw WorkspaceError.storeClosed }
     let id = try await coordinator.submit(
       SendCommand(
-        conversationID: conversationID, targetBotID: target, text: text, replyToID: replyToID),
+        conversationID: conversationID, targetBotID: target, text: text, replyToID: replyToID,
+        attachmentIDs: attachmentIDs),
       configuration: configuration)
     if draftVersions[conversationID] == version {
       drafts[conversationID] = ""
       draftReplyIDs[conversationID] = nil
+      draftAttachmentIDs[conversationID] = []
       dirtyDrafts.remove(conversationID)
     } else {
       // Even a new edit with identical text must survive the repository's matching-draft clear.

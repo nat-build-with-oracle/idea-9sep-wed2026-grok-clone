@@ -21,8 +21,12 @@ struct ReplyPreview: Equatable, Identifiable {
     speakerName = message.role == .user ? "You" : message.speakerName ?? "Assistant"
     let text = message.text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     excerpt =
-      text.isEmpty ? "Empty message" : String(text.prefix(180)) + (text.count > 180 ? "…" : "")
-    isAvailable = message.role != .event && !message.text.isEmpty
+      text.isEmpty
+      ? (message.attachmentIDs.isEmpty
+        ? "Empty message" : AttachmentPresentation.storedCount(message.attachmentIDs.count))
+      : String(text.prefix(180)) + (text.count > 180 ? "…" : "")
+    isAvailable =
+      message.role != .event && (!message.text.isEmpty || !message.attachmentIDs.isEmpty)
     isLoading = false
   }
 }
@@ -68,7 +72,7 @@ extension PreviewWorkspace {
         guard let repository else { throw WorkspaceError.storeUnavailable }
         let message = try await repository.message(id: messageID)
         guard message.conversationID == conversationID, message.role != .event,
-          !message.text.isEmpty
+          !message.text.isEmpty || !message.attachmentIDs.isEmpty
         else {
           throw WorkspaceError.invalidDraft
         }
@@ -76,7 +80,8 @@ extension PreviewWorkspace {
       } else {
         guard
           let message = messages[conversationID]?.first(where: {
-            $0.id == messageID && $0.role != .event && !$0.text.isEmpty
+            $0.id == messageID && $0.role != .event
+              && (!$0.text.isEmpty || !$0.attachmentIDs.isEmpty)
           })
         else {
           throw WorkspaceError.invalidDraft
@@ -128,7 +133,7 @@ extension PreviewWorkspace {
         let message = try await repository.message(id: id)
         guard context == replyContextGeneration else { return }
         guard message.conversationID == conversationID, message.role != .event,
-          !message.text.isEmpty
+          !message.text.isEmpty || !message.attachmentIDs.isEmpty
         else {
           throw WorkspaceError.invalidDraft
         }
@@ -162,7 +167,8 @@ extension PreviewWorkspace {
         guard let repository else { throw WorkspaceError.storeUnavailable }
         let target = try await repository.message(id: messageID)
         guard isCurrent() else { return }
-        guard target.conversationID == conversationID, target.role != .event, !target.text.isEmpty
+        guard target.conversationID == conversationID, target.role != .event,
+          !target.text.isEmpty || !target.attachmentIDs.isEmpty
         else {
           throw WorkspaceError.invalidDraft
         }
@@ -182,7 +188,8 @@ extension PreviewWorkspace {
       }
       guard isCurrent(),
         messages[conversationID]?.contains(where: {
-          $0.id == messageID && $0.role != .event && !$0.text.isEmpty
+          $0.id == messageID && $0.role != .event
+            && (!$0.text.isEmpty || !$0.attachmentIDs.isEmpty)
         })
           == true
       else { return }

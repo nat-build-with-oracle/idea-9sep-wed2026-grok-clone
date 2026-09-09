@@ -122,7 +122,7 @@ Proposed stable types (Swift value types at service boundaries):
 | Routine | UUID, ownerBotID, name, prompt, trigger, timezoneID, enabled, nextRunAt? |
 | RoutineRun | UUID, routineID, scheduledOccurrenceID?, status, startedAt?, endedAt?, generationID?, error? |
 | ProviderConfig | UUID, kind, baseURL, modelID, secretKeychainReference; never the secret value |
-| Attachment | UUID, originalName, mediaType, byteCount, contentHash, appManagedRelativePath |
+| Attachment | UUID, conversationID, originalName, mediaType, byteCount, contentHash, app-managed opaque content (see [storage ADR](ATTACHMENTS.md#storage-decision-adr-attachment-01)) |
 
 - Bot identity and conversation identity are distinct. A group is a conversation, not a fake bot. Deleting a bot does not reuse its ID for another identity.
 - Repository mutations are serialized transactions. User message and initial generation state commit atomically before any network request.
