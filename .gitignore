@@ -1,0 +1,23 @@
+.data/
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+test-results/
+
+.build/
+DerivedData/
+artifacts/
+.omx/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+
+# Private third-party design references are not part of the open-source release.
+/docs/reference/
