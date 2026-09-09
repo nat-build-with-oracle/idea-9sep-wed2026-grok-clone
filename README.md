@@ -46,7 +46,7 @@ third-party dependency installation is needed for the current app or tests.
 | Credentials | Protected Keychain by default, explicit session-only memory option; no automatic fallback; authorized signing/Keychain access still unverified |
 | Remaining gates | Live-provider validation, routine execution, attachments/export, remaining edit/delete and native accessibility flows |
 
-Verification: **125 tests** (71 core + 54 shell), desktop/narrow native persistence
+Verification: **144 tests** (83 core + 61 shell), desktop/narrow native persistence
 and offline provider smokes, Settings rendering, build/signature and formatting checks. See the evidence
 and limitations below for the current test counts and scope.
 

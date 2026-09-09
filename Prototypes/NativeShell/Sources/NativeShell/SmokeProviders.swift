@@ -25,3 +25,8 @@ struct SmokeChatProvider: ChatProvider {
     }
   }
 }
+
+struct SmokeRouterModelCatalog: RouterModelCatalog {
+  static let modelIDs = ["cx/smoke-text", "glm/smoke-text", "local/smoke-text"]
+  func models(apiRoot: URL, allowsLoopbackHTTP: Bool) async throws -> [String] { Self.modelIDs }
+}

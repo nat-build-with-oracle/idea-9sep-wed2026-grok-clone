@@ -169,9 +169,27 @@ import WorkspaceCore
         }
         store.panel = nil
         if arguments.contains("--verify-provider") {
+          let routerFixture = arguments.contains("--router-models")
           try await verifyProviderFlow(
-            repository: reopened, conversationID: groupID, targetID: botID)
-          if arguments.contains("--settings") { showSettings() }
+            repository: reopened, conversationID: groupID, targetID: botID,
+            routerFixture: routerFixture)
+          if arguments.contains("--settings") {
+            let discovery =
+              routerFixture ? ModelDiscoveryController(catalog: SmokeRouterModelCatalog()) : nil
+            showSettings(discovery: discovery)
+            if let discovery {
+              // Allow the native view to load its initial form before exercising the injected lookup.
+              try await Task.sleep(for: .milliseconds(300))
+              await discovery.discover(
+                apiRoot: ProviderPreset.nineRouter.apiRoot, allowsLoopbackHTTP: true)?.value
+              guard discovery.hasLoaded, discovery.models == SmokeRouterModelCatalog.modelIDs else {
+                throw WorkspaceError.invalidStore
+              }
+              print(
+                "NATIVE_MODEL_CATALOG_SMOKE=PASS offlineFixture=true models=3 credentialsSent=false chatRequestsFromDiscovery=0"
+              )
+            }
+          }
         }
         try await Task.sleep(for: .milliseconds(300))
         writeSnapshot(small: small, arguments: arguments)
@@ -193,15 +211,19 @@ import WorkspaceCore
 
   /// Explicitly injected, offline fixtures, available only in the isolated smoke workspace.
   private func verifyProviderFlow(
-    repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID
+    repository: CoreDataWorkspaceRepository, conversationID: UUID, targetID: UUID,
+    routerFixture: Bool = false
   ) async throws {
     try await store.connect(
       repository, credentials: SessionAwareCredentialStore(persistent: SmokeCredentials()),
       provider: SmokeChatProvider(),
       displayName: "Smoke workspace")
     _ = try await store.saveProvider(
-      id: nil, name: "Offline fixture provider", apiRoot: "https://fixture.invalid/v1",
-      modelID: "smoke-text", secret: "offline-fixture-credential", allowsLoopbackHTTP: false,
+      id: nil, name: routerFixture ? "Offline router fixture" : "Offline fixture provider",
+      apiRoot: routerFixture ? ProviderPreset.nineRouter.apiRoot : "https://fixture.invalid/v1",
+      modelID: routerFixture ? "glm/smoke-text" : "smoke-text",
+      secret: "offline-fixture-credential",
+      allowsLoopbackHTTP: routerFixture,
       credentialLifetime: .session)
     store.selectedID = conversationID
     store.selectedTargetBotIDs[conversationID] = targetID
@@ -272,7 +294,7 @@ import WorkspaceCore
   @objc private func newChat() { store.openPicker() }
   @objc private func settings() { store.openSettings() }
 
-  private func showSettings() {
+  private func showSettings(discovery: ModelDiscoveryController? = nil) {
     guard store.isPersistent else {
       store.panel = .settings
       return
@@ -290,7 +312,9 @@ import WorkspaceCore
     settings.contentMinSize = NSSize(width: 520, height: 620)
     settings.isReleasedWhenClosed = false
     settings.appearance = NSAppearance(named: .darkAqua)
-    settings.contentView = NSHostingView(rootView: ProviderSettingsView(store: store))
+    settings.contentView = NSHostingView(
+      rootView: ProviderSettingsView(
+        store: store, discovery: discovery ?? ModelDiscoveryController()))
     settings.delegate = self
     settingsWindow = settings
     settings.center()
@@ -336,7 +360,9 @@ import WorkspaceCore
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let state =
       arguments.contains("--verify-provider")
-      ? (arguments.contains("--settings") ? "provider-settings" : "provider-chat")
+      ? (arguments.contains("--settings")
+        ? (arguments.contains("--router-models") ? "router-model-settings" : "provider-settings")
+        : "provider-chat")
       : arguments.contains("--verify-workspace")
         ? "durable-workspace"
         : arguments.contains("--group")

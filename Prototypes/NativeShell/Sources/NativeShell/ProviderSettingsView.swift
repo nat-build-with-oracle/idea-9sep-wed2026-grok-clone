@@ -13,6 +13,8 @@ struct ProviderSettingsView: View {
   }
 
   @ObservedObject var store: PreviewWorkspace
+  @StateObject private var discovery: ModelDiscoveryController
+  @State private var modelFilter = ""
 
   @State private var editingProviderID: UUID?
   @State private var name = ""
@@ -31,6 +33,11 @@ struct ProviderSettingsView: View {
     credentialLifetime: .keychain)
   @State private var pendingProviderID: UUID?
   @State private var isConfirmingDiscard = false
+
+  init(store: PreviewWorkspace, discovery: ModelDiscoveryController = ModelDiscoveryController()) {
+    self.store = store
+    _discovery = StateObject(wrappedValue: discovery)
+  }
 
   private var editingProvider: ProviderConfig? {
     editingProviderID.flatMap { id in store.providers.first { $0.id == id } }
@@ -102,15 +109,22 @@ struct ProviderSettingsView: View {
       loadProvider(newValue)
     }
     .onChange(of: name) { _, _ in updateDirtyState() }
-    .onChange(of: apiRoot) { _, _ in updateDirtyState() }
+    .onChange(of: apiRoot) { _, _ in
+      resetDiscovery()
+      updateDirtyState()
+    }
     .onChange(of: modelID) { _, _ in updateDirtyState() }
     .onChange(of: replacementSecret) { _, _ in updateDirtyState() }
-    .onChange(of: allowsLoopbackHTTP) { _, _ in updateDirtyState() }
+    .onChange(of: allowsLoopbackHTTP) { _, _ in
+      resetDiscovery()
+      updateDirtyState()
+    }
     .onChange(of: credentialLifetime) { _, _ in
       replacementSecret = ""
       updateDirtyState()
     }
     .onDisappear {
+      resetDiscovery()
       replacementSecret = ""
       store.providerSettingsDirty = false
     }
@@ -233,6 +247,8 @@ struct ProviderSettingsView: View {
           .accessibilityLabel("Model identifier")
           .accessibilityIdentifier("provider-model-id")
 
+        modelDiscovery
+
         Picker("Credential storage", selection: $credentialLifetime) {
           ForEach(CredentialLifetime.allCases) { lifetime in
             Text(lifetime.name).tag(lifetime)
@@ -265,6 +281,75 @@ struct ProviderSettingsView: View {
       }
       .padding(8)
     }
+  }
+
+  private var canDiscoverModels: Bool {
+    guard let root = URL(string: cleanRoot) else { return false }
+    return
+      (try? LocalRouterModelCatalog.endpoint(
+        apiRoot: root, allowsLoopbackHTTP: allowsLoopbackHTTP)) != nil
+  }
+
+  private var matchingModels: [String] {
+    discovery.models.filter {
+      modelFilter.isEmpty || $0.localizedCaseInsensitiveContains(modelFilter)
+    }
+  }
+
+  private var modelDiscovery: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Button(discovery.hasLoaded ? "Refresh local models" : "Discover local models") {
+          discovery.discover(apiRoot: cleanRoot, allowsLoopbackHTTP: allowsLoopbackHTTP)
+        }
+        .disabled(!canDiscoverModels || discovery.isLoading)
+        .accessibilityIdentifier("provider-discover-models")
+        if discovery.isLoading {
+          ProgressView().controlSize(.small).accessibilityLabel("Discovering local router models")
+          Button("Cancel") { resetDiscovery() }
+            .accessibilityIdentifier("provider-cancel-discovery")
+        }
+      }
+      Text(
+        "Local 9router only. Sends GET /models with no key or chat content. A model list does not verify account access or a successful reply."
+      )
+      .font(.caption).foregroundStyle(ShellTheme.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      if let error = discovery.errorMessage {
+        Text(error).font(.caption).foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("provider-model-discovery-error")
+      }
+      if discovery.hasLoaded {
+        if discovery.models.isEmpty {
+          Text(
+            "The router advertised no models. Configure an upstream or enter a model ID manually."
+          )
+          .font(.caption).foregroundStyle(ShellTheme.secondary)
+        } else {
+          TextField("Filter discovered model IDs", text: $modelFilter)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("provider-model-filter")
+          Menu("Choose discovered model") {
+            ForEach(Array(matchingModels.prefix(80)), id: \.self) { model in
+              Button(model) { modelID = model }
+            }
+          }
+          .disabled(matchingModels.isEmpty)
+          .accessibilityIdentifier("provider-discovered-models")
+          Text(
+            "\(matchingModels.count) of \(discovery.models.count) IDs match; menu shows at most 80. Qualified IDs are used unchanged. Your typed model is kept until you choose one."
+          )
+          .font(.caption2).foregroundStyle(ShellTheme.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+    }
+  }
+
+  private func resetDiscovery() {
+    discovery.reset()
+    modelFilter = ""
   }
 
   private var destinationDisclosure: some View {
@@ -373,6 +458,7 @@ struct ProviderSettingsView: View {
   }
 
   private func loadProvider(_ id: UUID?) {
+    resetDiscovery()
     selectedPreset = nil
     replacementSecret = ""
     errorMessage = nil
@@ -402,6 +488,7 @@ struct ProviderSettingsView: View {
   }
 
   private func applyPreset(_ preset: ProviderPreset) {
+    resetDiscovery()
     selectedPreset = preset
     name = preset == .custom ? "" : preset.name
     apiRoot = preset.apiRoot

@@ -17,6 +17,7 @@ scripts/native-app.sh smoke
 scripts/native-app.sh smoke --small
 scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --settings
+scripts/native-app.sh provider-smoke --router-models
 xcrun swift-format lint --strict --recursive \
   Packages/WorkspaceCore/Sources Packages/WorkspaceCore/Tests \
   Prototypes/NativeShell/Sources Prototypes/NativeShell/Tests

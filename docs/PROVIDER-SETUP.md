@@ -66,7 +66,28 @@ Start/configure the gateway separately; BotWorkspace does not install or launch 
 import its upstream account tokens, expose a local server, or claim upstream
 subscription eligibility. The gateway receives your conversation content and can
 forward it to its configured upstream. Locality does not make that forwarding private.
-Model discovery in Settings and a live 9router end-to-end test remain unimplemented.
+### Discover local models
+
+After entering a loopback API root and explicitly enabling HTTP if needed, click
+**Discover local models**. This sends only a credential-free `GET` to the root's
+`/models` route. Filter the result and explicitly choose an ID; your typed model
+is not replaced automatically. Prefixes, case and internal spaces are preserved.
+
+Discovery refuses remote origins, redirects, non-JSON responses, malformed IDs and
+oversized responses (1 MiB / 2,048 models). The filtered menu shows at most 80 IDs.
+Changing the root, HTTP permission, template or configuration cancels/invalidates
+the old lookup, as does closing Settings. Errors do not include raw server text.
+No cookies, saved keys, credential-store reads or conversation content are involved.
+An empty result is reported honestly, and a successful list is **not** validation
+of the router key, upstream account, model permissions or a successful chat request.
+Protected model-list deployments can use a manually entered model ID instead.
+
+URLProtocol tests and a native fixture smoke cover this path. A real 9router
+end-to-end chat test remains open:
+
+```sh
+scripts/native-app.sh provider-smoke --router-models
+```
 
 ## ChatGPT login is not an OpenAI Platform key
 
@@ -80,8 +101,11 @@ refresh, using `account/read` for account state and thread/turn APIs for request
 This is **not implemented** yet. The protocol inspected does not provide a single
 enforced tool-free turn switch. `approvalPolicy: never` and a read-only sandbox are
 not equivalent to disabling all tools, MCP servers, plugins and commands.
-Adding Codex-backed chat requires an enforced, version-checked restricted server
-boundary before enabling it in this non-executing chat app.
+App Server-backed chat requires an enforced, version-checked restricted server
+boundary before enabling it in this non-executing chat app. A separate
+[experimental fixed-origin adapter contract](CODEX-ADAPTER-CONTRACT.md) now records
+the direct text-only alternative and its implementation/verification gates; it is
+not yet wired into the native app and is not a supported public API claim.
 [Official App Server documentation](https://learn.chatgpt.com/docs/app-server).
 
 Neither the app nor tests scan `pass`, read `auth.json`, import credentials from

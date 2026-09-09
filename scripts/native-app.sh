@@ -11,11 +11,17 @@ export NATIVE_WORKSPACE_APP=1
 if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" ]]; then
   "$ROOT/scripts/native-prototype.sh" build
   VERIFY_ARGS=(--verify-workspace)
+  VERIFY_MODELS=0
   if [[ "$MODE" == "provider-smoke" ]]; then VERIFY_ARGS+=(--verify-provider); fi
+  if [[ "$MODE" == "provider-smoke" && " $* " == *" --router-models "* ]]; then
+    VERIFY_ARGS+=(--settings)
+    VERIFY_MODELS=1
+  fi
   OUTPUT="$("$ROOT/Prototypes/NativeShell/.build/BotWorkspace.app/Contents/MacOS/NativeShell" "${VERIFY_ARGS[@]}" "$@")"
   printf '%s\n' "$OUTPUT"
   grep -q '^NATIVE_PERSISTENCE_SMOKE=PASS ' <<< "$OUTPUT"
   if [[ "$MODE" == "provider-smoke" ]]; then grep -q '^NATIVE_PROVIDER_SMOKE=PASS ' <<< "$OUTPUT"; fi
+  if [[ "$VERIFY_MODELS" == "1" ]]; then grep -q '^NATIVE_MODEL_CATALOG_SMOKE=PASS ' <<< "$OUTPUT"; fi
   exit
 fi
 exec "$ROOT/scripts/native-prototype.sh" "$MODE" --workspace "$@"

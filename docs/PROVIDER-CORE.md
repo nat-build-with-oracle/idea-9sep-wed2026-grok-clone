@@ -62,6 +62,9 @@ entry is explicit; no real key or existing Keychain record is used by tests/smok
   routing, preserving legacy provider references. No automatic fallback on failure.
 - `ProviderPreset.swift`: setup suggestions for general Z.ai, local 9router,
   OpenAI Platform and custom endpoints; no entitlement or compatibility inference.
+- `LocalRouterModelCatalog.swift` and native `ModelDiscoveryController.swift`:
+  explicit credential-free loopback model discovery, bounded JSON, redirect refusal,
+  cancellation and stale-result protection. A listed model is not a verified chat connection.
 - `GenerationCoordinator.swift`: persist the user message and queued generation
   before transport; one active request per conversation, at most three globally;
   cancellation, retry with a new attempt, and orderly shutdown.
@@ -87,10 +90,10 @@ and other non-text output are not supported.
 
 ## Verification and limits
 
-The core suite has **71 tests**: 29 repository, 11 generation/coordinator,
-15 SSE parser, 8 transport/request and 8 provider-setup/credential-routing tests. Transport tests use URLProtocol;
+The core suite has **83 tests**: 29 repository, 11 generation/coordinator,
+15 SSE parser, 8 transport/request, 8 provider-setup/credential-routing and 12 model-catalog tests. Transport tests use URLProtocol;
 coordinator tests use fake providers and credentials with temporary SQLite stores.
-The shell adds 16 provider-presentation tests to its 38 existing tests, for **125 total tests** across core and shell. They include key/metadata rollback, destination/storage-mode key re-entry, session-only sends and key expiration after reconnect, group targeting, concurrent draft edits, cancellation/retry, and recovery after a shutdown save failure.
+The shell adds 16 provider-presentation and 7 model-discovery lifecycle tests to its 38 existing tests, for **144 total tests** across core and shell. They include key/metadata rollback, destination/storage-mode key re-entry, session-only sends and key expiration after reconnect, group targeting, concurrent draft edits, cancellation/retry, stale discovery results, and recovery after a shutdown save failure.
 
 These automated tests/smokes make no live requests or billable calls and use no real
 credentials or existing Keychain records. Separate manual account diagnostics are
@@ -123,6 +126,7 @@ scripts/native-app.sh test
 scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --small
 scripts/native-app.sh provider-smoke --settings
+scripts/native-app.sh provider-smoke --router-models
 ```
 
 Provider smoke uses a new isolated temporary workspace, the explicit session credential route
