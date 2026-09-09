@@ -215,6 +215,31 @@ import XCTest
     XCTAssertTrue(snapshot.generations.allSatisfy { $0.state == .cancelled })
     XCTAssertEqual(provider.callCount, 1)
   }
+
+  func testFailedShutdownStillCancelsTransportAndCanPersistCancellationOnRecovery() async throws {
+    let (repository, bot, id, config) = try await workspace()
+    let provider = ControlledProvider()
+    let coordinator = GenerationCoordinator(
+      repository: repository, credentials: FixtureCredentials(), provider: provider)
+    var starts = provider.starts.makeAsyncIterator()
+    _ = try await coordinator.submit(
+      SendCommand(conversationID: id, targetBotID: bot.id, text: "First"), configuration: config)
+    _ = await starts.next()
+    _ = try await coordinator.submit(
+      SendCommand(conversationID: id, targetBotID: bot.id, text: "Queued"), configuration: config)
+    await repository.injectNextSaveFailure()
+    do {
+      try await coordinator.shutdown()
+      XCTFail("Expected cancellation save failure")
+    } catch { XCTAssertEqual(error as? WorkspaceError, .storeUnavailable) }
+    await coordinator.waitForIdle()
+    XCTAssertEqual(provider.cancelledCount, 1)
+    XCTAssertEqual(provider.callCount, 1)
+    try await coordinator.shutdown()
+    let snapshot = try await repository.snapshot()
+    XCTAssertTrue(snapshot.generations.allSatisfy { $0.state == .cancelled })
+    XCTAssertEqual(provider.callCount, 1)
+  }
 }
 
 private actor FixtureCredentials: CredentialStore {
@@ -230,12 +255,19 @@ private actor MissingCredentials: CredentialStore {
 private final class ControlledProvider: ChatProvider, @unchecked Sendable {
   private let lock = NSLock()
   private var continuations: [AsyncThrowingStream<ChatEvent, Error>.Continuation] = []
+  private var cancellations = 0
   let starts: AsyncStream<Int>
   private let startContinuation: AsyncStream<Int>.Continuation
   init() { (starts, startContinuation) = AsyncStream.makeStream() }
   var callCount: Int { lock.withLock { continuations.count } }
+  var cancelledCount: Int { lock.withLock { cancellations } }
   func stream(_ request: ChatRequest) -> AsyncThrowingStream<ChatEvent, Error> {
     AsyncThrowingStream { continuation in
+      continuation.onTermination = { [weak self] termination in
+        if case .cancelled = termination, let self {
+          self.lock.withLock { self.cancellations += 1 }
+        }
+      }
       let index = lock.withLock {
         continuations.append(continuation)
         return continuations.count - 1

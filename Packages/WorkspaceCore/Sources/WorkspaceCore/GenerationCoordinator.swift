@@ -92,7 +92,10 @@ public actor GenerationCoordinator {
     }
     try await repository.apply(.cancelGeneration(id: generationID, attemptID: generation.attemptID))
     pending.removeAll { $0.generationID == generationID }
-    active[generationID]?.cancel()
+    if let task = active[generationID] {
+      task.cancel()
+      await task.value
+    }
     pump()
     await onChange(generation.conversationID)
   }
@@ -100,12 +103,21 @@ public actor GenerationCoordinator {
   public func shutdown() async throws {
     shuttingDown = true
     let ids = Set(pending.map(\.generationID)).union(active.keys)
-    for id in ids { try await cancel(id) }
-    await waitForIdle()
+    do {
+      for id in ids { try await cancel(id) }
+      await waitForIdle()
+    } catch {
+      // A disk failure must not leave a network request running after the user requested quit.
+      // Keep queued jobs suspended so a later recovery can persist their cancellation.
+      let running = Array(active.values)
+      for task in running { task.cancel() }
+      for task in running { await task.value }
+      throw error
+    }
   }
 
   public func waitForIdle() async {
-    while !active.isEmpty || !pending.isEmpty {
+    while !active.isEmpty || (!shuttingDown && !pending.isEmpty) {
       if let task = active.values.first { await task.value } else { pump() }
     }
   }
@@ -136,7 +148,7 @@ public actor GenerationCoordinator {
   }
 
   private func pump() {
-    while active.count < 3,
+    while !shuttingDown, active.count < 3,
       let index = pending.firstIndex(where: { !activeConversations.contains($0.conversationID) })
     {
       let job = pending.remove(at: index)

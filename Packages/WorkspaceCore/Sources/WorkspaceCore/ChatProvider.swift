@@ -41,6 +41,8 @@ public enum ProviderError: Error, Sendable, Equatable, LocalizedError {
     switch self {
     case .missingCredential: "No API key is saved for this provider. Open Settings to add one."
     case .invalidCredential: "The API key must be a nonempty single-line value."
+    case .keychain(-34018):
+      "This build lacks an authorized Keychain signing profile. Use a properly signed build; no plaintext key was saved."
     case .keychain(let status):
       "Keychain is unavailable (\(status)). No plaintext credential was saved."
     case .invalidResponse: "The provider returned an unsupported or malformed streaming response."
