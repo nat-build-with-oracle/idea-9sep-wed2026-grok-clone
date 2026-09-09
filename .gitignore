@@ -3,6 +3,10 @@ node_modules/
 .env
 .env.*
 !.env.example
+# Local authentication material must never enter the public source tree.
+auth.json
+credentials.json
+.password-store/
 .DS_Store
 test-results/
 
