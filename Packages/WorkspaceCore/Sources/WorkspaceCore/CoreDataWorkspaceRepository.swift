@@ -93,6 +93,22 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
   }
 
+  public func exportSnapshot() async throws -> WorkspaceExportDocument {
+    return try await context.perform {
+      try self.requireOpen()
+      // Every row and the revision are captured in this single serialized Core Data turn.
+      return try WorkspaceExportDocument(
+        exportedAt: Date(), revision: self.revision(),
+        bots: self.all("Bot", as: Bot.self),
+        conversations: self.all("Conversation", as: Conversation.self),
+        messages: self.all("Message", as: Message.self),
+        drafts: self.all("Draft", as: Draft.self),
+        generations: self.all("Generation", as: Generation.self),
+        routines: self.all("Routine", as: Routine.self),
+        providers: self.all("Provider", as: ProviderConfig.self).map(WorkspaceExportProvider.init))
+    }
+  }
+
   @discardableResult public func apply(_ mutation: WorkspaceMutation, expectedRevision: Int64?)
     async throws -> Int64
   {

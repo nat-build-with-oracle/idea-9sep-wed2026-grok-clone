@@ -75,6 +75,7 @@ public enum WorkspaceMutation: Sendable {
 
 public protocol WorkspaceRepository: Sendable {
   func snapshot() async throws -> WorkspaceSnapshot
+  func exportSnapshot() async throws -> WorkspaceExportDocument
   @discardableResult func apply(_ mutation: WorkspaceMutation, expectedRevision: Int64?)
     async throws -> Int64
   func messages(conversationID: UUID, beforeSequence: Int64?, limit: Int) async throws
@@ -84,6 +85,10 @@ public protocol WorkspaceRepository: Sendable {
 }
 
 extension WorkspaceRepository {
+  public func exportSnapshot() async throws -> WorkspaceExportDocument {
+    throw WorkspaceExportError.unsupportedRepository
+  }
+
   public func message(id: UUID) async throws -> Message {
     let snapshot = try await snapshot()
     for conversation in snapshot.conversations {
