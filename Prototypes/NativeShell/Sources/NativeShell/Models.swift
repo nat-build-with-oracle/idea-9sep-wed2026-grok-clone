@@ -99,6 +99,16 @@ enum ComposerInputPolicy {
 
   @Published var bots: [PreviewBot] = []
   @Published var conversations: [PreviewConversation] = []
+  @Published var conversationActivity: [UUID: ConversationActivity] = [:]
+  @Published var lastReadSequences: [UUID: Int64] = [:]
+  @Published var conversationReadBarriers: Set<UUID> = []
+  @Published var workspaceIsForeground = false
+  @Published var readViewport: ConversationReadViewport?
+  @Published var readStatusError: String?
+  var activityRevision: Int64 = -1
+  var readReceiptTask: Task<Void, Never>?
+  var failedReadReceipt: ConversationReadReceipt?
+  var readReceiptsSuspended = false
   @Published var messages: [UUID: [PreviewMessage]] = [:]
   @Published var drafts: [UUID: String] = [:]
   @Published var draftReplyIDs: [UUID: UUID] = [:]
@@ -274,6 +284,7 @@ enum ComposerInputPolicy {
         do {
           try await flushDrafts()
           guard request == selectionRequest else { return }
+          readViewport = nil
           selectedID = id
           pickerMode = .closed
           notice = nil

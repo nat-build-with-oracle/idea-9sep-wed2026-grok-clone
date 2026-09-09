@@ -8,10 +8,11 @@ if [[ "$MODE" == "test" ]]; then
   exec "$ROOT/scripts/native-prototype.sh" test
 fi
 export NATIVE_WORKSPACE_APP=1
-if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" || "$MODE" == "routine-smoke" || "$MODE" == "attachment-smoke" || "$MODE" == "appearance-smoke" ]]; then
+if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" || "$MODE" == "routine-smoke" || "$MODE" == "attachment-smoke" || "$MODE" == "appearance-smoke" || "$MODE" == "unread-smoke" ]]; then
   "$ROOT/scripts/native-prototype.sh" build
   VERIFY_ARGS=(--verify-workspace)
   VERIFY_MODELS=0
+  if [[ "$MODE" == "unread-smoke" ]]; then VERIFY_ARGS+=(--verify-unread); fi
   if [[ "$MODE" == "appearance-smoke" ]]; then VERIFY_ARGS+=(--verify-appearance); fi
   if [[ "$MODE" == "routine-smoke" ]]; then VERIFY_ARGS+=(--verify-routines); fi
   if [[ "$MODE" == "attachment-smoke" ]]; then VERIFY_ARGS+=(--verify-attachments); fi
@@ -26,7 +27,17 @@ if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smo
     VERIFY_ARGS+=(--settings)
     VERIFY_MODELS=1
   fi
-  OUTPUT="$("$ROOT/Prototypes/NativeShell/.build/BotWorkspace.app/Contents/MacOS/NativeShell" "${VERIFY_ARGS[@]}" "$@")"
+  if [[ "$MODE" == "unread-smoke" && " $* " != *" --fixture-foreground "* ]]; then
+    # Use the normal Launch Services path for the real window-focus gate.
+    # A locked console cannot satisfy it; no synthetic focus fallback is automatic.
+    SMOKE_OUTPUT="$(mktemp "${TMPDIR:-/tmp/}native-unread-output.XXXXXX")"
+    trap 'rm -f -- "$SMOKE_OUTPUT"' EXIT
+    open -n -W --stdout "$SMOKE_OUTPUT" --stderr "$SMOKE_OUTPUT" \
+      "$ROOT/Prototypes/NativeShell/.build/BotWorkspace.app" --args "${VERIFY_ARGS[@]}" "$@"
+    OUTPUT="$(cat "$SMOKE_OUTPUT")"
+  else
+    OUTPUT="$("$ROOT/Prototypes/NativeShell/.build/BotWorkspace.app/Contents/MacOS/NativeShell" "${VERIFY_ARGS[@]}" "$@")"
+  fi
   printf '%s\n' "$OUTPUT"
   grep -q '^NATIVE_PERSISTENCE_SMOKE=PASS ' <<< "$OUTPUT"
   if [[ "$MODE" == "provider-smoke" ]]; then grep -q '^NATIVE_PROVIDER_SMOKE=PASS ' <<< "$OUTPUT"; fi
@@ -39,6 +50,7 @@ if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smo
   if [[ "$MODE" == "routine-smoke" ]]; then grep -q '^NATIVE_ROUTINE_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "attachment-smoke" ]]; then grep -q '^NATIVE_ATTACHMENT_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "appearance-smoke" ]]; then grep -q '^NATIVE_APPEARANCE_SMOKE=PASS ' <<< "$OUTPUT"; fi
+  if [[ "$MODE" == "unread-smoke" ]]; then grep -q '^NATIVE_UNREAD_SMOKE=PASS ' <<< "$OUTPUT"; fi
   exit
 fi
 exec "$ROOT/scripts/native-prototype.sh" "$MODE" --workspace "$@"

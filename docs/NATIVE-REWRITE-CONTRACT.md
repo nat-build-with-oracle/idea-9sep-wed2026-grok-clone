@@ -253,7 +253,7 @@ Minimum OS support requires running the matrix on macOS 14 as well as this host;
 
 These paths are to be created after the platform decision/execution handoff:
 
-Implementation checkpoint: the core package exists, using immutable code-defined v1 and current v2 Core Data models, explicit migration/recovery, and SwiftPM tests. Routine execution core, native editor/history/controls and awake lifecycle integration are fixture-tested; physical sleep/wake and full accessibility validation remain open (see [routine checkpoint](ROUTINES.md)). The shell uses a SwiftPM executable packaged as a native `.app`, with a selective AppKit window/text bridge. An `.xcodeproj` is not yet generated and is not claimed as delivered. This packaging choice uses the installed Apple toolchain without introducing a project-generator dependency; release/signing and minimum-OS gates are unchanged.
+Implementation checkpoint: the core package exists, using immutable code-defined v1/v2/v3 and current v4 Core Data models, explicit migration/recovery, and SwiftPM tests. Routine execution core, native editor/history/controls and awake lifecycle integration are fixture-tested; physical sleep/wake and full accessibility validation remain open (see [routine checkpoint](ROUTINES.md)). The shell uses a SwiftPM executable packaged as a native `.app`, with a selective AppKit window/text bridge. An `.xcodeproj` is not yet generated and is not claimed as delivered. This packaging choice uses the installed Apple toolchain without introducing a project-generator dependency; release/signing and minimum-OS gates are unchanged.
 
 ```text
 App/BotWorkspace.xcodeproj

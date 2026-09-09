@@ -8,7 +8,7 @@ Images and other binary formats are unsupported. This does not complete all R04/
 
 ## Storage decision (ADR-ATTACHMENT-01)
 
-Use a Core Data v3 `Attachment` entity with immutable metadata and a separate binary
+Use the `Attachment` entity introduced in Core Data v3 (preserved in v4) with immutable metadata and a separate binary
 content attribute. The external-binary-storage hint is enabled, but physical file
 placement remains Core Data's implementation detail. No original absolute path,
 bookmark, app-managed relative path, or physical backing-file URL is persisted or
@@ -52,7 +52,7 @@ the internal storage layout. It is not an import/restore feature or encrypted ba
   byte count in confirmation. Retained group history/content is not deleted with a
   former member; missing/corrupt affected content fails closed.
 - Historical model v1 and v2 definitions remain immutable. Explicit validated
-  migrations produce schema v3, retain existing payloads/routine history, and use
+  migrations now produce schema v4 (which preserves the v3 attachment format), retain existing payloads/routine history, and use
   the existing replacement/recovery boundary rather than silently resetting data.
 
 ## Native file ingress and draft lifecycle

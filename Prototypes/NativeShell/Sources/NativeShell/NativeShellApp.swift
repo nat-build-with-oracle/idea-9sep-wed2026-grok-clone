@@ -124,9 +124,39 @@ import WorkspaceCore
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
   func applicationWillResignActive(_ notification: Notification) {
+    store.workspaceIsForeground = false
     Task {
       do { try await store.flushDrafts() } catch { store.storageError = error.localizedDescription }
     }
+  }
+
+  func applicationDidBecomeActive(_ notification: Notification) {
+    updateReadingVisibility()
+  }
+
+  func windowDidBecomeKey(_ notification: Notification) {
+    if let key = notification.object as? NSWindow, key === window {
+      updateReadingVisibility()
+    } else {
+      store.workspaceIsForeground = false
+    }
+  }
+  func windowDidResignKey(_ notification: Notification) {
+    if let resigning = notification.object as? NSWindow, resigning === window {
+      store.workspaceIsForeground = false
+    }
+  }
+  func windowDidMiniaturize(_ notification: Notification) {
+    if let minimized = notification.object as? NSWindow, minimized === window {
+      store.workspaceIsForeground = false
+    }
+  }
+  func windowDidDeminiaturize(_ notification: Notification) { updateReadingVisibility() }
+
+  private func updateReadingVisibility() {
+    store.workspaceIsForeground =
+      NSApp.isActive && window?.isKeyWindow == true && window?.isVisible == true
+      && window?.isMiniaturized == false
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -233,6 +263,11 @@ import WorkspaceCore
           throw WorkspaceError.invalidStore
         }
         store.panel = nil
+        if arguments.contains("--verify-unread") {
+          reopened = try await verifyUnreadFlow(
+            repository: reopened, url: url, conversationID: firstConversationID!, botID: botID,
+            otherBotID: secondID, small: small, arguments: arguments)
+        }
         if arguments.contains("--verify-attachments") {
           reopened = try await verifyAttachmentFlow(
             repository: reopened, url: url, conversationID: groupID, targetID: botID,
@@ -333,6 +368,104 @@ import WorkspaceCore
 
   /// Exercises the real preference write/appearance propagation with an isolated suite.
   /// No OS appearance preference, user workspace, or real credential is modified.
+  private func verifyUnreadFlow(
+    repository: CoreDataWorkspaceRepository, url: URL, conversationID: UUID, botID: UUID,
+    otherBotID: UUID, small: Bool, arguments: [String]
+  ) async throws -> CoreDataWorkspaceRepository {
+    let fixtureForeground = arguments.contains("--fixture-foreground")
+    guard
+      let otherID = store.conversations.first(where: {
+        $0.kind == .direct && $0.memberIDs == [otherBotID]
+      })?.id
+    else { throw UnreadSmokeFailure(stage: "missing-other") }
+    // Strict smoke requires real window focus. The explicit fixture flag is only
+    // used by this isolated verifier when the host console is locked.
+    showSettings()
+    if fixtureForeground {
+      store.workspaceIsForeground = false
+    } else {
+      let settingsDeadline = Date().addingTimeInterval(5)
+      while settingsWindow?.isKeyWindow != true || store.workspaceIsForeground,
+        Date() < settingsDeadline
+      {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      guard settingsWindow?.isKeyWindow == true, !store.workspaceIsForeground else {
+        throw UnreadSmokeFailure(
+          stage:
+            "settings-key-window active=\(NSApp.isActive) settingsKey=\(settingsWindow?.isKeyWindow == true) mainKey=\(window?.isKeyWindow == true) foreground=\(store.workspaceIsForeground)"
+        )
+      }
+    }
+    for (id, owner, text) in [
+      (
+        conversationID, botID,
+        "A new offline reply — สวัสดี. This stays unread while Settings is active."
+      ),
+      (otherID, otherBotID, "An unopened chat also has a saved preview and unread reply."),
+    ] {
+      let command = SendCommand(
+        conversationID: id, targetBotID: owner, text: "Synthetic unread fixture")
+      try await repository.apply(.beginGeneration(command))
+      for (sequence, kind): (Int64, GenerationEvent.Kind) in [
+        (1, .started), (2, .delta(text)), (3, .completed),
+      ] {
+        try await repository.apply(
+          .applyGenerationEvent(
+            GenerationEvent(
+              generationID: command.generationID, attemptID: command.attemptID,
+              sequence: sequence, kind: kind)))
+      }
+    }
+    try await store.refreshPersistent()
+    store.selectedID = conversationID
+    try await store.loadMessages(conversationID)
+    store.draft = "Keep this unread-workflow draft 👩🏽‍💻"
+    try await store.flushDrafts()
+    try await Task.sleep(for: .milliseconds(150))
+    guard store.lastReadSequences[conversationID] == 0,
+      store.conversationActivity[conversationID]?.unreadAssistantCount == 1,
+      store.conversationActivity[otherID]?.unreadAssistantCount == 1,
+      store.messages[otherID] == nil
+    else { throw UnreadSmokeFailure(stage: "background-counts") }
+    for appearance in [WorkspaceAppearance.dark, .light] {
+      store.preferences.appearance = appearance
+      try await Task.sleep(for: .milliseconds(100))
+      writeSnapshot(small: small, arguments: arguments + ["--unread-\(appearance.rawValue)-before"])
+    }
+    settingsWindow?.performClose(nil)
+    window?.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+    if fixtureForeground { store.workspaceIsForeground = true }
+    let deadline = Date().addingTimeInterval(5)
+    while store.lastReadSequences[conversationID] != 2, Date() < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    guard store.workspaceIsForeground, store.lastReadSequences[conversationID] == 2,
+      store.conversationActivity[conversationID]?.unreadAssistantCount == 0,
+      store.conversationActivity[otherID]?.unreadAssistantCount == 1,
+      store.draft == "Keep this unread-workflow draft 👩🏽‍💻", store.readStatusError == nil
+    else { throw UnreadSmokeFailure(stage: "foreground-rendered") }
+    try await Task.sleep(for: .milliseconds(100))
+    writeSnapshot(small: small, arguments: arguments + ["--unread-after"])
+    try await store.prepareForClose()
+    try await repository.close()
+    let reopened = try await CoreDataWorkspaceRepository.open(at: url)
+    persistentRepository = reopened
+    try await store.connect(reopened, displayName: "Smoke workspace")
+    guard store.lastReadSequences[conversationID] == 2,
+      store.conversationActivity[conversationID]?.unreadAssistantCount == 0,
+      store.conversationActivity[otherID]?.unreadAssistantCount == 1,
+      store.drafts[conversationID] == "Keep this unread-workflow draft 👩🏽‍💻"
+    else { throw UnreadSmokeFailure(stage: "restart") }
+    store.selectedID = conversationID
+    try await store.loadMessages(conversationID)
+    print(
+      "NATIVE_UNREAD_SMOKE=PASS foregroundSource=\(fixtureForeground ? "fixture" : "window") actualWindowFocusTested=\(!fixtureForeground) backgroundRetainsUnread=true unopenedPreview=true foregroundRenderedRead=true otherChatRetained=true restartRetained=true physicalInputTested=false"
+    )
+    return reopened
+  }
+
   private func verifyAppearanceFlow(
     repository: CoreDataWorkspaceRepository, url: URL, conversationID: UUID, targetID: UUID,
     small: Bool, arguments: [String]
@@ -1041,6 +1174,9 @@ import WorkspaceCore
   }
 
   func windowWillClose(_ notification: Notification) {
+    if let closing = notification.object as? NSWindow, closing === window {
+      store.workspaceIsForeground = false
+    }
     guard let closing = notification.object as? NSWindow, closing === settingsWindow else { return }
     closing.contentView = nil
     settingsWindow = nil
@@ -1106,7 +1242,8 @@ import WorkspaceCore
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let appearanceState = arguments.last { $0.hasPrefix("--appearance-") }
     let state =
-      appearanceState.map {
+      arguments.last(where: { $0.hasPrefix("--unread-") }).map { String($0.dropFirst(2)) }
+      ?? appearanceState.map {
         String($0.dropFirst(2)) + (arguments.contains("--settings") ? "-settings" : "-workspace")
       }
       ?? (arguments.contains("--attachment-confirmation")
@@ -1147,4 +1284,9 @@ import WorkspaceCore
 private struct RoutineSmokeFailure: LocalizedError {
   let stage: String
   var errorDescription: String? { "Offline routine smoke failed at \(stage)." }
+}
+
+private struct UnreadSmokeFailure: LocalizedError {
+  let stage: String
+  var errorDescription: String? { "Offline unread smoke failed at \(stage)." }
 }

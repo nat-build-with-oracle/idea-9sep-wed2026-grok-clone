@@ -61,6 +61,9 @@ struct WorkspaceView: View {
     ) { RoutineEditorView(store: store, target: $0) }
     .onChange(of: store.search) { _, _ in Task { await store.searchPersistent() } }
     .onChange(of: store.showHidden) { _, _ in Task { await store.searchPersistent() } }
+    .onChange(of: store.visibleReadReceipt, initial: true) { _, _ in
+      store.requestVisibleReadReceipt()
+    }
     .disabled(store.isLoading || store.isClosing)
     .overlay(alignment: .top) {
       if store.isLoading || store.isClosing {
@@ -239,6 +242,17 @@ private struct ConversationRow: View {
   let conversation: PreviewConversation
   private var bot: PreviewBot? { store.bots.first { $0.id == conversation.memberIDs.first } }
   private var selected: Bool { store.selectedID == conversation.id && store.pickerMode == .closed }
+  private var unreadCount: Int {
+    store.conversationActivity[conversation.id]?.unreadAssistantCount ?? 0
+  }
+  private var accessibilitySummary: String {
+    let timestamp = store.conversationActivity[conversation.id]?.lastMessageAt?.formatted(
+      date: .complete, time: .shortened)
+    return
+      ([store.sidebarPreview(for: conversation), timestamp].compactMap { $0 }
+      + [unreadCount == 1 ? "1 unread reply" : "\(unreadCount) unread replies"]).joined(
+        separator: ". ")
+  }
   var body: some View {
     Button {
       store.select(conversation.id)
@@ -252,22 +266,35 @@ private struct ConversationRow: View {
         }
         VStack(alignment: .leading, spacing: 4) {
           HStack(alignment: .firstTextBaseline) {
-            Text(conversation.title).font(.system(size: 16, weight: .medium)).lineLimit(1)
+            Text(conversation.title)
+              .font(.system(size: 16, weight: unreadCount > 0 ? .semibold : .medium)).lineLimit(1)
             Spacer(minLength: 3)
-            if !store.isPersistent {
-              Text(conversation.id == store.conversations.first?.id ? "9:06 PM" : "Yesterday")
+            if let timestamp = store.sidebarTimestamp(for: conversation) {
+              Text(timestamp)
                 .font(.system(size: 12)).foregroundStyle(ShellTheme.secondary).lineLimit(1)
             }
           }
-          Text(store.messages[conversation.id]?.last?.text ?? "Start a conversation")
-            .font(.system(size: 14)).foregroundStyle(ShellTheme.secondary).lineLimit(1)
+          HStack(spacing: 6) {
+            Text(store.sidebarPreview(for: conversation))
+              .font(.system(size: 14)).foregroundStyle(ShellTheme.secondary).lineLimit(1)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            if unreadCount > 0 {
+              Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(ShellTheme.bubble, in: Capsule())
+                .accessibilityHidden(true)
+            }
+          }
         }
       }
       .padding(.horizontal, 9).frame(height: 70)
       .contentShape(Rectangle())
       .background(selected ? ShellTheme.selected : .clear, in: RoundedRectangle(cornerRadius: 12))
     }
-    .buttonStyle(.plain).accessibilityLabel("Open \(conversation.title)")
+    .buttonStyle(.plain).accessibilityElement(children: .ignore)
+    .accessibilityLabel("Open \(conversation.title)").accessibilityValue(accessibilitySummary)
+    .accessibilityIdentifier("conversation-\(conversation.id.uuidString)")
     .accessibilityAddTraits(selected ? [.isSelected] : [])
     .contextMenu {
       Button(conversation.kind == .direct ? "Edit Bot…" : "Edit Group…") {
@@ -299,6 +326,14 @@ private struct ConversationView: View {
     VStack(spacing: 0) {
       header
       Rectangle().fill(ShellTheme.separator).frame(height: 1)
+      if let error = store.readStatusError {
+        HStack(alignment: .top, spacing: 8) {
+          Text(error).font(.system(size: 12)).foregroundStyle(ShellTheme.warning)
+          Spacer(minLength: 0)
+          Button("Retry read status") { store.retryReadStatus() }
+            .font(.system(size: 12)).accessibilityIdentifier("retry-read-status")
+        }.padding(10).background(ShellTheme.sidebar)
+      }
       if let conversation = store.current {
         transcript(conversation)
         composer
@@ -390,15 +425,33 @@ private struct ConversationView: View {
             Color.clear.frame(height: 1).id("bottom").background {
               GeometryReader { anchor in
                 Color.clear.preference(
-                  key: BottomPreference.self, value: anchor.frame(in: .named("transcript")).maxY)
+                  key: BottomPreference.self,
+                  value: TranscriptBottom(
+                    conversationID: conversation.id,
+                    latestSequence: store.currentMessages.last?.sequence ?? 0,
+                    latestMessageID: store.currentMessages.last?.id,
+                    latestMessageTextByteCount: store.currentMessages.last?.text.utf8.count ?? 0,
+                    viewportHeight: geometry.size.height,
+                    bottom: anchor.frame(in: .named("transcript")).maxY))
               }
             }
           }.padding(.horizontal, 22).padding(.top, 16).padding(.bottom, 12)
         }
         .defaultScrollAnchor(.bottom)
         .coordinateSpace(name: "transcript")
-        .onPreferenceChange(BottomPreference.self) { bottom in
-          nearBottom = bottom <= geometry.size.height + 50
+        .onPreferenceChange(BottomPreference.self) { position in
+          guard let position, position.conversationID == conversation.id else { return }
+          nearBottom = position.bottom > 0 && position.bottom <= geometry.size.height + 50
+          store.recordReadViewport(
+            ConversationReadViewport(
+              conversationID: position.conversationID, latestSequence: position.latestSequence,
+              latestMessageID: position.latestMessageID,
+              latestMessageTextByteCount: position.latestMessageTextByteCount,
+              isAtLatest: ConversationReadViewport.bottomIsVisible(
+                Double(position.bottom), in: Double(position.viewportHeight))))
+        }
+        .onDisappear {
+          if store.readViewport?.conversationID == conversation.id { store.readViewport = nil }
         }
         .overlay(alignment: .bottom) {
           if !nearBottom {
@@ -652,9 +705,20 @@ private struct GenerationStatusView: View {
   }
 }
 
+private struct TranscriptBottom: Equatable {
+  let conversationID: UUID
+  let latestSequence: Int64
+  let latestMessageID: UUID?
+  let latestMessageTextByteCount: Int
+  let viewportHeight: CGFloat
+  let bottom: CGFloat
+}
+
 private struct BottomPreference: PreferenceKey {
-  static let defaultValue: CGFloat = 0
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+  static let defaultValue: TranscriptBottom? = nil
+  static func reduce(value: inout TranscriptBottom?, nextValue: () -> TranscriptBottom?) {
+    if let next = nextValue() { value = next }
+  }
 }
 
 private struct MessageBubble: View {

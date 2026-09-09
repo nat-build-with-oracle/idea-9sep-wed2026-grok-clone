@@ -211,7 +211,32 @@ public struct ProviderConfig: Codable, Sendable, Equatable, Identifiable {
   }
 }
 
-/// Messages are intentionally paginated separately: a workspace snapshot never loads the transcript.
+/// Sidebar-ready activity derived from the latest message only, without loading a transcript.
+public struct ConversationActivity: Sendable, Equatable {
+  public let conversationID: UUID
+  public let latestSequence: Int64
+  public let latestMessageID: UUID?
+  public let latestMessageTextByteCount: Int
+  public let lastMessagePreview: String?
+  public let lastMessageAt: Date?
+  public let unreadAssistantCount: Int
+
+  public init(
+    conversationID: UUID, latestSequence: Int64, latestMessageID: UUID? = nil,
+    latestMessageTextByteCount: Int = 0, lastMessagePreview: String?, lastMessageAt: Date?,
+    unreadAssistantCount: Int
+  ) {
+    self.conversationID = conversationID
+    self.latestSequence = latestSequence
+    self.latestMessageID = latestMessageID
+    self.latestMessageTextByteCount = latestMessageTextByteCount
+    self.lastMessagePreview = lastMessagePreview
+    self.lastMessageAt = lastMessageAt
+    self.unreadAssistantCount = unreadAssistantCount
+  }
+}
+
+/// Messages are intentionally paginated separately: a workspace snapshot never loads a transcript.
 public struct WorkspaceSnapshot: Sendable, Equatable {
   public let revision: Int64
   public let bots: [Bot]
@@ -220,6 +245,22 @@ public struct WorkspaceSnapshot: Sendable, Equatable {
   public let generations: [Generation]
   public let routines: [Routine]
   public let providers: [ProviderConfig]
+  public let conversationActivity: [ConversationActivity]
+
+  public init(
+    revision: Int64, bots: [Bot], conversations: [Conversation], drafts: [Draft],
+    generations: [Generation], routines: [Routine], providers: [ProviderConfig],
+    conversationActivity: [ConversationActivity] = []
+  ) {
+    self.revision = revision
+    self.bots = bots
+    self.conversations = conversations
+    self.drafts = drafts
+    self.generations = generations
+    self.routines = routines
+    self.providers = providers
+    self.conversationActivity = conversationActivity
+  }
 }
 
 public struct MessagePage: Sendable, Equatable {

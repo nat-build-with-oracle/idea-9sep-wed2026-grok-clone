@@ -48,7 +48,7 @@ The repository confines managed objects to its private queue; only Codable/Senda
 
 - `Packages/WorkspaceCore/Sources/WorkspaceCore/Domain.swift`, `ProfileEditing.swift`: stable UUID DTOs plus validated, editable-only bot and group profile snapshots.
 - `WorkspaceRepository.swift`: typed mutations, explicit revision precondition and paginated-message contract.
-- `CoreDataWorkspaceRepository.swift`: normalized entity records with versioned Codable payloads; indexed conversation/sequence message access; atomic save/rollback; immutable v1/v2 models and explicit v3 migration; corruption/incompatibility rejection; cross-process lease.
+- `CoreDataWorkspaceRepository.swift`: normalized entity records with versioned Codable payloads; indexed conversation/sequence message access; atomic save/rollback; immutable v1/v2/v3 models and explicit v4 migration; corruption/incompatibility rejection; cross-process lease.
 - `GenerationCoordinator.swift`, `ChatProvider.swift`, `ChatCompletionsProvider.swift`, `CredentialStore.swift`: provider and generation core, connected through `ProviderWorkspace.swift` and `ProviderSettingsView.swift`. See [provider checkpoint](PROVIDER-CORE.md) for tested scope and Keychain/live-network gaps.
 - `Prototypes/NativeShell/Sources/NativeShell/PersistentWorkspace.swift`, `EditingWorkspace.swift`: UI projection and awaited mutations, debounced drafts, profile-edit snapshots, storage-error state, search and paged transcript reads.
 - `ProfileEditorView.swift`: native bot fields and ordered group membership editing, dirty-discard/reload confirmation, and stable-target controller state.
@@ -67,6 +67,7 @@ The repository confines managed objects to its private queue; only Codable/Senda
 | Cancel/reconcile | Stale attempt cannot cancel current work; restart reconciliation marks pending work interrupted without replaying it |
 | Routines | Native interval/daily editor with explicit owner/provider consent; Run Now, pause/resume, Stop, confirmed deletion, visible history, awake reconciliation. No work is promised while closed/asleep |
 | Save provider | Metadata/reference only; reject URL userinfo/query/fragment, non-HTTPS except explicitly opted-in loopback; native settings/credential entry/send are wired; **real signing/Keychain and broad provider verification remain open; a minimal native Codex reply has passed** |
+| Sidebar/read state | Persisted latest preview/date and exact incoming-reply count; visible foreground/latest/settled transcript acknowledgement; monotonic captured watermark and joined read writer. See [read-state contract](UNREAD-CONVERSATIONS.md) |
 | Message page | Latest 100 by default, limits 1–500; exclusive sequence cursor; older page stable when newer messages arrive |
 | Search | Case/diacritic-insensitive title/message search, with hidden conversations excluded by default |
 | Export | One-revision, all-history JSON including exact referenced attachment payloads with explicit provider allowlist; native save dialog, draft flush and single-flight failure handling. No credential reads or import; see [format/privacy limits](WORKSPACE-EXPORT.md) |
@@ -75,27 +76,28 @@ The repository confines managed objects to its private queue; only Codable/Senda
 
 No managed object, API secret, HTTP request, shell command, or cloud-computer capability is exposed through the repository. Provider metadata validation does not prove compatibility with a real endpoint.
 
-The [routine flow](ROUTINES.md), introduced in schema v2, is preserved by schema v3 with tested migration/recovery, native interval/daily editing, explicit transmission consent, run controls/history, and launch/wake/awake-timer scheduling. Previously paused routines are not silently enabled.
+The [routine flow](ROUTINES.md), introduced in schema v2, is preserved by schema v4 with tested migration/recovery, native interval/daily editing, explicit transmission consent, run controls/history, and launch/wake/awake-timer scheduling. Previously paused routines are not silently enabled.
 
 ## Verification evidence
 
 Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 
-- **234 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
+- **242 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
   generation/coordinator, provider/transport, model catalog, Codex, profiles, reply context,
   export/deletion, calendar boundaries and routine claims/lifecycle. Attachment coverage adds
   13 content/repository tests, 5 historical migration/recovery tests, 13 generation-consent and 3 wire/fingerprint
   tests and legacy export-summary decoding. All use offline credentials,
   URLProtocol/provider fixtures and/or actual temporary stores.
-- **226 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
+- **241 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
   profiles/replies/export/deletion, **11 routine editor** tests and **14 routine workspace/lifecycle**
-  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Appearance adds 8 preference-storage, 9 workspace/layout and 5 theme/composer tests. Total: **460 tests**.
+  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Appearance adds 8 preference-storage, 9 workspace/layout and 5 theme/composer tests. Unread activity adds 15 native tests and 8 core query/migration/model-invariant tests. Total: **483 tests**.
   Routine coverage includes explicit owner/binding consent, provider
   drift, dirty/cancel/reload/save races, catch-up/wake, direct-chat output, draft preservation,
   Stop/partial text, confirmed deletion, active history after clock rollback, and quit joining.
 
 - Native `smoke` uses a newly minted temporary workspace inside this app's sandbox, creates two bots/one group/one paused routine/a Unicode draft through the UI's service path, closes/reopens the store, asserts restored identities/content, renders the native window, removes only its own test directory and exits. It does not open, mutate, or capture the user's normal workspace.
 - Provider smoke injects offline credentials and a fixture stream into that isolated native workspace, verifies persisted user/assistant messages and attribution, and renders desktop/narrow chat and the separate Settings window. No live endpoint or real Keychain item is accessed.
+- Unread fixture smoke renders background badges, acknowledges the rendered transcript using explicitly injected foreground state and verifies reopen/draft/other-chat retention. The strict Launch Services/window-focus smoke remains unverified because the host console is locked; fixture output reports `actualWindowFocusTested=false`. See [read-state verification](UNREAD-CONVERSATIONS.md).
 - Appearance smoke switches Dark/Light/System using an isolated preference suite, renders workspace and Settings, preserves saved widths and draft/message state, and checks the 760×600 minimum variant. Physical input/system-theme switching remain manual; see [appearance evidence](APPEARANCE.md).
 - Attachment smoke copies a synthetic selected text file, deletes its original, reopens the managed copy, renders chips/consent, verifies Cancel has no credential/provider calls and confirms an exact offline file send. OS panel clicks and external grants remain manual. See [attachment contract](ATTACHMENTS.md).
 - Reply smoke restores a selected parent/text after SQLite reopen, checks explicit context at the fixture provider boundary, sends/persists the reference, clears only the matching draft, then renders an unsent follow-up. See [reply workflow](REPLY-WORKFLOW.md).
@@ -110,7 +112,7 @@ Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 
 ## Explicit remaining gates
 
-- A Core Data **close/reopen** test is not a process-kill/power-loss test. Explicit v1/v2→v3 migration and injected replacement/recovery failures are covered with synthetic historical stores; logical payload preservation does not certify arbitrary I/O failure, fsync/power loss, or byte-identical SQLite/WAL layouts.
+- A Core Data **close/reopen** test is not a process-kill/power-loss test. Explicit v1/v2/v3→v4 migration and injected replacement/recovery failures are covered with synthetic historical stores; logical payload preservation does not certify arbitrary I/O failure, fsync/power loss, or byte-identical SQLite/WAL layouts.
 - T08 injects a failure at the transaction save boundary. This proves rollback and draft retention; a coordinator fake also verifies zero provider calls after a failed save. Neither is a real disk-full OS test.
 - Message rows are paginated, but snapshot generation history is not yet bounded. T13's persisted 10k-message native rendering/50 updates/sec/Instruments budget remains **unverified**.
 - Actual IME candidate input, full VoiceOver/focus/shortcuts/divider interaction, and macOS 14 runtime coverage remain open.

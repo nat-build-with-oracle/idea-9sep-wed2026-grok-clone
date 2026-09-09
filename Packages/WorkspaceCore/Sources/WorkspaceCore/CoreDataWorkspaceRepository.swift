@@ -40,7 +40,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         attributes: [.posixPermissions: 0o700])
     } catch { throw WorkspaceError.storeUnavailable }
     lease = try StoreLease(url: canonical.appendingPathExtension("lock"))
-    let model = Self.modelV3()
+    let model = Self.modelV4()
     let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
     let existingStore = FileManager.default.fileExists(atPath: canonical.path)
     if existingStore {
@@ -52,7 +52,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       } catch { throw WorkspaceError.invalidStore }
       if !model.isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
         let source: (NSManagedObjectModel, Int64)
-        if Self.modelV2().isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
+        if Self.modelV3().isConfiguration(withName: nil, compatibleWithStoreMetadata: metadata) {
+          source = (Self.modelV3(), 3)
+        } else if Self.modelV2().isConfiguration(
+          withName: nil, compatibleWithStoreMetadata: metadata)
+        {
           source = (Self.modelV2(), 2)
         } else if Self.modelV1().isConfiguration(
           withName: nil, compatibleWithStoreMetadata: metadata)
@@ -84,11 +88,11 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         guard !existingStore else { throw WorkspaceError.invalidStore }
         let metadata = NSEntityDescription.insertNewObject(forEntityName: "Metadata", into: context)
         metadata.setValue("workspace", forKey: "id")
-        metadata.setValue(Int64(3), forKey: "schemaVersion")
+        metadata.setValue(Int64(4), forKey: "schemaVersion")
         metadata.setValue(Int64(0), forKey: "revision")
         try context.save()
       }
-      guard try self.metadata().value(forKey: "schemaVersion") as? Int64 == 3 else {
+      guard try self.metadata().value(forKey: "schemaVersion") as? Int64 == 4 else {
         throw WorkspaceError.unsupportedSchema
       }
     }
@@ -109,13 +113,15 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
   public func snapshot() async throws -> WorkspaceSnapshot {
     try await context.perform {
       try self.requireOpen()
+      let conversations = try self.all("Conversation", as: Conversation.self)
       return try WorkspaceSnapshot(
         revision: self.revision(), bots: self.all("Bot", as: Bot.self),
-        conversations: self.all("Conversation", as: Conversation.self),
+        conversations: conversations,
         drafts: self.all("Draft", as: Draft.self),
         generations: self.all("Generation", as: Generation.self),
         routines: self.all("Routine", as: Routine.self),
-        providers: self.all("Provider", as: ProviderConfig.self))
+        providers: self.all("Provider", as: ProviderConfig.self),
+        conversationActivity: conversations.map { try self.activity(for: $0) })
     }
   }
 
@@ -1018,6 +1024,35 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
     return revision
   }
+  private func activity(for conversation: Conversation) throws -> ConversationActivity {
+    let latestRequest = NSFetchRequest<NSManagedObject>(entityName: "Message")
+    latestRequest.predicate = NSPredicate(
+      format: "conversationID == %@", conversation.id.uuidString)
+    latestRequest.sortDescriptors = [NSSortDescriptor(key: "sequence", ascending: false)]
+    latestRequest.fetchLimit = 1
+    let latest = try context.fetch(latestRequest).first.map { try decode($0, as: Message.self) }
+
+    let unreadRequest = NSFetchRequest<NSManagedObject>(entityName: "Message")
+    unreadRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
+      NSPredicate(format: "conversationID == %@", conversation.id.uuidString),
+      NSPredicate(format: "messageRole == %@", Message.Role.assistant.rawValue),
+      NSPredicate(format: "sequence > %lld", conversation.lastReadSequence),
+    ])
+    let unreadCount = try context.count(for: unreadRequest)
+    guard unreadCount != NSNotFound else { throw WorkspaceError.invalidStore }
+    return ConversationActivity(
+      conversationID: conversation.id, latestSequence: latest?.sequence ?? 0,
+      latestMessageID: latest?.id, latestMessageTextByteCount: latest?.text.utf8.count ?? 0,
+      lastMessagePreview: latest.flatMap(Self.preview), lastMessageAt: latest?.createdAt,
+      unreadAssistantCount: unreadCount)
+  }
+
+  private static func preview(_ message: Message) -> String? {
+    let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !text.isEmpty { return String(text.prefix(160)) }
+    guard !message.attachmentIDs.isEmpty else { return nil }
+    return message.attachmentIDs.count == 1 ? "Text attachment" : "Text attachments"
+  }
   private func find(_ entity: String, id: String) throws -> NSManagedObject? {
     let request = NSFetchRequest<NSManagedObject>(entityName: entity)
     request.predicate = NSPredicate(format: "id == %@", id)
@@ -1163,6 +1198,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       record.setValue(message.conversationID.uuidString, forKey: "conversationID")
       record.setValue(message.sequence, forKey: "sequence")
       record.setValue(message.text, forKey: "searchText")
+      record.setValue(message.role.rawValue, forKey: "messageRole")
     } else if let run = value as? RoutineRun {
       record.setValue(run.routineID.uuidString, forKey: "routineID")
       record.setValue(run.createdAt, forKey: "createdAt")
@@ -1177,7 +1213,7 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     let token = UUID().uuidString
     let migratedURL = directory.appendingPathComponent(".workspace-migration-\(token).sqlite")
     let backupURL = directory.appendingPathComponent(".workspace-recovery-\(token).sqlite")
-    let destinationModel = modelV3()
+    let destinationModel = modelV4()
     let fileManager = FileManager.default
     var preserveBackup = false
     defer {
@@ -1256,37 +1292,43 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       var entities = [
         "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "Provider",
       ]
-      if version == 2 { entities.append("RoutineRun") }
+      if version >= 2 { entities.append("RoutineRun") }
+      if version >= 3 { entities.append("Attachment") }
       for entity in entities {
         let request = NSFetchRequest<NSManagedObject>(entityName: entity)
         for record in try context.fetch(request) {
           guard let payload = record.value(forKey: "payload") as? Data else {
             throw WorkspaceError.invalidStore
           }
-          try validateLegacyPayload(payload, entity: entity)
+          try validateLegacyPayload(payload, entity: entity, allowsAttachments: version >= 3)
         }
       }
     }
   }
 
-  private static func validateLegacyPayload(_ payload: Data, entity: String) throws {
+  private static func validateLegacyPayload(
+    _ payload: Data, entity: String, allowsAttachments: Bool
+  ) throws {
     let decoder = JSONDecoder()
     do {
       switch entity {
       case "Bot": _ = try decoder.decode(Bot.self, from: payload)
       case "Conversation": _ = try decoder.decode(Conversation.self, from: payload)
       case "Draft":
-        guard try decoder.decode(Draft.self, from: payload).attachmentIDs.isEmpty else {
+        let draft = try decoder.decode(Draft.self, from: payload)
+        guard allowsAttachments || draft.attachmentIDs.isEmpty else {
           throw WorkspaceError.invalidStore
         }
       case "Message":
-        guard try decoder.decode(Message.self, from: payload).attachmentIDs.isEmpty else {
+        let message = try decoder.decode(Message.self, from: payload)
+        guard allowsAttachments || message.attachmentIDs.isEmpty else {
           throw WorkspaceError.invalidStore
         }
       case "Generation": _ = try decoder.decode(Generation.self, from: payload)
       case "Routine": _ = try decoder.decode(Routine.self, from: payload)
       case "Provider": _ = try decoder.decode(ProviderConfig.self, from: payload)
       case "RoutineRun": _ = try decoder.decode(RoutineRun.self, from: payload)
+      case "Attachment": _ = try decoder.decode(Attachment.self, from: payload)
       default: throw WorkspaceError.invalidStore
       }
     } catch let error as WorkspaceError {
@@ -1316,16 +1358,24 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       guard metadata.value(forKey: "schemaVersion") as? Int64 == sourceVersion else {
         throw WorkspaceError.unsupportedSchema
       }
-      metadata.setValue(Int64(3), forKey: "schemaVersion")
+      metadata.setValue(Int64(4), forKey: "schemaVersion")
       var entities = [
         "Bot", "Conversation", "Draft", "Message", "Generation", "Routine", "Provider",
       ]
-      if sourceVersion == 2 { entities.append("RoutineRun") }
+      if sourceVersion >= 2 { entities.append("RoutineRun") }
+      if sourceVersion >= 3 { entities.append("Attachment") }
       for entity in entities {
         let request = NSFetchRequest<NSManagedObject>(entityName: entity)
         for record in try context.fetch(request) {
           guard record.value(forKey: "payload") is Data else { throw WorkspaceError.invalidStore }
         }
+      }
+      let messages = NSFetchRequest<NSManagedObject>(entityName: "Message")
+      for record in try context.fetch(messages) {
+        guard let payload = record.value(forKey: "payload") as? Data,
+          let message = try? JSONDecoder().decode(Message.self, from: payload)
+        else { throw WorkspaceError.invalidStore }
+        record.setValue(message.role.rawValue, forKey: "messageRole")
       }
       try context.save()
     }
@@ -1508,6 +1558,26 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       entities.append(entity)
     }
     model.entities = entities
+    return model
+  }
+  /// v4 is structurally derived from frozen v3 and adds an indexed message role query field.
+  static func modelV4() -> NSManagedObjectModel {
+    let model = modelV3().copy() as! NSManagedObjectModel
+    model.versionIdentifiers = ["WorkspaceCore.v4"]
+    guard let message = model.entitiesByName["Message"] else { return model }
+    let role = attribute("messageRole", .stringAttributeType)
+    role.defaultValue = ""
+    message.properties.append(role)
+    message.indexes.append(
+      NSFetchIndexDescription(
+        name: "messageConversationRoleSequence",
+        elements: [
+          NSFetchIndexElementDescription(
+            property: message.attributesByName["conversationID"]!, collationType: .binary),
+          NSFetchIndexElementDescription(property: role, collationType: .binary),
+          NSFetchIndexElementDescription(
+            property: message.attributesByName["sequence"]!, collationType: .binary),
+        ]))
     return model
   }
   private static func attribute(_ name: String, _ type: NSAttributeType) -> NSAttributeDescription {

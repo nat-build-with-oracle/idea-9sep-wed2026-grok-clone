@@ -64,12 +64,13 @@ extension PreviewWorkspace {
     guard let repository else { return }
     let context = replyContextGeneration
     do {
-      let latestGenerations = try await repository.snapshot().generations
+      let snapshot = try await repository.snapshot()
       let page = try await repository.messages(conversationID: conversationID, limit: 100)
       guard context == replyContextGeneration,
         conversations.contains(where: { $0.id == conversationID })
       else { return }
-      generations = latestGenerations
+      generations = snapshot.generations
+      projectConversationActivity(snapshot, context: context)
       if routineDetailTarget != nil { try await refreshRoutinePresentation() }
       // Keep older pages already loaded; update deltas by stable message identity.
       var existing = messages[conversationID] ?? []
@@ -294,6 +295,7 @@ extension PreviewWorkspace {
   }
 
   func prepareForClose() async throws {
+    await suspendReadReceipts()
     await shutdownRoutines()
     try await finishAttachmentImport()
     cancelAttachmentConfirmation()
@@ -321,6 +323,8 @@ extension PreviewWorkspace {
   }
 
   func resumeAfterCloseFailure() {
+    readReceiptsSuspended = false
+    requestVisibleReadReceipt()
     if coordinatorStopped {
       makeCoordinator()
     } else if routineHost == nil && !providerShutdownStarted {

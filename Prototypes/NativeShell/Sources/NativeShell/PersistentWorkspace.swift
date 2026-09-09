@@ -8,7 +8,11 @@ extension PreviewWorkspace {
     provider: any ChatProvider = ProviderRouter(), displayName: String? = nil
   ) async throws {
     isLoading = true
-    defer { isLoading = false }
+    defer {
+      isLoading = false
+      readReceiptsSuspended = false
+    }
+    await suspendReadReceipts()
     await shutdownRoutines()
     try await finishAttachmentImport()
     cancelAttachmentConfirmation()
@@ -26,6 +30,7 @@ extension PreviewWorkspace {
     // finish before replacing that workspace; earlier capture/choice work is invalidated.
     if isExportWriting { await exportTask?.value }
     replyContextGeneration += 1
+    resetConversationActivity()
     notice = nil
     exportStatus = nil
     exportError = nil
@@ -67,7 +72,10 @@ extension PreviewWorkspace {
 
   func refreshPersistent() async throws {
     guard let repository else { throw WorkspaceError.storeUnavailable }
+    let context = replyContextGeneration
     let snapshot = try await repository.snapshot()
+    guard context == replyContextGeneration else { return }
+    projectConversationActivity(snapshot, context: context)
     providers = snapshot.providers.sorted {
       $0.name.localizedStandardCompare($1.name) == .orderedAscending
     }
