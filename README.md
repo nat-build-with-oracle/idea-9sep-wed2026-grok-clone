@@ -47,12 +47,13 @@ third-party dependency installation is needed for the current app or tests.
 | Area | Current status |
 |---|---|
 | Native UI | Three-pane workspace, bot/group creation and profile editing, search, hide/show, confirmed bot deletion/group repair, native text composer, message replies |
-| Local data | Core Data persistence, text/reply drafts, message pagination, paused routine records, versioned text-only JSON export |
+| Local data | Core Data v2 with tested v1 migration, text/reply drafts, message pagination, routine occurrence ledger, text-only JSON export v2 |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
 | Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
-| Remaining gates | Broad provider/9router validation, routine execution, attachment export/import and remaining native accessibility flows |
+| Routine core | Explicit provider bindings, run-now, catch-up/skip history, cancellation and DST logic tested offline; native routine controls/host scheduling still pending |
+| Remaining gates | Broad provider/9router validation, native routine execution controls, attachments and remaining native accessibility flows |
 
-Verification: **291 tests** (153 core + 138 shell), desktop/narrow native persistence,
+Verification: **337 tests** (197 core + 140 shell), desktop/narrow native persistence,
 offline provider smokes, profile-edit and reply close/reopen smokes, text-only export and confirmed deletion smokes, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
 and limitations below for the current test counts and scope. An explicitly authorized
 manual native Codex check also completed a minimal reply with persistence and
@@ -71,6 +72,7 @@ Native provider settings + composer → GenerationCoordinator
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
 - [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)
 - [Confirmed bot deletion and group repair](docs/BOT-DELETION.md)
+- [Routine execution core and remaining native controls](docs/ROUTINES.md)
 - [Provider core and verification gaps](docs/PROVIDER-CORE.md)
 - [Experimental Codex adapter contract](docs/CODEX-ADAPTER-CONTRACT.md)
 - [Native prototype, pages and layout](docs/NATIVE-PROTOTYPE.md)

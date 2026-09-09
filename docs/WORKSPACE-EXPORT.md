@@ -8,7 +8,7 @@ experimental source-build feature, not a restore tool or a complete attachment b
 
 Included: all bots (including hidden ones), direct/group conversations and ordered
 membership, **all** message pages, attribution and reply references, unsent drafts,
-generation state/partial text, paused routine records and public provider configuration.
+generation state/partial text, routine definitions/run history and public provider configuration.
 The snapshot captures one repository revision on its serialized Core Data queue;
 streaming may continue afterward, so later deltas are not part of that revision.
 Current composer drafts are flushed before capture. Detached, unsaved profile or
@@ -22,16 +22,16 @@ auth headers are not exported; auth files are never copied.
 User-entered text and endpoint paths are not secret-scrubbed: a secret pasted into a
 message, prompt or name remains user content. The native UI warns to review before sharing.
 
-There is currently no persisted attachment or routine-run-history subsystem.
-Version 1 rejects any message/draft attachment reference instead of silently losing
-files. Attachment packaging, import/restore and scheduler history remain open;
+Routine-run history is included in format 2, including immutable provider bindings and typed outcomes.
+There is still no persisted attachment subsystem: format 2 rejects message/draft attachment
+references instead of silently losing files. Attachment packaging and import/restore remain open;
 this does not close all R04/R06/T11 acceptance requirements.
 
 ## Format contract
 
-- `formatVersion: 1`, `sourceSchemaVersion: 1`, `revision`, `exportedAt`, `summary`.
+- `formatVersion: 2`, `sourceSchemaVersion: 2`, `revision`, `exportedAt`, `summary`.
 - Arrays: `bots`, `conversations`, `messages`, `drafts`, `generations`, `routines`,
-  `providers`. Counts in `summary` describe those arrays.
+  `routineRuns`, `providers`. `summary.routineRunCount` counts all history records. Counts in `summary` describe those arrays.
 - UUID order is stable; messages sort by conversation UUID then ascending sequence.
   Group member order is preserved. JSON object keys are sorted.
 - Dates are JSON numbers: **seconds since 2001-01-01 00:00:00 UTC**, Foundation's
@@ -46,6 +46,10 @@ this does not close all R04/R06/T11 acceptance requirements.
   materializes records and encoding allocates the JSON before checking its size;
   this is an output limit, **not a hard peak-memory bound**. Encoding/file I/O run
   away from the main actor. Large-workspace performance remains unbenchmarked.
+
+Format 1 did not contain run history. This release writes format 2; there is no promise
+that a format-1-only consumer can decode it. No import/restore feature is implied.
+See the [routine data contract](ROUTINES.md) for occurrence and provider-binding semantics.
 
 ## Native save and failure contract
 
@@ -86,7 +90,7 @@ scripts/native-app.sh export-smoke
 scripts/native-app.sh export-smoke --small
 ```
 
-Export milestone suite: **263 tests passed** (137 core + 126 native shell), including
+Original export milestone suite: **263 tests passed** (137 core + 126 native shell), including
 5 core export tests and 23 native export tests.
 
 Core tests cover full history beyond 100 messages, hidden bots, group order, drafts,

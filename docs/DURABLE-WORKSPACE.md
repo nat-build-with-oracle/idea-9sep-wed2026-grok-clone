@@ -47,7 +47,7 @@ The repository confines managed objects to its private queue; only Codable/Senda
 
 - `Packages/WorkspaceCore/Sources/WorkspaceCore/Domain.swift`, `ProfileEditing.swift`: stable UUID DTOs plus validated, editable-only bot and group profile snapshots.
 - `WorkspaceRepository.swift`: typed mutations, explicit revision precondition and paginated-message contract.
-- `CoreDataWorkspaceRepository.swift`: normalized entity records with versioned Codable payloads; indexed conversation/sequence message access; atomic save/rollback; v1 model; corruption/incompatibility rejection; cross-process lease.
+- `CoreDataWorkspaceRepository.swift`: normalized entity records with versioned Codable payloads; indexed conversation/sequence message access; atomic save/rollback; immutable v1 model and explicit v2 migration; corruption/incompatibility rejection; cross-process lease.
 - `GenerationCoordinator.swift`, `ChatProvider.swift`, `ChatCompletionsProvider.swift`, `CredentialStore.swift`: provider and generation core, connected through `ProviderWorkspace.swift` and `ProviderSettingsView.swift`. See [provider checkpoint](PROVIDER-CORE.md) for tested scope and Keychain/live-network gaps.
 - `Prototypes/NativeShell/Sources/NativeShell/PersistentWorkspace.swift`, `EditingWorkspace.swift`: UI projection and awaited mutations, debounced drafts, profile-edit snapshots, storage-error state, search and paged transcript reads.
 - `ProfileEditorView.swift`: native bot fields and ordered group membership editing, dirty-discard/reload confirmation, and stable-target controller state.
@@ -64,7 +64,7 @@ The repository confines managed objects to its private queue; only Codable/Senda
 | Save draft | Native conversation-scoped Unicode text/reply selection, cancellation and original-message navigation; persisted on debounce/flush; unsupported attachment references are rejected rather than dropped |
 | Begin generation | User message, queued generation/attempt, monotonically assigned sequence and matching-draft clear are atomic; newer draft text is preserved |
 | Cancel/reconcile | Stale attempt cannot cancel current work; restart reconciliation marks pending work interrupted without replaying it |
-| Save routine | Explicit bot owner, valid interval/daily time, time zone, nonempty prompt; **UI currently offers paused intervals only**, no execution |
+| Routine core | Explicit bot owner, provider binding, interval/daily schedule, occurrence claim and run history; pause/run-now/cancel/catch-up services tested. **UI currently offers paused intervals only**, native execution controls remain pending |
 | Save provider | Metadata/reference only; reject URL userinfo/query/fragment, non-HTTPS except explicitly opted-in loopback; native settings/credential entry/send are wired; **real signing/Keychain and broad provider verification remain open; a minimal native Codex reply has passed** |
 | Message page | Latest 100 by default, limits 1–500; exclusive sequence cursor; older page stable when newer messages arrive |
 | Search | Case/diacritic-insensitive title/message search, with hidden conversations excluded by default |
@@ -73,6 +73,9 @@ The repository confines managed objects to its private queue; only Codable/Senda
 | Open/close | One owner per canonical store path; incompatible/corrupt store errors preserve bytes, never reset to sample data |
 
 No managed object, API secret, HTTP request, shell command, or cloud-computer capability is exposed through the repository. Provider metadata validation does not prove compatibility with a real endpoint.
+
+The [routine core](ROUTINES.md) adds schema v2 and tested migration/recovery without enabling
+automatic jobs in the current native inspector. Native lifecycle wiring and routine UI remain next.
 
 ## Verification evidence
 

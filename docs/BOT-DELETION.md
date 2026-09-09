@@ -7,7 +7,7 @@ use isolated synthetic workspaces only, never the user's saved workspace.
 ## Confirmation and affected records
 
 The native sheet names the bot and counts its direct conversations, messages,
-drafts, generation records and owned routine definitions. It also counts active or
+drafts, generation records, owned routine definitions and run history. It also counts active or
 queued affected replies, lists groups with remaining member counts, and warns when
 a group will need repair. Cancel/Escape closes without deleting. There is no default
 Return shortcut for the destructive action; **Delete Bot** is explicit.
@@ -22,22 +22,22 @@ Current Impact** loads a fresh plan. Export is a separate action: cancel first t
 |---|---|
 | Bot and its direct conversations | Permanently removed; identity is never reassigned |
 | Direct messages, drafts, generation records | All removed, not just the loaded page |
-| Owned routines | Definitions removed; unrelated owners' routines stay |
+| Owned routines | Definitions and run history removed; unrelated owners' routines stay |
 | Group conversations | Retained with this bot removed from future membership |
 | Group messages/drafts/generation history | Retained, including partial replies and immutable speaker-name snapshots |
 | Shared provider configuration and credentials | Not deleted or read by deletion |
 | Unexpected direct attachment references | Reject deletion rather than silently orphan unsupported file bytes |
 
-Routines are currently paused definitions: scheduler/run-history persistence and
-attachment storage do not yet exist. Deleting future run records and unreferenced
-attachment bytes must extend this transaction/service contract when those subsystems
-ship. This slice does not claim those full rewrite gates are complete.
+The [routine occurrence ledger](ROUTINES.md) is persisted in schema v2. Confirmation
+includes owned history and active claims, even claims still waiting for credentials before a
+generation exists. Native routine execution controls remain pending. Attachment storage is
+still unimplemented; future unreferenced attachment bytes must extend the cleanup contract.
 
 ## Transaction and concurrency contract
 
 `WorkspaceRepository.botDeletionPlan(botID:)` captures the affected identities and
 counts in one serialized Core Data operation. `BotDeletionPlan.hasSameContent(as:)`
-compares destructive structure—bot name, direct record IDs, routine IDs and group
+compares destructive structure—bot name, direct record IDs, routine/run IDs and group
 titles/remaining ordered membership—not the global workspace revision. Unrelated
 provider edits or another conversation's stream do not invalidate consent. Content
 changes within an already counted message/draft remain part of that record; this is
@@ -86,7 +86,7 @@ scripts/native-app.sh deletion-smoke
 scripts/native-app.sh deletion-smoke --small
 ```
 
-Fresh full suite: **291 tests passed** (153 core + 138 native), including 8
+Original deletion milestone suite: **291 tests passed** (153 core + 138 native), including 8
 repository deletion tests, 8 coordinator deletion tests and 12 native deletion tests.
 
 Repository tests cover more than 100 direct messages, exact row removal, zero/one
