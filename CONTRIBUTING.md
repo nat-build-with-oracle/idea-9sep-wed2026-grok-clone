@@ -17,6 +17,8 @@ scripts/native-app.sh smoke
 scripts/native-app.sh smoke --small
 scripts/native-app.sh profile-smoke
 scripts/native-app.sh profile-smoke --edit-group --small
+scripts/native-app.sh reply-smoke
+scripts/native-app.sh reply-smoke --small
 scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --settings
 scripts/native-app.sh provider-smoke --router-models
@@ -50,6 +52,9 @@ This removes generated build output, not the application's workspace data.
   member order and may retain an existing hidden member, but must not add one.
 - Reject stale profile snapshots instead of silently overwriting newer edits. Keep
   dirty Cancel/Escape/window-close confirmation and explicit reload behavior tested.
+- Preserve reply references with conversation-scoped drafts. Test same-text/new-parent
+  submission races and stale lookup/navigation; never promote quoted message text
+  into trusted provider instructions or copy a whole conversation implicitly.
 - Document verification gaps. Local ad-hoc signing is not notarized distribution.
 
 Private design references are intentionally absent from this repository. Build,
