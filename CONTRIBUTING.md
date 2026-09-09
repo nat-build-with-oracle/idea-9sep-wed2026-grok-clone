@@ -15,6 +15,8 @@ scripts/native-app.sh build
 scripts/native-app.sh test
 scripts/native-app.sh smoke
 scripts/native-app.sh smoke --small
+scripts/native-app.sh profile-smoke
+scripts/native-app.sh profile-smoke --edit-group --small
 scripts/native-app.sh provider-smoke
 scripts/native-app.sh provider-smoke --settings
 scripts/native-app.sh provider-smoke --router-models
@@ -43,6 +45,11 @@ This removes generated build output, not the application's workspace data.
   never run automatically or in CI.
 - Preserve draft/save-failure behavior. Do not simulate successful model replies
   or scheduled work in the durable app when those services are disconnected.
+- Keep profile edits scoped to editable fields. Bot edits must not overwrite
+  identity, provider, visibility, routines, drafts, or history. Group edits preserve
+  member order and may retain an existing hidden member, but must not add one.
+- Reject stale profile snapshots instead of silently overwriting newer edits. Keep
+  dirty Cancel/Escape/window-close confirmation and explicit reload behavior tested.
 - Document verification gaps. Local ad-hoc signing is not notarized distribution.
 
 Private design references are intentionally absent from this repository. Build,
