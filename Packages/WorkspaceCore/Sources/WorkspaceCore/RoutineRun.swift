@@ -98,3 +98,16 @@ public struct RoutineRun: Codable, Sendable, Equatable, Identifiable {
     self.lastSkippedAt = lastSkippedAt
   }
 }
+
+/// Exact destructive impact, captured in one repository turn; not a truncated history page.
+public struct RoutineDeletionPlan: Sendable, Equatable {
+  public let routine: Routine
+  public let runIDs: Set<UUID>
+  public let activeRunIDs: Set<UUID>
+
+  public init(routine: Routine, runIDs: Set<UUID>, activeRunIDs: Set<UUID>) {
+    self.routine = routine
+    self.runIDs = runIDs
+    self.activeRunIDs = activeRunIDs
+  }
+}

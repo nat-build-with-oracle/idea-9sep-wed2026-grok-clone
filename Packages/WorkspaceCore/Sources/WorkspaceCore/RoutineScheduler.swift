@@ -97,7 +97,9 @@ public actor RoutineScheduler {
   }
 
   /// Explicit action; permitted while paused and never advances the scheduled occurrence.
-  @discardableResult public func runNow(routineID: UUID) async throws -> UUID {
+  @discardableResult public func runNow(routineID: UUID, expected: Routine? = nil) async throws
+    -> UUID
+  {
     guard !stopped else { throw WorkspaceError.storeClosed }
     operations += 1
     defer { finishOperation() }
@@ -108,6 +110,7 @@ public actor RoutineScheduler {
         $0.kind == .direct && $0.memberBotIDs == [routine.ownerBotID]
       })
     else { throw WorkspaceError.missingRecord }
+    if let expected, expected != routine { throw WorkspaceError.editConflict }
     let run = makeRun(routine, conversationID: conversation.id, at: now())
     try Task.checkCancellation()
     try await repository.apply(

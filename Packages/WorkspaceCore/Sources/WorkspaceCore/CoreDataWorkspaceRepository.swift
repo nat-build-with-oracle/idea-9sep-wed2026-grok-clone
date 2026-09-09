@@ -152,6 +152,19 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
     }
   }
 
+  public func routineDeletionPlan(routineID: UUID) async throws -> RoutineDeletionPlan {
+    try await context.perform {
+      try self.requireOpen()
+      let routine: Routine = try self.read("Routine", id: routineID)
+      let request = NSFetchRequest<NSManagedObject>(entityName: "RoutineRun")
+      request.predicate = NSPredicate(format: "routineID == %@", routineID.uuidString)
+      let runs = try self.context.fetch(request).map { try self.decode($0, as: RoutineRun.self) }
+      return RoutineDeletionPlan(
+        routine: routine, runIDs: Set(runs.map(\.id)),
+        activeRunIDs: Set(runs.filter { !$0.status.isTerminal }.map(\.id)))
+    }
+  }
+
   public func routineRun(id: UUID) async throws -> RoutineRun {
     try await context.perform {
       try self.requireOpen()
@@ -497,7 +510,8 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
         try put("RoutineRun", value: run)
       }
 
-    case .saveRoutine(let input):
+    case .createRoutine(let input), .saveRoutine(let input):
+      if case .createRoutine = mutation { try ensureIdentityAvailable(input.id) }
       let routine = try DomainValidation.routine(input)
       let _: Bot = try read("Bot", id: routine.ownerBotID)
       if let record = try find("Routine", id: routine.id.uuidString) {
@@ -522,14 +536,29 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
           replacementScheduleID != expected.scheduleID
         else { throw WorkspaceError.invalidRoutine }
       }
-      try validateRoutineBinding(replacement.providerBinding)
+      if replacement.enabled || replacement.providerBinding != expected.providerBinding {
+        try validateRoutineBinding(replacement.providerBinding)
+      }
       try put("Routine", value: replacement)
 
-    case .deleteRoutine(let expected):
+    case .pauseRoutineForDeletion(let expected, let expectedRunIDs):
+      var current: Routine = try read("Routine", id: expected.id)
+      let runs = try all("RoutineRun", as: RoutineRun.self).filter { $0.routineID == expected.id }
+      guard current == expected, Set(runs.map(\.id)) == expectedRunIDs else {
+        throw WorkspaceError.editConflict
+      }
+      current.enabled = false
+      current.nextRunAt = nil
+      try put("Routine", value: current)
+
+    case .deleteRoutine(let expected, let expectedRunIDs):
       let current: Routine = try read("Routine", id: expected.id)
       guard current == expected else { throw WorkspaceError.editConflict }
       let runs = try all("RoutineRun", as: RoutineRun.self).filter {
         $0.routineID == expected.id
+      }
+      if let expectedRunIDs, Set(runs.map(\.id)) != expectedRunIDs {
+        throw WorkspaceError.editConflict
       }
       guard runs.allSatisfy(\.status.isTerminal) else { throw BotDeletionError.activeWork }
       for run in runs { try delete("RoutineRun", id: run.id) }

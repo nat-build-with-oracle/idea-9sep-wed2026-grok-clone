@@ -46,6 +46,39 @@ import XCTest
       createdAt: at, generationID: UUID())
   }
 
+  func testCreateRoutineCannotOverwriteExistingDefinition() async throws {
+    let f = try await fixture()
+    var replacement = f.routine
+    replacement.prompt = "Must not replace"
+    do {
+      try await f.repository.apply(.createRoutine(replacement))
+      XCTFail("Create must reject an existing identity")
+    } catch { XCTAssertEqual(error as? WorkspaceError, .identityConflict) }
+    let snapshot = try await f.repository.snapshot()
+    XCTAssertEqual(snapshot.routines, [f.routine])
+  }
+
+  func testConfirmedDeleteRechecksHistoryAfterPauseEvenWhenNewRunIsTerminal() async throws {
+    let f = try await fixture()
+    let plan = try await f.repository.routineDeletionPlan(routineID: f.routine.id)
+    try await f.repository.apply(
+      .pauseRoutineForDeletion(expected: f.routine, expectedRunIDs: plan.runIDs))
+    let claimed = run(f)
+    try await f.repository.apply(
+      .claimRoutineRun(expected: f.routine, run: claimed, skipped: nil, nextRunAt: nil))
+    try await f.repository.apply(.cancelRoutineRun(id: claimed.id, at: claimed.createdAt))
+    do {
+      try await f.repository.apply(.deleteRoutine(expected: f.routine, expectedRunIDs: plan.runIDs))
+      XCTFail("New history needs a new confirmation, even if already terminal")
+    } catch { XCTAssertEqual(error as? WorkspaceError, .editConflict) }
+    let fresh = try await f.repository.routineDeletionPlan(routineID: f.routine.id)
+    XCTAssertEqual(fresh.runIDs, [claimed.id])
+    XCTAssertTrue(fresh.activeRunIDs.isEmpty)
+    try await f.repository.apply(.deleteRoutine(expected: f.routine, expectedRunIDs: fresh.runIDs))
+    let snapshot = try await f.repository.snapshot()
+    XCTAssertTrue(snapshot.routines.isEmpty)
+  }
+
   func testClaimReservesGenerationAndBeginPreservesEqualDraft() async throws {
     let fixture = try await fixture()
     let run = run(fixture)
