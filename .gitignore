@@ -36,3 +36,7 @@ xcuserdata/
 *.xcarchive/
 *.app/
 *.dmg
+
+# /incubate machine-local links and worktree bodies are never source.
+ψ/incubate/**/origin
+ψ/incubate/**/wt/
