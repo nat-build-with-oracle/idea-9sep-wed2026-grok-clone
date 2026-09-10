@@ -822,7 +822,10 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
       return
     }
     let draft = try decode(record, as: Draft.self)
-    if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
+    let draftTextMatches =
+      command.expectedDraftText.map { draft.text == $0 }
+      ?? (draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text)
+    if draftTextMatches,
       draft.replyToID == command.replyToID, draft.attachmentIDs == command.attachmentIDs
     {
       context.delete(record)
@@ -893,7 +896,10 @@ public final class CoreDataWorkspaceRepository: WorkspaceRepository, @unchecked 
 
     guard let record = try find("Draft", id: conversation.id.uuidString) else { return }
     let draft = try decode(record, as: Draft.self)
-    if draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text,
+    let draftTextMatches =
+      command.expectedDraftText.map { draft.text == $0 }
+      ?? (draft.text.trimmingCharacters(in: .whitespacesAndNewlines) == text)
+    if draftTextMatches,
       draft.replyToID == command.replyToID, draft.attachmentIDs == command.attachmentIDs
     {
       context.delete(record)

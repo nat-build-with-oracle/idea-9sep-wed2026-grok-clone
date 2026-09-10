@@ -76,6 +76,139 @@ final class NativeComposerAppKitTests: XCTestCase {
     await drainMainQueue()
   }
 
+  func testInsertionAtCaretAddsSeparatorsUsesNativeUndoAndProcessesIDOnce() async throws {
+    var fixture: ComposerFixture? = try makeHostedComposer(text: "HelloWorld")
+    await drainMainQueue()
+    let active = try XCTUnwrap(fixture)
+    XCTAssertTrue(active.window.makeFirstResponder(active.textView))
+    active.textView.setSelectedRange(NSRange(location: 5, length: 0))
+    let command = ComposerInsertion(
+      conversationID: active.model.conversationID!, contextGeneration: 7,
+      expectedText: "HelloWorld", text: "@\"Research Partner\"")
+    active.model.contextGeneration = 7
+    active.model.insertion = command
+    render(active)
+    await drainMainQueue()
+
+    XCTAssertEqual(active.textView.string, "Hello @\"Research Partner\" World")
+    XCTAssertEqual(active.model.text, "Hello @\"Research Partner\" World")
+    XCTAssertEqual(active.model.insertionResults, [command.id: true])
+    active.textView.undoManager?.undo()
+    XCTAssertEqual(active.textView.string, "HelloWorld")
+    XCTAssertEqual(active.model.text, "HelloWorld")
+
+    render(active)
+    await drainMainQueue()
+    XCTAssertEqual(active.textView.string, "HelloWorld")
+    XCTAssertEqual(active.model.insertionResultCount, 1)
+    tearDownHostedComposer(&fixture)
+  }
+
+  func testInsertionSeparatesFromURLAndEscapePrefixes() async throws {
+    for prefix in ["https://", "\\", "("] {
+      var fixture: ComposerFixture? = try makeHostedComposer(text: prefix)
+      await drainMainQueue()
+      let active = try XCTUnwrap(fixture)
+      active.textView.setSelectedRange(NSRange(location: prefix.utf16.count, length: 0))
+      let command = ComposerInsertion(
+        conversationID: active.model.conversationID!, contextGeneration: 0,
+        expectedText: prefix, text: "@\"Reviewer\"")
+      active.model.insertion = command
+      render(active)
+      await drainMainQueue()
+      XCTAssertEqual(active.textView.string, "\(prefix) @\"Reviewer\"")
+      XCTAssertEqual(active.model.insertionResults[command.id], true)
+      tearDownHostedComposer(&fixture)
+    }
+  }
+
+  func testInsertionReplacesSelectionWithoutAddingRedundantSpaces() async throws {
+    var fixture: ComposerFixture? = try makeHostedComposer(text: "Hello old world")
+    await drainMainQueue()
+    let active = try XCTUnwrap(fixture)
+    active.textView.setSelectedRange(NSRange(location: 6, length: 3))
+    let command = ComposerInsertion(
+      conversationID: active.model.conversationID!, contextGeneration: 0,
+      expectedText: "Hello old world", text: "@\"Reviewer\"")
+    active.model.insertion = command
+    render(active)
+    await drainMainQueue()
+
+    XCTAssertEqual(active.textView.string, "Hello @\"Reviewer\" world")
+    XCTAssertEqual(active.textView.selectedRange().location, 17)
+    XCTAssertEqual(active.model.insertionResults[command.id], true)
+    tearDownHostedComposer(&fixture)
+  }
+
+  func testInsertionRejectsMarkedTextWithoutChangingComposition() async throws {
+    var fixture: ComposerFixture? = try makeHostedComposer(text: "draft")
+    await drainMainQueue()
+    let active = try XCTUnwrap(fixture)
+    active.textView.setSelectedRange(NSRange(location: 5, length: 0))
+    active.textView.setMarkedText(
+      " composing", selectedRange: NSRange(location: 10, length: 0),
+      replacementRange: NSRange(location: NSNotFound, length: 0))
+    await drainMainQueue()
+    let composed = active.textView.string
+    let command = ComposerInsertion(
+      conversationID: active.model.conversationID!, contextGeneration: 0,
+      expectedText: composed, text: "@\"Bot\"")
+    active.model.text = composed
+    active.model.insertion = command
+    render(active)
+    await drainMainQueue()
+
+    XCTAssertTrue(active.textView.hasMarkedText())
+    XCTAssertEqual(active.textView.string, composed)
+    XCTAssertEqual(active.model.insertionResults[command.id], false)
+    active.textView.unmarkText()
+    tearDownHostedComposer(&fixture)
+  }
+
+  func testInsertionRejectsStaleConversationReconnectAndBody() async throws {
+    for stale in StaleInsertionCase.allCases {
+      var fixture: ComposerFixture? = try makeHostedComposer(text: "draft")
+      await drainMainQueue()
+      let active = try XCTUnwrap(fixture)
+      let command = ComposerInsertion(
+        conversationID: active.model.conversationID!, contextGeneration: 3,
+        expectedText: "draft", text: "@\"Bot\"")
+      active.model.contextGeneration = 3
+      active.model.insertion = command
+      render(active)
+      switch stale {
+      case .conversation: active.model.conversationID = UUID()
+      case .reconnect: active.model.contextGeneration = 4
+      case .body: active.model.text = "newer draft"
+      }
+      render(active)
+      await drainMainQueue()
+
+      XCTAssertEqual(active.model.insertionResults[command.id], false, "case: \(stale)")
+      XCTAssertEqual(active.textView.string, stale == .body ? "newer draft" : "draft")
+      tearDownHostedComposer(&fixture)
+      await drainMainQueue()
+    }
+  }
+
+  func testInsertionRejectsDisabledComposer() async throws {
+    var fixture: ComposerFixture? = try makeHostedComposer(text: "draft")
+    await drainMainQueue()
+    let active = try XCTUnwrap(fixture)
+    let command = ComposerInsertion(
+      conversationID: active.model.conversationID!, contextGeneration: 0,
+      expectedText: "draft", text: "@\"Bot\"")
+    active.model.isEnabled = false
+    active.model.insertion = command
+    render(active)
+    await drainMainQueue()
+
+    XCTAssertFalse(active.textView.isEditable)
+    XCTAssertEqual(active.textView.string, "draft")
+    XCTAssertEqual(active.model.insertionResults[command.id], false)
+    tearDownHostedComposer(&fixture)
+  }
+
   func testCoordinatorDoesNotRouteASelectorWithoutACurrentKeyDownEvent() {
     _ = NSApplication.shared
     var submitCount = 0
@@ -118,6 +251,11 @@ final class NativeComposerAppKitTests: XCTestCase {
     fixture = nil
   }
 
+  private func render(_ fixture: ComposerFixture) {
+    fixture.hostingView.rootView = AnyView(ComposerHarness(model: fixture.model))
+    fixture.hostingView.layoutSubtreeIfNeeded()
+  }
+
   private func drainMainQueue() async {
     await withCheckedContinuation { continuation in
       DispatchQueue.main.async { continuation.resume() }
@@ -133,13 +271,20 @@ final class NativeComposerAppKitTests: XCTestCase {
   }
 }
 
+private enum StaleInsertionCase: CaseIterable { case conversation, reconnect, body }
+
 @MainActor
 private final class ComposerModel: ObservableObject {
   @Published var text: String
   @Published var height: CGFloat = 36
   @Published var focusRequest = -1
   @Published var isEnabled = true
+  @Published var conversationID: UUID? = UUID()
+  @Published var contextGeneration = 0
+  @Published var insertion: ComposerInsertion?
   var submitCount = 0
+  var insertionResults: [UUID: Bool] = [:]
+  var insertionResultCount = 0
 
   init(text: String) {
     self.text = text
@@ -151,7 +296,13 @@ private struct ComposerHarness: View {
 
   var body: some View {
     NativeComposer(
-      text: $model.text, height: $model.height, focusRequest: model.focusRequest
+      text: $model.text, height: $model.height, focusRequest: model.focusRequest,
+      conversationID: model.conversationID, contextGeneration: model.contextGeneration,
+      insertion: model.insertion,
+      onInsertionResult: { id, result in
+        model.insertionResultCount += 1
+        model.insertionResults[id] = result
+      }
     ) {
       model.submitCount += 1
     }

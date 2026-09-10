@@ -29,6 +29,8 @@ struct AttachmentConfirmationTarget: Identifiable {
   let targetBots: [String]
   let requestCount: Int
   let isRound: Bool
+  var mentionRouting: MentionRoutingSnapshot? = nil
+  var targetBotIDs: [UUID] = []
 }
 
 extension PreviewWorkspace {
@@ -258,13 +260,13 @@ extension PreviewWorkspace {
       try Task.checkCancellation()
       guard !isClosing, captured.context == replyContextGeneration,
         selectedID == plan.conversationID, selectedProvider == plan.provider,
-        selectedTargetBotIDsForCurrent == plan.targetBotIDs,
+        recipientRoutingMatches(captured.mentionRouting, targetIDs: plan.targetBotIDs),
         draftVersions[plan.conversationID] == captured.version,
         let first = plan.transmissions.first
       else { throw AttachmentWorkspaceError.changed }
       showAttachmentConfirmation(
         first, action: .round(command, plan, draftVersion: captured.version),
-        context: captured.context)
+        context: captured.context, mentionRouting: captured.mentionRouting)
     }
   }
 
@@ -295,7 +297,8 @@ extension PreviewWorkspace {
   }
 
   private func showAttachmentConfirmation(
-    _ plan: AttachmentTransmissionPlan, action: AttachmentConfirmationTarget.Action, context: Int
+    _ plan: AttachmentTransmissionPlan, action: AttachmentConfirmationTarget.Action, context: Int,
+    mentionRouting: MentionRoutingSnapshot? = nil
   ) {
     let targetIDs: [UUID]
     let isRound: Bool
@@ -307,16 +310,15 @@ extension PreviewWorkspace {
       targetIDs = [plan.targetBotID]
       isRound = false
     }
-    let names = targetIDs.map { id in
-      bots.first(where: { $0.id == id })?.name ?? "Deleted bot"
-    }
+    let names = targetIDs.map(recipientLabel)
     attachmentConfirmationError = nil
     attachmentConfirmationTarget = AttachmentConfirmationTarget(
       plan: plan, action: action, context: context,
       conversation: conversations.first(where: { $0.id == plan.conversationID })?.title
         ?? "Conversation",
       targetBot: names.joined(separator: ", "), targetBots: names,
-      requestCount: targetIDs.count, isRound: isRound)
+      requestCount: targetIDs.count, isRound: isRound, mentionRouting: mentionRouting,
+      targetBotIDs: targetIDs)
   }
 
   func cancelAttachmentConfirmation() {
@@ -355,7 +357,7 @@ extension PreviewWorkspace {
             command, configuration: target.plan.provider, version: version, context: target.context,
             attachmentConsent: target.plan)
         case .round(let command, let plan, let version):
-          guard selectedTargetBotIDsForCurrent == plan.targetBotIDs,
+          guard recipientRoutingMatches(target.mentionRouting, targetIDs: plan.targetBotIDs),
             draftVersions[command.conversationID] == version
           else { throw ProviderError.roundConsentChanged }
           _ = try await submitCapturedRound(

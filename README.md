@@ -25,6 +25,7 @@ scripts/native-app.sh unread-smoke # persisted previews/counts + foreground-only
 scripts/native-app.sh appearance-smoke # isolated Dark/Light/System + persistent pane preferences
 scripts/native-app.sh attachment-smoke # synthetic selected files + consent + offline send
 scripts/native-app.sh group-smoke    # ordered recipients + round consent + offline replies
+scripts/native-app.sh mention-smoke  # draft mentions + identity-safe consent + offline replies
 scripts/native-app.sh reply-smoke    # reply draft restart + referenced fixture send
 scripts/native-app.sh export-smoke   # JSON export + atomic file replacement (text fixture)
 scripts/native-app.sh deletion-smoke # confirmed bot deletion + retained group/restart
@@ -55,14 +56,14 @@ third-party dependency installation is needed for the current app or tests.
 | Native UI | Persisted sidebar previews/timestamps/unread reply badges, three-pane workspace, bot/group creation and profile editing, search, hide/show, confirmed bot deletion/group repair, native text composer, message replies |
 | Local data | Core Data v4 with tested v1/v2/v3 migration, text/reply drafts, message pagination, routine ledger, JSON export v3 including stored attachment bytes |
 | Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
-| Group rounds | Ordered explicit recipients, one user message, per-member attributed replies, aggregate consent and Stop remaining round; mention selection still open |
+| Group rounds | Ordered explicit recipients, one user message, per-member attributed replies, aggregate consent and Stop remaining round; typed/menu mentions with identity-safe targeting |
 | Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
 | Routines | Native interval/daily editor, explicit owner/provider consent, Run Now, pause/resume, Stop/delete and history; launch/wake/30-second awake scheduling, offline tested |
 | Text attachments | Native file picker, persistent/removable chips, atomic managed copies and per-send file/destination confirmation; no images |
 | Remaining gates | Broad provider/9router validation, real file-picker sandbox grants and remaining native accessibility flows |
 
-Verification: **513 tests** (266 core + 247 shell), desktop/narrow native persistence,
-offline provider and ordered group-round smokes, aggregate-consent/round-cancellation tests, profile-edit and reply close/reopen smokes, attachment storage/migration, importer and explicit-consent guards, text-fixture export, confirmed deletion and routine editor/run/restart smokes, appearance/pane preference tests and light/dark minimum-window rendering, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
+Verification: **564 tests** (300 core + 264 shell), desktop/narrow native persistence,
+offline provider, mention-routing and ordered group-round smokes, aggregate-consent/round-cancellation tests, profile-edit and reply close/reopen smokes, attachment storage/migration, importer and explicit-consent guards, text-fixture export, confirmed deletion and routine editor/run/restart smokes, appearance/pane preference tests and light/dark minimum-window rendering, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
 and limitations below for the current test counts and scope. An explicitly authorized
 manual native Codex check also completed a minimal reply with persistence and
 attribution; one account/time is not broad compatibility or release certification.
@@ -80,6 +81,7 @@ Native provider settings + composer → GenerationCoordinator
 - [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
 - [Conversation activity and read state](docs/UNREAD-CONVERSATIONS.md)
 - [Ordered group replies and round consent](docs/GROUP-ROUNDS.md)
+- [Draft mentions, identity and routing](docs/GROUP-MENTIONS.md)
 - [Appearance and layout preferences](docs/APPEARANCE.md)
 - [Native attachment workflow and storage decision](docs/ATTACHMENTS.md)
 - [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)

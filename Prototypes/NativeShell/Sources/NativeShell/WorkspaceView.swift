@@ -45,7 +45,9 @@ struct WorkspaceView: View {
     .sheet(item: $store.attachmentConfirmationTarget) { target in
       AttachmentConfirmationView(
         conversation: target.conversation, targetBot: target.targetBot,
-        targetBots: target.targetBots, requestCount: target.requestCount, isRound: target.isRound,
+        targetBots: target.targetBots, targetBotIDs: target.targetBotIDs,
+        requestCount: target.requestCount, isRound: target.isRound,
+        usesMentions: target.mentionRouting != nil,
         apiRoot: target.plan.provider.apiRoot, modelID: target.plan.provider.modelID,
         attachments: target.plan.attachments, contextMessageCount: target.plan.contextMessageCount,
         isSending: store.isConfirmingAttachmentSend, error: store.attachmentConfirmationError,
@@ -588,9 +590,16 @@ private struct ConversationView: View {
           }
           NativeComposer(
             text: Binding(get: { store.draft }, set: { store.draft = $0 }), height: $editorHeight,
-            focusRequest: store.composerFocusRequest
+            focusRequest: store.composerFocusRequest, conversationID: store.selectedID,
+            contextGeneration: store.replyContextGeneration, insertion: store.mentionInsertion,
+            onInsertionResult: { store.finishMentionInsertion($0, inserted: $1) }
           ) { send() }
           .frame(height: editorHeight)
+          .disabled(
+            store.isLoading || store.isClosing || store.isSubmitting || store.isDeletingBot
+              || store.isAttachingFiles || store.attachmentConfirmationTarget != nil
+          )
+          .onDisappear { store.mentionInsertion = nil }
         }
         Button {
           send()
@@ -606,6 +615,8 @@ private struct ConversationView: View {
             && store.currentDraftAttachmentIDs.isEmpty) || store.isSubmitting
             || store.isDeletingBot || store.currentNeedsMembershipRepair || store.isAttachingFiles
             || store.attachmentConfirmationTarget != nil
+            || store.mentionInsertion != nil
+            || store.currentMentionResolution?.issues.isEmpty == false
         )
         .padding(.bottom, 1).help(
           store.isPersistent
@@ -641,18 +652,35 @@ private struct ConversationView: View {
       }
       if let conversation = store.current, conversation.kind == .group {
         let members = store.bots.filter { conversation.memberIDs.contains($0.id) }
-        let selected = store.selectedTargetBotIDsForCurrent
+        let resolution = store.currentMentionResolution
+        let usesMentions = resolution?.hasMentions == true
+        let selected =
+          usesMentions
+          ? (resolution?.issues.isEmpty == true ? resolution?.targetBotIDs ?? [] : [])
+          : store.selectedTargetBotIDsForCurrent
         VStack(alignment: .leading, spacing: 5) {
           HStack {
-            Text("Reply as")
+            Text(usesMentions ? "Recipients from mentions" : "Reply as")
             Spacer()
+            Menu("Mention") {
+              ForEach(members) { bot in
+                Button(store.recipientLabel(bot.id)) {
+                  store.requestMentionInsertion(bot.id)
+                }
+                .help("\(bot.name) · \(bot.id.uuidString)")
+                .accessibilityLabel("Insert mention for \(bot.name), identity \(bot.id.uuidString)")
+              }
+            }
+            .disabled(!store.canInsertMention)
+            .help("Insert a group member at the cursor. Mentions determine the reply order.")
+            .accessibilityIdentifier("insert-group-mention")
             Menu(selected.isEmpty ? "Choose bots" : "\(selected.count) selected") {
               ForEach(members) { bot in
                 Button {
                   store.toggleGroupTarget(bot.id, in: conversation.id)
                 } label: {
                   Label(
-                    bot.name,
+                    store.recipientLabel(bot.id),
                     systemImage: selected.contains(bot.id) ? "checkmark.circle.fill" : "circle")
                 }
               }
@@ -660,34 +688,45 @@ private struct ConversationView: View {
             .accessibilityLabel("Choose group reply bots")
             .accessibilityValue(selected.isEmpty ? "None selected" : "\(selected.count) selected")
             .accessibilityIdentifier("send-target")
+            .disabled(usesMentions)
+          }
+          if let issue = resolution?.issues.first {
+            Text(issue.localizedDescription)
+              .font(.system(size: 11)).foregroundStyle(ShellTheme.warning)
+              .fixedSize(horizontal: false, vertical: true)
+              .accessibilityIdentifier("group-mention-error")
           }
           if !selected.isEmpty {
             ScrollView {
               VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(selected.enumerated()), id: \.element) { index, id in
-                  let name = members.first(where: { $0.id == id })?.name ?? "Deleted bot"
+                  let name = store.recipientLabel(id)
                   HStack(spacing: 6) {
-                    Text("\(index + 1). \(name)").lineLimit(1).help(name)
+                    Text("\(index + 1). \(name)").lineLimit(1).help("\(name) · \(id.uuidString)")
+                      .accessibilityLabel(
+                        "Recipient \(index + 1): \(name), identity \(id.uuidString)")
                     Spacer(minLength: 4)
-                    Button {
-                      store.moveGroupTarget(id, in: conversation.id, offset: -1)
-                    } label: {
-                      Image(systemName: "arrow.up")
+                    if !usesMentions {
+                      Button {
+                        store.moveGroupTarget(id, in: conversation.id, offset: -1)
+                      } label: {
+                        Image(systemName: "arrow.up")
+                      }
+                      .disabled(index == 0).accessibilityLabel("Move \(name) earlier")
+                      Button {
+                        store.moveGroupTarget(id, in: conversation.id, offset: 1)
+                      } label: {
+                        Image(systemName: "arrow.down")
+                      }
+                      .disabled(index == selected.count - 1)
+                      .accessibilityLabel("Move \(name) later")
+                      Button {
+                        store.toggleGroupTarget(id, in: conversation.id)
+                      } label: {
+                        Image(systemName: "xmark.circle")
+                      }
+                      .accessibilityLabel("Remove \(name) from group round")
                     }
-                    .disabled(index == 0).accessibilityLabel("Move \(name) earlier")
-                    Button {
-                      store.moveGroupTarget(id, in: conversation.id, offset: 1)
-                    } label: {
-                      Image(systemName: "arrow.down")
-                    }
-                    .disabled(index == selected.count - 1)
-                    .accessibilityLabel("Move \(name) later")
-                    Button {
-                      store.toggleGroupTarget(id, in: conversation.id)
-                    } label: {
-                      Image(systemName: "xmark.circle")
-                    }
-                    .accessibilityLabel("Remove \(name) from group round")
                   }
                   .buttonStyle(.plain)
                   .font(.system(size: 11))
@@ -698,11 +737,20 @@ private struct ConversationView: View {
             }
             .frame(height: min(CGFloat(selected.count) * 25, 82))
             Text(
-              selected.count > 1
-                ? "One ordered request per bot. You will review the full round before sending."
-                : "Select more bots to create an ordered group round."
+              usesMentions
+                ? "Mention order replaces manual selection. Review before sending; edit the draft to change recipients."
+                : selected.count > 1
+                  ? "One ordered request per bot. You will review the full round before sending."
+                  : "Select more bots to create an ordered group round."
             )
             .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+          }
+          if !usesMentions {
+            Text(
+              #"Type @Name or @"Full Name"; use \@ for literal text. Mention handles duplicate names."#
+            )
+            .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("group-mention-help")
           }
         }
       }

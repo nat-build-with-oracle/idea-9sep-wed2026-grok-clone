@@ -8,10 +8,11 @@ if [[ "$MODE" == "test" ]]; then
   exec "$ROOT/scripts/native-prototype.sh" test
 fi
 export NATIVE_WORKSPACE_APP=1
-if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" || "$MODE" == "routine-smoke" || "$MODE" == "attachment-smoke" || "$MODE" == "appearance-smoke" || "$MODE" == "unread-smoke" || "$MODE" == "group-smoke" ]]; then
+if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smoke" || "$MODE" == "codex-smoke-stdin" || "$MODE" == "profile-smoke" || "$MODE" == "reply-smoke" || "$MODE" == "export-smoke" || "$MODE" == "deletion-smoke" || "$MODE" == "routine-smoke" || "$MODE" == "attachment-smoke" || "$MODE" == "appearance-smoke" || "$MODE" == "unread-smoke" || "$MODE" == "group-smoke" || "$MODE" == "mention-smoke" ]]; then
   "$ROOT/scripts/native-prototype.sh" build
   VERIFY_ARGS=(--verify-workspace)
   VERIFY_MODELS=0
+  if [[ "$MODE" == "mention-smoke" ]]; then VERIFY_ARGS+=(--verify-mentions); fi
   if [[ "$MODE" == "group-smoke" ]]; then VERIFY_ARGS+=(--verify-group-rounds); fi
   if [[ "$MODE" == "unread-smoke" ]]; then VERIFY_ARGS+=(--verify-unread); fi
   if [[ "$MODE" == "appearance-smoke" ]]; then VERIFY_ARGS+=(--verify-appearance); fi
@@ -51,6 +52,7 @@ if [[ "$MODE" == "smoke" || "$MODE" == "provider-smoke" || "$MODE" == "codex-smo
   if [[ "$MODE" == "routine-smoke" ]]; then grep -q '^NATIVE_ROUTINE_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "attachment-smoke" ]]; then grep -q '^NATIVE_ATTACHMENT_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "appearance-smoke" ]]; then grep -q '^NATIVE_APPEARANCE_SMOKE=PASS ' <<< "$OUTPUT"; fi
+  if [[ "$MODE" == "mention-smoke" ]]; then grep -q '^NATIVE_MENTION_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "group-smoke" ]]; then grep -q '^NATIVE_GROUP_ROUND_SMOKE=PASS ' <<< "$OUTPUT"; fi
   if [[ "$MODE" == "unread-smoke" ]]; then grep -q '^NATIVE_UNREAD_SMOKE=PASS ' <<< "$OUTPUT"; fi
   exit

@@ -82,15 +82,17 @@ The [routine flow](ROUTINES.md), introduced in schema v2, is preserved by schema
 
 Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 
-- **266 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
+- **300 core tests**: actual SQLite restart/migration/recovery, atomic writes, identity/CAS checks,
   generation/coordinator, provider/transport, model catalog, Codex, profiles, reply context,
   export/deletion, calendar boundaries and routine claims/lifecycle. Attachment coverage adds
   13 content/repository tests, 5 historical migration/recovery tests, 13 generation-consent and 3 wire/fingerprint
   tests and legacy export-summary decoding. All use offline credentials,
   URLProtocol/provider fixtures and/or actual temporary stores.
-- **247 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
+- **264 native shell tests**: fixture/AppKit/persistence, provider presentation and Codex setup,
   profiles/replies/export/deletion, **11 routine editor** tests and **14 routine workspace/lifecycle**
-  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Appearance adds 8 preference-storage, 9 workspace/layout and 5 theme/composer tests. Unread activity adds 15 native tests and 8 core query/migration/model-invariant tests. Group rounds add 24 core and 6 native integration tests. Total: **513 tests**.
+  tests, plus 5 attachment presentation, 16 file importer and 18 workflow tests. Appearance adds 8 preference-storage, 9 workspace/layout and 5 theme/composer tests. Unread activity adds 15 native tests and 8 core query/migration/model-invariant tests. Group rounds add 24 core and 6 native integration tests. Mentions add 29 parser and 5 atomic
+  raw-source core tests, 11 native routing/workflow tests and 6 additional hosted AppKit
+  insertion tests. Total: **564 tests**.
   Routine coverage includes explicit owner/binding consent, provider
   drift, dirty/cancel/reload/save races, catch-up/wake, direct-chat output, draft preservation,
   Stop/partial text, confirmed deletion, active history after clock rollback, and quit joining.
@@ -98,6 +100,9 @@ Host: macOS 26.5.1 / Apple Silicon, Xcode 26.6, Swift 6.3.3.
 - Native `smoke` uses a newly minted temporary workspace inside this app's sandbox, creates two bots/one group/one paused routine/a Unicode draft through the UI's service path, closes/reopens the store, asserts restored identities/content, renders the native window, removes only its own test directory and exits. It does not open, mutate, or capture the user's normal workspace.
 - Provider smoke injects offline credentials and a fixture stream into that isolated native workspace, verifies persisted user/assistant messages and attribution, and renders desktop/narrow chat and the separate Settings window. No live endpoint or real Keychain item is accessed.
 - Group smoke confirms and sends two ordered offline replies from one user message, then renders a six-recipient Unicode-name disclosure at desktop/minimum size. Round Stop is covered by controller/coordinator tests, not physical button input. See [group rounds](GROUP-ROUNDS.md).
+- Mention smoke verifies typed order overriding manual recipients, mandatory one-recipient review,
+  identity-free stored user text and ordered fixture replies, then renders duplicate-ID consent
+  and invalid-mention recovery in Light/Dark at desktop/minimum size. See [mentions](GROUP-MENTIONS.md).
 - Unread fixture smoke renders background badges, acknowledges the rendered transcript using explicitly injected foreground state and verifies reopen/draft/other-chat retention. The strict Launch Services/window-focus smoke remains unverified because the host console is locked; fixture output reports `actualWindowFocusTested=false`. See [read-state verification](UNREAD-CONVERSATIONS.md).
 - Appearance smoke switches Dark/Light/System using an isolated preference suite, renders workspace and Settings, preserves saved widths and draft/message state, and checks the 760×600 minimum variant. Physical input/system-theme switching remain manual; see [appearance evidence](APPEARANCE.md).
 - Attachment smoke copies a synthetic selected text file, deletes its original, reopens the managed copy, renders chips/consent, verifies Cancel has no credential/provider calls and confirms an exact offline file send. OS panel clicks and external grants remain manual. See [attachment contract](ATTACHMENTS.md).

@@ -77,8 +77,10 @@ struct AttachmentConfirmationView: View {
   let conversation: String
   let targetBot: String
   var targetBots: [String] = []
+  var targetBotIDs: [UUID] = []
   var requestCount = 1
   var isRound = false
+  var usesMentions = false
   let apiRoot: URL
   let modelID: String
   let attachments: [Attachment]
@@ -110,13 +112,25 @@ struct AttachmentConfirmationView: View {
           disclosureSection("Destination") {
             disclosureValue("Conversation", conversation)
             if isRound {
-              Text("Ordered recipients · \(requestCount) separate requests")
-                .font(.caption).foregroundStyle(ShellTheme.secondary)
+              Text(
+                "Ordered recipients · \(requestCount) separate request\(requestCount == 1 ? "" : "s")"
+              )
+              .font(.caption).foregroundStyle(ShellTheme.secondary)
+              if usesMentions {
+                Text("From mentions in your draft. Local identity bindings are not sent.")
+                  .font(.callout).foregroundStyle(ShellTheme.secondary)
+              }
               ForEach(Array(targetBots.enumerated()), id: \.offset) { index, name in
+                let identity =
+                  targetBotIDs.indices.contains(index)
+                  ? targetBotIDs[index].uuidString : ""
                 Text("\(index + 1). \(name)")
                   .font(.system(size: 13, weight: .medium))
                   .textSelection(.enabled)
-                  .accessibilityLabel("Recipient \(index + 1): \(name)")
+                  .help(identity.isEmpty ? name : "\(name) · \(identity)")
+                  .accessibilityLabel(
+                    "Recipient \(index + 1): \(name)\(identity.isEmpty ? "" : ", identity \(identity)")"
+                  )
                   .accessibilityIdentifier("round-recipient-\(index)")
               }
             } else {

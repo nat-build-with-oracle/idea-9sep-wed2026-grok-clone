@@ -56,7 +56,15 @@ The bounded recipient list scrolls rather than hiding the composer. Multiple tar
 one confirmation with full ordered names, destination/model, separate-request count, frozen
 pre-round context and files. Each member has an attributed status; Stop round preserves
 completed replies and stops remaining members. Provider errors remain per-member and do
-not silently retry. Mention-driven selection remains open; see [group contract](docs/GROUP-ROUNDS.md).
+not silently retry. Group drafts accept typed mentions and the native Mention insertion menu.
+Mention order replaces manual selection; show a read-only ordered preview and keep manual
+choices for drafts without mentions. Invalid, ambiguous or stale mentions block Send with an
+inline recovery message. Every mention send requires the same protected disclosure, even one
+recipient. Duplicate names include a distinguishing identity prefix, with full identity in help
+and accessibility text. Local UUID binding syntax stays in the draft only; confirmation explains
+that it is not transmitted. The plain-text composer preserves selection and undo, and rejects
+insertion during marked text rather than performing a surprise delayed edit. See the
+[group](docs/GROUP-ROUNDS.md) and [mention](docs/GROUP-MENTIONS.md) contracts.
 
 Loading, empty searches, empty groups, sending, profile validation/conflict, unsaved-profile discard, provider error/offline, routine paused/running/failed, upload validation, API failures, and persistence failures must be explicit. Profile edits use a detached buffer tied to a stable bot/group identity: navigation cannot redirect a save, stale editable fields require an explicit reload, and Cancel/Escape/window close confirms before discarding dirty fields. Reply cards use intrinsic content height, a two-line excerpt, an explicit cancel action in the composer, and loading/unavailable states. Parent selection is conversation-scoped and does not send; jump-to-original must not redirect later navigation. Public sample conversations are synthetic project-planning examples, not copied user history or live service output.
 
@@ -78,6 +86,11 @@ Short, clear, calm. Use Bot, group chat, computer, routine. No fabricated succes
 
 ## Implementation constraints
 No third-party dependencies without explicit adoption. The app uses native SwiftUI/AppKit plus a Swift package core and Swift unit tests; XCUITest coverage remains open. No localhost HTTP server is needed. Never expose provider secrets in UI snapshots, logs, store exports, or fixtures.
+
+Mention-surface finish evidence: isolated desktop/minimum Light/Dark composer, duplicate-name
+consent and invalid-mention renders passed a separate read-only review on 2026-09-10.
+No raster assets were added to the shipped app. Physical keyboard/IME/VoiceOver remain
+explicit gates; hosted AppKit tests and rendered fixtures do not close them.
 
 ## Open questions
 - Desired model/backend: configurable text-only adapters exist, but broad live-provider compatibility remains unverified; no private Grok Bot API dependency.

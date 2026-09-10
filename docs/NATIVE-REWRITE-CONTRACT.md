@@ -193,6 +193,12 @@ app restart with nonterminal state → interrupted (manual retry)
 
 Default target is the first explicitly selected member (shown in the composer); mentions select one or more named members. If multiple are selected, run a bounded ordered round once per selected bot, attributed in the transcript. No recursive bot-to-bot loop. The group does not claim independent workers while actually returning one anonymous canned response. Cancellation stops the remaining round and preserves completed members' replies.
 
+Implemented routing details: [ordered group rounds](GROUP-ROUNDS.md) and
+[draft mention grammar, identity and consent](GROUP-MENTIONS.md). Mention order overrides
+manual choices; a draft without mentions retains explicit manual targeting. Mention sends
+always require disclosure, including one recipient. This does not close the remaining
+native input, accessibility, provider or release-verification gates.
+
 ## 6. Endpoint and permission contract
 
 The installed app's `api2.cursor.sh/aiserver.v1.GrokBotService/*` paths are **research evidence only**, not an authorized integration API for this rewrite.

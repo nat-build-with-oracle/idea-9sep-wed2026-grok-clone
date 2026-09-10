@@ -5,6 +5,10 @@ struct NativeComposer: NSViewRepresentable {
   @Binding var text: String
   @Binding var height: CGFloat
   var focusRequest: Int
+  var conversationID: UUID? = nil
+  var contextGeneration = 0
+  var insertion: ComposerInsertion? = nil
+  var onInsertionResult: (UUID, Bool) -> Void = { _, _ in }
   var onSubmit: () -> Void
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -47,6 +51,7 @@ struct NativeComposer: NSViewRepresentable {
       context.coordinator.lastFocus = focusRequest
       DispatchQueue.main.async { [weak view] in view?.window?.makeFirstResponder(view) }
     }
+    context.coordinator.scheduleInsertionIfNeeded()
     context.coordinator.measure()
   }
 
@@ -60,6 +65,7 @@ struct NativeComposer: NSViewRepresentable {
     var parent: NativeComposer
     weak var textView: NSTextView?
     var lastFocus = -1
+    private var handledInsertionIDs = Set<UUID>()
     init(_ parent: NativeComposer) { self.parent = parent }
     func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
       guard let event = NSApp.currentEvent, event.type == .keyDown else { return false }
@@ -78,6 +84,61 @@ struct NativeComposer: NSViewRepresentable {
       guard let view = notification.object as? NSTextView else { return }
       parent.text = view.string
       measure()
+    }
+    func scheduleInsertionIfNeeded() {
+      guard let command = parent.insertion, handledInsertionIDs.insert(command.id).inserted else {
+        return
+      }
+      // Execute after SwiftUI finishes the current representable update. Every mutable
+      // precondition is checked again then, so a navigation/reconnect/IME transition wins.
+      DispatchQueue.main.async { [self, weak textView] in
+        guard let view = textView else {
+          parent.onInsertionResult(command.id, false)
+          return
+        }
+        let current = parent.insertion
+        guard current?.id == command.id, parent.conversationID == command.conversationID,
+          parent.contextGeneration == command.contextGeneration,
+          parent.text == command.expectedText, view.string == command.expectedText,
+          view.isEditable, view.isSelectable, !view.hasMarkedText(), !command.text.isEmpty
+        else {
+          parent.onInsertionResult(command.id, false)
+          return
+        }
+        let selected = view.selectedRange()
+        guard selected.location != NSNotFound, Range(selected, in: view.string) != nil else {
+          parent.onInsertionResult(command.id, false)
+          return
+        }
+        view.insertText(
+          Self.separated(command.text, in: view.string, replacing: selected),
+          replacementRange: selected)
+        parent.onInsertionResult(command.id, true)
+      }
+    }
+
+    private static func separated(_ insertion: String, in body: String, replacing range: NSRange)
+      -> String
+    {
+      guard let indices = Range(range, in: body) else { return insertion }
+      var result = insertion
+      let startsWithSpace = insertion.first?.isWhitespace == true
+      let endsWithSpace = insertion.last?.isWhitespace == true
+      if let previous = body[..<indices.lowerBound].last,
+        needsSeparator(previous), !startsWithSpace
+      {
+        result.insert(" ", at: result.startIndex)
+      }
+      if let next = body[indices.upperBound...].first, needsSeparator(next), !endsWithSpace {
+        result.append(" ")
+      }
+      return result
+    }
+
+    private static func needsSeparator(_ character: Character) -> Bool {
+      // Whitespace also prevents a preceding slash, escape or URL prefix from
+      // swallowing a picker-inserted token. Code regions remain literal by design.
+      !character.isWhitespace
     }
     func measure() {
       guard let view = textView, let container = view.textContainer, let layout = view.layoutManager

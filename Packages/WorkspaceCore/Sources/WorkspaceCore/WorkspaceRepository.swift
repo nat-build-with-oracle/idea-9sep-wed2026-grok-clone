@@ -33,12 +33,15 @@ public struct SendCommand: Sendable {
   public let replyToID: UUID?
   public let attachmentIDs: [UUID]
   public let createdAt: Date
+  /// Transient source body used only to decide whether the captured draft may be cleared.
+  /// This is intentionally not persisted or sent to a provider.
+  public let expectedDraftText: String?
 
   public init(
     conversationID: UUID, userMessageID: UUID = UUID(), generationID: UUID = UUID(),
     attemptID: UUID = UUID(), targetBotID: UUID, text: String, replyToID: UUID? = nil,
     attachmentIDs: [UUID] = [],
-    createdAt: Date = Date()
+    createdAt: Date = Date(), expectedDraftText: String? = nil
   ) {
     self.conversationID = conversationID
     self.userMessageID = userMessageID
@@ -49,6 +52,7 @@ public struct SendCommand: Sendable {
     self.replyToID = replyToID
     self.attachmentIDs = attachmentIDs
     self.createdAt = createdAt
+    self.expectedDraftText = expectedDraftText
   }
 }
 
@@ -74,10 +78,14 @@ public struct SendRoundCommand: Sendable {
   public let attachmentIDs: [UUID]
   public let createdAt: Date
   public let targets: [Target]
+  /// Transient source body used only to decide whether the captured draft may be cleared.
+  /// This is intentionally not persisted or sent to a provider.
+  public let expectedDraftText: String?
 
   public init(
     conversationID: UUID, userMessageID: UUID = UUID(), targets: [Target], text: String,
-    replyToID: UUID? = nil, attachmentIDs: [UUID] = [], createdAt: Date = Date()
+    replyToID: UUID? = nil, attachmentIDs: [UUID] = [], createdAt: Date = Date(),
+    expectedDraftText: String? = nil
   ) {
     self.conversationID = conversationID
     self.userMessageID = userMessageID
@@ -86,6 +94,7 @@ public struct SendRoundCommand: Sendable {
     self.attachmentIDs = attachmentIDs
     self.createdAt = createdAt
     self.targets = targets
+    self.expectedDraftText = expectedDraftText
   }
 }
 

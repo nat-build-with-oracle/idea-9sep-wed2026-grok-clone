@@ -74,6 +74,7 @@ extension PreviewWorkspace {
   static func providerErrorMessage(_ error: Error) -> String {
     if let error = error as? WorkspaceError { return error.localizedDescription }
     if let error = error as? ProviderSetupError { return error.localizedDescription }
+    if let error = error as? GroupMentionIssue { return error.localizedDescription }
     if let error = error as? AttachmentError { return error.localizedDescription }
     if let error = error as? AttachmentWorkspaceError { return error.localizedDescription }
     if let error = error as? AttachmentFileImportError { return error.localizedDescription }
@@ -143,9 +144,11 @@ extension PreviewWorkspace {
   }
 
   func captureDraftSubmission() throws -> (
-    command: CapturedDraftCommand, configuration: ProviderConfig, version: Int?, context: Int
+    command: CapturedDraftCommand, configuration: ProviderConfig, version: Int?, context: Int,
+    mentionRouting: MentionRoutingSnapshot?
   ) {
-    guard !isClosing, !isSubmitting, !isDeletingBot, !isAttachingFiles else {
+    guard !isClosing, !isSubmitting, !isDeletingBot, !isAttachingFiles, mentionInsertion == nil
+    else {
       throw ProviderSetupError.busy
     }
     guard !currentNeedsMembershipRepair else { throw WorkspaceError.invalidMembers }
@@ -153,23 +156,28 @@ extension PreviewWorkspace {
       throw ProviderSetupError.noProvider
     }
     guard let conversationID = selectedID else { throw WorkspaceError.missingRecord }
-    let targets = selectedTargetBotIDsForCurrent
+    let mentionRouting = try captureMentionRouting()
+    let targets = mentionRouting?.targetBotIDs ?? selectedTargetBotIDsForCurrent
     guard !targets.isEmpty else { throw ProviderSetupError.targetRequired }
-    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    let text = (currentMentionResolution?.messageText ?? draft)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    let sourceText = current?.kind == .group ? draft : nil
     let attachmentIDs = draftAttachmentIDs[conversationID] ?? []
     guard !text.isEmpty || !attachmentIDs.isEmpty else { throw WorkspaceError.invalidDraft }
     return (
-      targets.count == 1
+      targets.count == 1 && mentionRouting == nil
         ? .single(
           SendCommand(
             conversationID: conversationID, targetBotID: targets[0], text: text,
-            replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs))
+            replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs,
+            expectedDraftText: sourceText))
         : .round(
           SendRoundCommand(
             conversationID: conversationID,
             targets: targets.map { SendRoundCommand.Target(targetBotID: $0) }, text: text,
-            replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs)),
-      configuration, draftVersions[conversationID], replyContextGeneration
+            replyToID: draftReplyIDs[conversationID], attachmentIDs: attachmentIDs,
+            expectedDraftText: sourceText)),
+      configuration, draftVersions[conversationID], replyContextGeneration, mentionRouting
     )
   }
 

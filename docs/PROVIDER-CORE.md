@@ -24,7 +24,9 @@ usable credential, Send preserves the draft and does not fabricate a reply.
 - The composer shows the destination and context scope. Group replies run once per
   explicitly selected member in displayed order, with one common user message and
   aggregate confirmation before multiple requests. See [group rounds](GROUP-ROUNDS.md)
-  for frozen context, Stop and per-member failure/retry behavior. Mention-driven selection remains open.
+  for frozen context, Stop and per-member failure/retry behavior. [Group draft mentions](GROUP-MENTIONS.md)
+  override manual recipients and always require review, even one recipient. Local UUID
+  bindings stay in the draft; only readable message text reaches provider/transcript.
   Provider/target choices are session selections, not yet per-bot persisted preferences.
 - Draft flushes share one writer. A newer edit arriving during credential lookup
   is retained; sent content is cleared only when its local draft version still

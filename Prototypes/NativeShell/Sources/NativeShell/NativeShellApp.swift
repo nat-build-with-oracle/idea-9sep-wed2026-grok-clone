@@ -309,6 +309,12 @@ import WorkspaceCore
             repository: reopened, conversationID: groupID,
             orderedTargetIDs: [secondID, botID], small: small, arguments: arguments)
         }
+        if arguments.contains("--verify-mentions") {
+          try await verifyMentionFlow(
+            repository: reopened, conversationID: groupID,
+            manualTargetIDs: [botID, secondID], mentionedTargetIDs: [secondID, botID],
+            small: small, arguments: arguments)
+        }
         if arguments.contains("--verify-codex-fixture")
           || arguments.contains("--verify-codex-stdin")
         {
@@ -1155,6 +1161,139 @@ import WorkspaceCore
     )
   }
 
+  /// Offline, isolated exercise of typed identity-bound group mention routing and disclosure.
+  private func verifyMentionFlow(
+    repository: CoreDataWorkspaceRepository, conversationID: UUID, manualTargetIDs: [UUID],
+    mentionedTargetIDs: [UUID], small: Bool, arguments: [String]
+  ) async throws {
+    try await store.connect(
+      repository, credentials: SessionAwareCredentialStore(persistent: SmokeCredentials()),
+      provider: SmokeChatProvider(), displayName: "Smoke workspace")
+    _ = try await store.saveProvider(
+      id: nil, name: "Offline mention fixture", apiRoot: "https://fixture.invalid/v1",
+      modelID: "smoke-mentions", secret: "offline-fixture-credential",
+      allowsLoopbackHTTP: false, credentialLifetime: .session)
+    store.selectedID = conversationID
+    store.selectedTargetBotIDs[conversationID] = manualTargetIDs
+    let members = store.currentMentionMembers
+    func token(_ id: UUID) throws -> String {
+      guard let member = members.first(where: { $0.id == id }) else {
+        throw WorkspaceError.invalidMembers
+      }
+      return try GroupMentions.token(for: member)
+    }
+
+    // Even one mention is an explicit routed round and must stop at disclosure first.
+    store.draft = try "\(token(mentionedTargetIDs[0])) Review this fictional plan."
+    store.performSend()
+    await store.sendTask?.value
+    guard let singleDisclosure = store.attachmentConfirmationTarget,
+      singleDisclosure.isRound, singleDisclosure.mentionRouting != nil,
+      singleDisclosure.targetBotIDs == [mentionedTargetIDs[0]], singleDisclosure.requestCount == 1
+    else { throw WorkspaceError.invalidStore }
+    store.cancelAttachmentConfirmation()
+    await Task.yield()
+
+    // Typed order overrides the deliberately opposite manual selection.
+    let readableMessage = "Review this fictional launch plan in typed order."
+    let orderedMentionPrefix = try mentionedTargetIDs.map(token).joined(separator: " ")
+    let mentionDraft = "\(orderedMentionPrefix) \(readableMessage)"
+    let expectedStoredText = GroupMentions.resolve(mentionDraft, members: members).messageText
+    store.draft = mentionDraft
+    let originalAppearance = store.preferences.appearance
+    for appearance in [WorkspaceAppearance.light, .dark] {
+      store.preferences.appearance = appearance
+      try await Task.sleep(for: .milliseconds(100))
+      writeSnapshot(
+        small: small,
+        arguments: arguments + [
+          appearance == .light ? "--mention-composer-light" : "--mention-composer-dark"
+        ])
+    }
+    store.preferences.appearance = originalAppearance
+    store.performSend()
+    await store.sendTask?.value
+    guard let disclosure = store.attachmentConfirmationTarget,
+      disclosure.isRound, disclosure.mentionRouting != nil,
+      disclosure.targetBotIDs == mentionedTargetIDs, disclosure.requestCount == 2
+    else { throw WorkspaceError.invalidStore }
+    guard let accepted = store.confirmAttachmentSend() else { throw WorkspaceError.invalidStore }
+    await accepted.value
+    await store.coordinator?.waitForIdle()
+
+    let page = try await repository.messages(conversationID: conversationID)
+    let userMessages = page.messages.filter { $0.role == .user }
+    let replies = page.messages.filter { $0.role == .assistant }
+    guard userMessages.count == 1, replies.count == mentionedTargetIDs.count,
+      replies.map(\.speakerBotID) == mentionedTargetIDs,
+      userMessages[0].text == expectedStoredText,
+      !mentionedTargetIDs.contains(where: {
+        userMessages[0].text.lowercased().contains($0.uuidString.lowercased())
+      }),
+      store.draft.isEmpty
+    else { throw WorkspaceError.invalidStore }
+
+    // Equal display names remain distinct through canonical IDs and disclosure labels.
+    let duplicateName = "Twin Reviewer — ผู้ตรวจคู่"
+    var duplicateIDs: [UUID] = []
+    for index in 0...1 {
+      duplicateIDs.append(
+        try await store.performCreateBot(
+          name: duplicateName, description: "Duplicate mention fixture \(index + 1)",
+          color: index == 0 ? "blue" : "magenta", shape: index == 0 ? .circle : .square))
+    }
+    let duplicateConversation = try await store.performCreateGroup(
+      name: "Identity-bound duplicate reviewers", members: duplicateIDs)
+    store.selectedTargetBotIDs[duplicateConversation] = Array(duplicateIDs.reversed())
+    let duplicateMembers = store.currentMentionMembers
+    let duplicateTokens = try duplicateIDs.map { id in
+      guard let member = duplicateMembers.first(where: { $0.id == id }) else {
+        throw WorkspaceError.invalidMembers
+      }
+      return try GroupMentions.token(for: member)
+    }
+    store.draft = duplicateTokens.joined(separator: " ") + " Compare the fictional proposal."
+    store.performSend()
+    await store.sendTask?.value
+    guard let duplicateDisclosure = store.attachmentConfirmationTarget,
+      duplicateDisclosure.mentionRouting != nil,
+      duplicateDisclosure.targetBotIDs == duplicateIDs,
+      duplicateDisclosure.targetBots.count == 2,
+      duplicateDisclosure.targetBots[0] != duplicateDisclosure.targetBots[1],
+      duplicateDisclosure.targetBots.allSatisfy({ $0.hasPrefix("\(duplicateName) · ") })
+    else { throw WorkspaceError.invalidStore }
+    for appearance in [WorkspaceAppearance.light, .dark] {
+      store.preferences.appearance = appearance
+      try await Task.sleep(for: .milliseconds(150))
+      writeSnapshot(
+        small: small,
+        arguments: arguments + [
+          appearance == .light ? "--mention-confirmation-light" : "--mention-confirmation-dark"
+        ])
+    }
+    store.cancelAttachmentConfirmation()
+    await Task.yield()
+
+    // Unknown handles fail closed inline and never fall back to the manual recipient list.
+    store.draft = "@unknown Review the fictional proposal."
+    guard store.currentMentionResolution?.issues.first == .unknownMember,
+      store.effectiveTargetBotIDs.isEmpty
+    else { throw WorkspaceError.invalidStore }
+    for appearance in [WorkspaceAppearance.light, .dark] {
+      store.preferences.appearance = appearance
+      try await Task.sleep(for: .milliseconds(100))
+      writeSnapshot(
+        small: small,
+        arguments: arguments + [
+          appearance == .light ? "--mention-invalid-light" : "--mention-invalid-dark"
+        ])
+    }
+    store.preferences.appearance = originalAppearance
+    print(
+      "NATIVE_MENTION_SMOKE=PASS offlineFixture=true typedOrderOverridesManual=true singleMentionRequiresReview=true oneUserMessage=true orderedAttributedReplies=2 storedUserHasNoUUIDSuffix=true duplicateNamesIDDisambiguated=true invalidMentionInlineError=true actualPhysicalInputTested=false"
+    )
+  }
+
   private func installMenus() {
     let menu = NSMenu()
     let appMenu = NSMenu()
@@ -1319,10 +1458,15 @@ import WorkspaceCore
 
   private func writeSnapshot(small: Bool, arguments: [String]) {
     let groupComposer = arguments.contains("--group-composer")
+    let mentionConfirmation =
+      arguments.contains("--mention-confirmation-light")
+      || arguments.contains("--mention-confirmation-dark")
+    let mentionState = arguments.last { $0.hasPrefix("--mention-") }
     let target =
-      groupComposer
+      groupComposer || (mentionState != nil && !mentionConfirmation)
       ? window
-      : arguments.contains("--verify-profiles") || arguments.contains("--deletion-confirmation")
+      : mentionConfirmation || arguments.contains("--verify-profiles")
+        || arguments.contains("--deletion-confirmation")
         || arguments.contains("--verify-routines")
         || arguments.contains("--attachment-confirmation")
         || arguments.contains("--verify-group-rounds")
@@ -1335,42 +1479,48 @@ import WorkspaceCore
     view.cacheDisplay(in: view.bounds, to: bitmap)
     guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
     let appearanceState = arguments.last { $0.hasPrefix("--appearance-") }
-    let state =
-      groupComposer
-      ? (arguments.contains("--group-composer-light")
-        ? "group-composer-light" : "group-composer-dark")
-      : arguments.last(where: { $0.hasPrefix("--unread-") }).map { String($0.dropFirst(2)) }
-        ?? appearanceState.map {
-          String($0.dropFirst(2)) + (arguments.contains("--settings") ? "-settings" : "-workspace")
-        }
-        ?? (arguments.contains("--attachment-confirmation")
-          ? "attachment-confirmation"
-          : arguments.contains("--verify-group-rounds")
-            ? "group-round-confirmation"
-            : arguments.contains("--verify-routines")
-              ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
-              : arguments.contains("--deletion-confirmation")
-                ? "delete-confirmation"
-                : arguments.contains("--verify-deletion")
-                  ? "degraded-group"
-                  : arguments.contains("--verify-export")
-                    ? "export-settings"
-                    : arguments.contains("--verify-profiles")
-                      ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
-                      : arguments.contains("--verify-codex-fixture")
-                        || arguments.contains("--verify-codex-stdin")
-                        ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
-                        : arguments.contains("--verify-provider")
-                          ? (arguments.contains("--settings")
-                            ? (arguments.contains("--router-models")
-                              ? "router-model-settings" : "provider-settings")
-                            : "provider-chat")
-                          : arguments.contains("--verify-replies")
-                            ? "reply-chat"
-                            : arguments.contains("--verify-workspace")
-                              ? "durable-workspace"
-                              : arguments.contains("--group")
-                                ? "group" : arguments.contains("--picker") ? "picker" : "chat")
+    let state: String
+    if let mentionState {
+      state = String(mentionState.dropFirst(2))
+    } else {
+      state =
+        groupComposer
+        ? (arguments.contains("--group-composer-light")
+          ? "group-composer-light" : "group-composer-dark")
+        : arguments.last(where: { $0.hasPrefix("--unread-") }).map { String($0.dropFirst(2)) }
+          ?? appearanceState.map {
+            String($0.dropFirst(2))
+              + (arguments.contains("--settings") ? "-settings" : "-workspace")
+          }
+          ?? (arguments.contains("--attachment-confirmation")
+            ? "attachment-confirmation"
+            : arguments.contains("--verify-group-rounds")
+              ? "group-round-confirmation"
+              : arguments.contains("--verify-routines")
+                ? (arguments.contains("--routine-editor") ? "routine-editor" : "routine-history")
+                : arguments.contains("--deletion-confirmation")
+                  ? "delete-confirmation"
+                  : arguments.contains("--verify-deletion")
+                    ? "degraded-group"
+                    : arguments.contains("--verify-export")
+                      ? "export-settings"
+                      : arguments.contains("--verify-profiles")
+                        ? (arguments.contains("--edit-group") ? "edit-group" : "edit-bot")
+                        : arguments.contains("--verify-codex-fixture")
+                          || arguments.contains("--verify-codex-stdin")
+                          ? (arguments.contains("--settings") ? "codex-settings" : "codex-chat")
+                          : arguments.contains("--verify-provider")
+                            ? (arguments.contains("--settings")
+                              ? (arguments.contains("--router-models")
+                                ? "router-model-settings" : "provider-settings")
+                              : "provider-chat")
+                            : arguments.contains("--verify-replies")
+                              ? "reply-chat"
+                              : arguments.contains("--verify-workspace")
+                                ? "durable-workspace"
+                                : arguments.contains("--group")
+                                  ? "group" : arguments.contains("--picker") ? "picker" : "chat")
+    }
     let file = FileManager.default.temporaryDirectory.appendingPathComponent(
       "native-shell-\(small ? "small" : "desktop")-\(state).png")
     do {

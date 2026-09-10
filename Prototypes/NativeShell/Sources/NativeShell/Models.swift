@@ -127,7 +127,9 @@ enum ComposerInputPolicy {
   @Published var replyPreviews: [UUID: [UUID: ReplyPreview]] = [:]
   @Published var transcriptJumpRequest: TranscriptJumpRequest?
   @Published var isJumpingToReply = false
-  var replyContextGeneration = 0
+  var replyContextGeneration = 0 {
+    didSet { mentionInsertion = nil }
+  }
   var replyChoiceRequests: [UUID: Int] = [:]
   var replyJumpGeneration = 0
   @Published var routines: [PreviewRoutine] = []
@@ -149,7 +151,9 @@ enum ComposerInputPolicy {
   var routineShutdownStarted = false
   var routinePollingEnabled = true
   var routineNow: @Sendable () -> Date = { Date() }
-  @Published var selectedID: UUID?
+  @Published var selectedID: UUID? {
+    didSet { if selectedID != oldValue { mentionInsertion = nil } }
+  }
   @Published var search = ""
   @Published var pickerQuery = ""
   @Published var pickerMode: PickerMode = .closed
@@ -186,6 +190,7 @@ enum ComposerInputPolicy {
   @Published var name = "Demo User"
   @Published var searchFocusRequest = 0
   @Published var composerFocusRequest = 0
+  @Published var mentionInsertion: ComposerInsertion?
   @Published var showHidden = false
   @Published var isPersistent = false
   @Published var isLoading = false

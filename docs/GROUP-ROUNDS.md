@@ -27,10 +27,10 @@ the app does not pretend a single response is a team of independent workers.
   require a fresh exact disclosure.
 - Relaunch marks unfinished work interrupted, with manual retry only. Nothing is auto-replayed.
 
-Mention-driven selection remains a separate, **unfinished** part of the full
-[native rewrite contract](NATIVE-REWRITE-CONTRACT.md#group-response-semantics). Manual selection
-is not a substitute for that requirement. Binary/image transmission and recursive agent/tool
-execution remain unsupported.
+[Draft mentions](GROUP-MENTIONS.md) can instead select the ordered recipients. Every mention
+send requires review, including one recipient; malformed or unresolved mentions never fall
+back to manual recipients. Binary/image transmission and recursive agent/tool execution
+remain unsupported.
 
 ## Flow and persistence
 
