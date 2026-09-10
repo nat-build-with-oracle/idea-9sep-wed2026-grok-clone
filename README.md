@@ -203,10 +203,7 @@ runtime state, credentials, or infrastructure configuration.
 
 The README now includes every one of the **58 unique synthetic native UI renders**.
 Click a thumbnail for the original PNG, or open the [searchable interactive gallery](docs/screenshots/index.html).
-These are isolated offline fixtures—not live provider output, private reference images, or proof of physical mouse/keyboard behavior.
-
-<details>
-<summary>Show all 58 UI renders</summary>
+All 58 thumbnails are displayed directly below. These are isolated offline fixtures—not live provider output, private reference images, or proof of physical mouse/keyboard behavior.
 
 <table>
 <tr>
@@ -298,8 +295,6 @@ These are isolated offline fixtures—not live provider output, private referenc
   <td align="center"><a href="docs/screenshots/mention-minimum--small-durable-workspace.png"><img src="docs/screenshots/mention-minimum--small-durable-workspace.png" alt="mention-minimum · mention-minimum--small-durable-workspace.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-durable-workspace.png</sub></td>
 </tr>
 </table>
-
-</details>
 <!-- UI_ATLAS_END -->
 
 ## Architecture
