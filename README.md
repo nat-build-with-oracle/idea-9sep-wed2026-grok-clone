@@ -1,102 +1,241 @@
 # BotWorkspace
 
-An independent, open-source native macOS workspace for named AI teammates.
-Built with **SwiftUI, AppKit and Core Data**, using only Apple frameworks.
-The repository name preserves its original [grok-clone idea capsule](PROPOSAL.md).
+<p align="center">
+  <img src="docs/assets/botworkspace-cover.png" alt="BotWorkspace — an independent open-source native Mac app concept cover" width="760">
+</p>
 
-**Experimental source release, not a finished AI client.** Bots, groups, drafts
-and routines persist locally. Native provider settings, streamed replies,
-ordered group rounds, Stop and Retry are wired to the provider core and tested
-with offline fixtures. An experimental, fixed-origin Codex text adapter accepts an explicitly imported
-ChatGPT `auth.json` for this session only. Real Keychain/signing and broad provider
-compatibility remain open. No Grok Bot/Cursor service, subscription,
-remote computer or private API is included; this project is not affiliated with them.
+<p align="center">
+  <strong>An independent, open-source native macOS workspace for named AI teammates.</strong><br>
+  Built with SwiftUI, AppKit, Core Data, and Apple frameworks.
+</p>
 
-## Run the local app
+<p align="center">
+  <a href="https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/">Feature atlas</a> ·
+  <a href="https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/screenshots/">Screenshot gallery</a> ·
+  <a href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/actions/workflows/pages.yml">Pages workflow</a>
+</p>
 
-```sh
-scripts/native-app.sh run
-scripts/native-app.sh test
-scripts/native-app.sh smoke
-scripts/native-app.sh provider-smoke # offline fixture; no key or live network
-scripts/native-app.sh codex-smoke    # synthetic auth + intercepted Responses SSE
-scripts/native-app.sh profile-smoke  # bot edit + group edit + close/reopen
-scripts/native-app.sh unread-smoke # persisted previews/counts + foreground-only read acknowledgement
-scripts/native-app.sh appearance-smoke # isolated Dark/Light/System + persistent pane preferences
-scripts/native-app.sh attachment-smoke # synthetic selected files + consent + offline send
-scripts/native-app.sh group-smoke    # ordered recipients + round consent + offline replies
-scripts/native-app.sh mention-smoke  # draft mentions + identity-safe consent + offline replies
-scripts/native-app.sh reply-smoke    # reply draft restart + referenced fixture send
-scripts/native-app.sh export-smoke   # JSON export + atomic file replacement (text fixture)
-scripts/native-app.sh deletion-smoke # confirmed bot deletion + retained group/restart
-scripts/native-app.sh routine-smoke  # daily editor + offline run + pause/resume/history restart
-```
+> **Experimental source release.** This is an independent implementation informed by
+> reference layouts and interaction ideas. It is not an official Grok Bot or Cursor
+> product, does not include their private code or APIs, and does not ship a remote
+> computer service.
 
-The `.app` is built at `Prototypes/NativeShell/.build/BotWorkspace.app`. It opens an empty workspace on first use and keeps data inside its macOS sandbox. **No provider is configured by default.** Settings offers Z.ai general API, local 9router, OpenAI Platform and custom setup templates. A separate **Codex login (experimental)** provider type imports a user-selected auth JSON into memory only; it is not an OpenAI Platform API key. Enter the endpoint/model/key for compatible providers, then select the provider and (for groups) one or more replying bots in the composer. Multiple recipients require review of the ordered round and its separate requests. Without a usable credential, the draft is retained.
+The cover above is AI-generated concept art for this README. It is not a screenshot of
+the running app. The verified native renders are in the [screenshot gallery](docs/screenshots/)
+and the full screen-by-screen contract is in the [feature atlas](docs/FEATURE-ATLAS.md).
 
-Protected Keychain access requires authorized signing. For an ad-hoc local build, explicitly choose **This session only** to keep the key in process memory until quitting; re-enter it on the next launch. There is no automatic fallback or plaintext credential file. See [provider setup](docs/PROVIDER-SETUP.md) and [integration/signing limits](docs/PROVIDER-CORE.md).
+## What is BotWorkspace?
 
-## Try the native prototype
+BotWorkspace is a local-first macOS workspace for people who want several named AI
+teammates in one calm, messaging-style application. It provides:
 
-```sh
-scripts/native-prototype.sh run
-scripts/native-prototype.sh test
-```
+- named Bots with editable profiles and visibility controls;
+- direct conversations and ordered multi-Bot group rounds;
+- drafts, replies, mentions, unread activity, and text attachments;
+- configurable text providers with streamed output, Stop, Retry, and explicit consent;
+- native routines with ownership, pause/resume, Run Now, history, and failure states;
+- JSON export with secret-scrubbing and atomic replacement;
+- a truthful disconnected computer panel until a separately reviewed adapter exists.
 
-Requires macOS and the Xcode Swift 6 toolchain. Deployment target: macOS 14+;
-runtime verification so far: macOS 26.5.1 on Apple Silicon, Xcode 26.6.
-Builds are locally ad-hoc signed, not notarized release binaries. No API key or
-third-party dependency installation is needed for the current app or tests.
+The project began as a Grok Bot-style interface idea capsule, but the shipped source is
+an independent native rewrite. The app draws its own interface, avatars, controls, and
+layout; private reference screenshots are not required to build or run it.
 
-## What works
+## Current status
 
-| Area | Current status |
+| Area | Status |
 |---|---|
-| Appearance/layout | Saved Dark/Light/System, Save/Cancel settings, persistent pane widths/visibility, minimum-width chat protection |
-| Native UI | Persisted sidebar previews/timestamps/unread reply badges, three-pane workspace, bot/group creation and profile editing, search, hide/show, confirmed bot deletion/group repair, native text composer, message replies |
-| Local data | Core Data v4 with tested v1/v2/v3 migration, text/reply drafts, message pagination, routine ledger, JSON export v3 including stored attachment bytes |
-| Provider integration | Native Settings, endpoint/model selection, attributed streamed text, queue, Stop/Retry; offline-fixture tested |
-| Group rounds | Ordered explicit recipients, one user message, per-member attributed replies, aggregate consent and Stop remaining round; typed/menu mentions with identity-safe targeting |
-| Credentials | API keys: protected Keychain or explicit session memory. Codex login: explicit file import, memory-only, fixed host, no refresh. Authorized signing/Keychain still unverified |
-| Routines | Native interval/daily editor, explicit owner/provider consent, Run Now, pause/resume, Stop/delete and history; launch/wake/30-second awake scheduling, offline tested |
-| Text attachments | Native file picker, persistent/removable chips, atomic managed copies and per-send file/destination confirmation; no images |
-| Remaining gates | Broad provider/9router validation, real file-picker sandbox grants and remaining native accessibility flows |
+| Native shell | SwiftUI/AppKit three-pane desktop workspace with saved appearance and pane preferences |
+| Local data | Core Data v4, tested v1/v2/v3 migration, drafts, message pagination, routines, export v3 |
+| Conversations | Direct chat, group chat, ordered recipients, per-member attribution, replies, mentions, unread state |
+| Provider core | Endpoint/model selection, streamed text, queueing, Stop, Retry, offline URLProtocol fixtures |
+| Credentials | Protected Keychain path or explicit session-only memory; experimental fixed-origin Codex import |
+| Attachments | Text files only: native picker, managed copies, removable chips, destination/model consent |
+| Routines | Interval/daily editor, owner/provider consent, Run Now, pause/resume, Stop/delete, history |
+| Documentation | 55 documented screen/state IDs, 58 synthetic PNGs, 24 offline capture scenarios, HTML Pages site |
+| Open gates | Broad live-provider compatibility, authorized signing/Keychain distribution, physical IME/VoiceOver and OS picker coverage |
 
-Verification: **564 tests** (300 core + 264 shell), desktop/narrow native persistence,
-offline provider, mention-routing and ordered group-round smokes, aggregate-consent/round-cancellation tests, profile-edit and reply close/reopen smokes, attachment storage/migration, importer and explicit-consent guards, text-fixture export, confirmed deletion and routine editor/run/restart smokes, appearance/pane preference tests and light/dark minimum-window rendering, Settings rendering, build/signature and formatting checks. See [reply workflow](docs/REPLY-WORKFLOW.md) and the evidence
-and limitations below for the current test counts and scope. An explicitly authorized
-manual native Codex check also completed a minimal reply with persistence and
-attribution; one account/time is not broad compatibility or release certification.
+No provider is configured by default. Without a usable credential, the app retains the
+draft instead of pretending that an external generation succeeded.
 
-## Architecture and contracts
+## Quick start
 
-### Complete screen and feature documentation
+### Requirements
 
-**[Browse the HTML feature atlas](https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/)**
-· **[Screenshot gallery](https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/screenshots/)**
+- macOS 14 or newer;
+- Xcode/Swift 6 toolchain;
+- Python 3 only for the documentation and screenshot verification scripts;
+- no third-party package installation and no API key for offline tests.
 
-GitHub Pages serves static documentation and synthetic screenshots only—not the
-macOS app, a provider backend, or a remote terminal. No private reference images,
-memory vault, credentials, or local runtime artifacts are published to Pages.
+### Build and run the durable app
 
-Start with the **[feature atlas](docs/FEATURE-ATLAS.md)**: screen-by-screen controls,
-ASCII layouts, navigation flows, data/endpoint contracts, and explicit implemented,
-reference-only and planned states. The [screenshot catalog](docs/SCREENSHOT-CATALOG.md)
-links 58 original synthetic native PNGs from 24 offline capture scenarios; an
-[offline gallery](docs/screenshots/index.html) is included. Private reference images
-remain excluded from public source. Missing captures and clipped/scrollable viewports
-are documented rather than presented as complete UI verification.
+```sh
+scripts/native-app.sh build
+scripts/native-app.sh run
+```
 
-- [Workspace screens](docs/SCREENS-WORKSPACE.md)
-- [Management and Settings screens](docs/SCREENS-MANAGEMENT.md)
-- [Original-reference ASCII archive](docs/REFERENCE-SCREENS.md)
-- [Computer/terminal boundary and proposed integration](docs/COMPUTER-TERMINAL-CONTRACT.md)
+The ad-hoc app bundle is written to
+`Prototypes/NativeShell/.build/BotWorkspace.app`. The durable workspace stores local
+data in the macOS Application Support sandbox. It starts with no provider configured.
 
-### Publish static documentation
+### Run the session-only prototype
 
-The Pages workflow publishes an allowlisted HTML/synthetic-image artifact, never the
-repository root. After editing public contracts, regenerate the committed HTML with
-the existing local Pandoc tool; CI verifies freshness and needs only Python 3:
+```sh
+scripts/native-prototype.sh build
+scripts/native-prototype.sh run
+scripts/native-prototype.sh snapshot
+```
+
+The prototype seeds synthetic in-memory conversations and does not contact a provider.
+Use it for visual exploration; use `native-app.sh` for durable Core Data behavior.
+
+## Provider setup and credentials
+
+Settings includes templates for Z.ai general API, local 9router, OpenAI Platform, and
+custom compatible providers. Enter an endpoint, model, and key explicitly, then select
+the provider in the composer. Group messages require selecting one or more replying
+Bots and reviewing their ordered requests.
+
+The experimental Codex login path imports a user-selected ChatGPT `auth.json` for the
+current process only. It is not an OpenAI Platform API key, does not refresh, and is
+restricted to its documented fixed origin. Protected Keychain access still requires
+authorized signing. For an ad-hoc local build, choose **This session only** so the key
+remains in memory until quit; no plaintext credential file is created.
+
+Read the [provider setup contract](docs/PROVIDER-SETUP.md),
+[provider core limits](docs/PROVIDER-CORE.md), and
+[Codex adapter contract](docs/CODEX-ADAPTER-CONTRACT.md) before testing a live account.
+
+## Feature highlights
+
+### Native workspace
+
+- three-pane desktop shell with sidebar, conversation, and optional inspector;
+- minimum-width behavior preserves the composer and collapses the inspector first;
+- Dark, Light, and Follow System appearance with saved pane widths/visibility;
+- searchable conversations, latest-message previews, timestamps, unread reply badges,
+  hidden-chat recovery, and explicit empty/error states.
+
+### Bots, groups, replies, and mentions
+
+- create/edit Bot profiles and groups with detached edit buffers;
+- stale profile snapshots require an explicit reload instead of overwriting newer edits;
+- group recipient order is visible and preserved through consent and generation;
+- typed/menu mentions are identity-safe, with duplicate-name disambiguation;
+- reply references are conversation-scoped and preserve a two-line excerpt;
+- Stop keeps completed group replies and cancels only remaining work.
+
+### Attachments and export
+
+- text attachments use a native file picker and atomic managed copies;
+- chips can be removed before sending;
+- every send discloses destination, model, content, and file metadata before credential lookup;
+- export uses the native Save Panel and JSON format v3, with explicit secret-scrubbing limits;
+- images are not a supported attachment type in this release.
+
+### Routines
+
+- interval and daily schedule editing;
+- explicit routine owner/provider authorization;
+- Run Now, pause/resume, Stop, delete, and history;
+- launch/wake policy and 30-second awake execution are tested within the app boundary;
+- no claim of a 24/7 background worker when the app is closed or the machine sleeps.
+
+## Verification
+
+The latest native verification snapshot reports **564 tests**: 300 WorkspaceCore tests
+plus 264 native-shell tests, all passing. Coverage includes:
+
+- Core Data migration, persistence, drafts, pagination, export, and deletion;
+- provider streaming, queueing, Stop/Retry, errors, and offline fixtures;
+- ordered group rounds, aggregate consent, cancellation, and mention routing;
+- profile edits, conflict/discard behavior, replies, attachments, routines, and appearance;
+- narrow-window rendering, Settings rendering, and build/signature checks.
+
+Run the main test suite with:
+
+```sh
+scripts/native-app.sh test
+```
+
+Useful focused offline checks:
+
+```sh
+scripts/native-app.sh smoke
+scripts/native-app.sh provider-smoke
+scripts/native-app.sh provider-smoke --settings
+scripts/native-app.sh codex-smoke --settings
+scripts/native-app.sh profile-smoke
+scripts/native-app.sh reply-smoke
+scripts/native-app.sh attachment-smoke
+scripts/native-app.sh group-smoke
+scripts/native-app.sh mention-smoke
+scripts/native-app.sh appearance-smoke
+scripts/native-app.sh unread-smoke --fixture-foreground
+scripts/native-app.sh export-smoke
+scripts/native-app.sh deletion-smoke
+scripts/native-app.sh routine-smoke
+```
+
+These commands use isolated synthetic fixtures. They do not require contributor
+credentials or make billable live provider requests.
+
+## Screen documentation and visual evidence
+
+Start with the [complete feature atlas](docs/FEATURE-ATLAS.md). It maps every screen,
+control, state, validation rule, persistence boundary, permission boundary, ASCII
+layout, source citation, and evidence limitation.
+
+- [Workspace screens W01–W19](docs/SCREENS-WORKSPACE.md)
+- [Management and Settings screens M01–M20D](docs/SCREENS-MANAGEMENT.md)
+- [Screenshot catalog and capture limitations](docs/SCREENSHOT-CATALOG.md)
+- [Offline screenshot gallery](docs/screenshots/index.html)
+- [Machine-readable screenshot manifest](docs/screenshots/manifest.json)
+- [Reference-screen observations and neutral ASCII](docs/REFERENCE-SCREENS.md)
+- [Computer/terminal boundary](docs/COMPUTER-TERMINAL-CONTRACT.md)
+
+The public gallery contains only synthetic BotWorkspace renders: 58 PNG files from 24
+offline scenarios. It does not publish user-supplied reference screenshots, private
+runtime state, credentials, or infrastructure configuration.
+
+## Architecture
+
+```text
+SwiftUI + AppKit
+        │
+        ▼
+Presentation adapter / native workspace views
+        │
+        ▼
+WorkspaceRepository ───────────────► Core Data v4
+        │                                  │
+        ├── drafts, messages, groups       ├── migrations
+        ├── profile edits                  ├── routines/history
+        └── export snapshots               └── local workspace state
+
+Native Settings + Composer
+        │
+        ▼
+GenerationCoordinator
+        ├── CredentialStore
+        ├── ChatProvider / Codex adapter
+        └── URLSession + streamed events
+```
+
+The current computer inspector is intentionally disconnected. There is no embedded
+remote desktop, terminal, shell executor, private endpoint, or automatic computer
+connection in this repository.
+
+## GitHub Pages documentation site
+
+The static [HTML feature atlas](https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/)
+and [HTML screenshot gallery](https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/screenshots/)
+are published by `.github/workflows/pages.yml`.
+
+Pages serves documentation and synthetic PNGs only. It does not run the macOS app,
+provider backends, model requests, or remote terminal sessions.
+
+After changing public contracts, regenerate and verify the allowlisted site:
 
 ```sh
 python3 -B scripts/build-pages.py --render
@@ -107,40 +246,67 @@ python3 -B scripts/build-pages.py --check
 python3 -B scripts/build-pages.py --output _site
 ```
 
-Choose a fresh output directory for subsequent local runs; nonempty output is
-intentionally not overwritten.
+Use a fresh output directory for each local assembly; the builder refuses to overwrite
+non-empty output. CI uploads only `_site`, after the privacy, hash, link, anchor, and
+freshness checks pass.
 
-Push the reviewed docs, generated `site/`, and publication scripts to `main` to run
-`.github/workflows/pages.yml`, or dispatch **Publish feature atlas** manually. The
-workflow must finish successfully before the public URL is ready. `_site/` is an
-ignored build artifact; no Pages server code or native app build runs there.
+## Repository map
 
 ```text
-SwiftUI + AppKit → presentation adapter → WorkspaceRepository → Core Data
-
-Native provider settings + composer → GenerationCoordinator
-  → CredentialStore + ChatProvider → URLSession / SSE
+Packages/WorkspaceCore/          Core Data, repository, provider, and domain tests
+Prototypes/NativeShell/          SwiftUI/AppKit app, preview, and native-shell tests
+docs/                            Product contracts, screen catalogs, and gallery sources
+docs/assets/                     Public README artwork and documentation assets
+scripts/native-app.sh            Durable app build, test, and offline smoke entry point
+scripts/native-prototype.sh      Session-only prototype build and snapshot entry point
+scripts/capture-screen-atlas.py  Isolated synthetic screenshot capture
+scripts/verify-screen-atlas.py   Screenshot/document completeness verifier
+scripts/build-pages.py           Static HTML renderer and Pages artifact assembler
+site/                            Committed generated HTML used by the Pages workflow
 ```
 
-- [Product and acceptance contract](docs/NATIVE-REWRITE-CONTRACT.md)
-- [Durable workspace and verification](docs/DURABLE-WORKSPACE.md)
-- [Conversation activity and read state](docs/UNREAD-CONVERSATIONS.md)
-- [Ordered group replies and round consent](docs/GROUP-ROUNDS.md)
-- [Draft mentions, identity and routing](docs/GROUP-MENTIONS.md)
-- [Appearance and layout preferences](docs/APPEARANCE.md)
-- [Native attachment workflow and storage decision](docs/ATTACHMENTS.md)
-- [Workspace export format and privacy limits](docs/WORKSPACE-EXPORT.md)
-- [Confirmed bot deletion and group repair](docs/BOT-DELETION.md)
-- [Routine execution, native controls and scheduling limits](docs/ROUTINES.md)
-- [Provider core and verification gaps](docs/PROVIDER-CORE.md)
-- [Experimental Codex adapter contract](docs/CODEX-ADAPTER-CONTRACT.md)
-- [Native prototype, pages and layout](docs/NATIVE-PROTOTYPE.md)
-- [Product scope](PRODUCT.md) · [Design](DESIGN.md) · [Contributing](CONTRIBUTING.md)
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), the [product contract](docs/NATIVE-REWRITE-CONTRACT.md),
+and the [durable-workspace checkpoint](docs/DURABLE-WORKSPACE.md) first.
+
+```sh
+scripts/native-app.sh test
+xcrun swift-format lint --strict --recursive \
+  Packages/WorkspaceCore/Sources Packages/WorkspaceCore/Tests \
+  Prototypes/NativeShell/Sources Prototypes/NativeShell/Tests
+bash -n scripts/native-app.sh scripts/native-prototype.sh
+git diff --check
+```
+
+Contribution boundaries:
+
+- keep changes focused and add regression tests for changed behavior;
+- use original code/assets; do not submit extracted reference-app code, private endpoints,
+  credentials, workspace databases, signing material, or personal conversations;
+- keep provider tests offline with URLProtocol/protocol fixtures;
+- never run the separately authorized live Codex stdin diagnostic automatically;
+- preserve explicit consent, draft-on-failure, stale-edit rejection, export scrubbing,
+  and honest disconnected states;
+- document verification gaps instead of presenting a fixture as live compatibility.
+
+## Known limitations
+
+- Real provider compatibility is not broad release certification; one authorized account
+  check does not cover every endpoint, model, quota, or account state.
+- Authorized Keychain access, notarized distribution, and full signing validation remain open.
+- Physical keyboard/IME, VoiceOver, OS file-picker grants, sleep/wake, and some native
+  accessibility/error-dialog paths still require manual verification.
+- The computer panel is a disconnected placeholder; no graphical desktop or terminal
+  adapter is implemented.
+- Text attachments are supported; image attachments are not.
+- Routines require the app/machine lifecycle defined by the routine contract; there is
+  no hidden always-on worker.
 
 ## License and provenance
 
-[MIT](LICENSE) for this project's original code and documentation. Third-party
-names and marks are not licensed by this project. Private third-party reference
-screenshots, extracted app bundles, credentials, workspace data and agent runtime
-state are excluded from the public source. The app draws its own interface and
-geometric avatars; no reference image is required to build or run it.
+Original source and documentation are licensed under [MIT](LICENSE).
+Third-party names and marks remain the property of their respective owners. The original
+reference screenshots, extracted app bundles, credentials, workspace data, private memory,
+and runtime artifacts are intentionally excluded from the public source. The repository's
+original [idea capsule](PROPOSAL.md) is retained as provenance, not as a claim of affiliation.
