@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confirmed bot deletion and group repair · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/BOT-DELETION.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="confirmed-bot-deletion-and-group-repair">Confirmed bot deletion and group repair</h1>
+<p>The durable native app offers <strong>Delete Bot…</strong> in a direct conversation's context menu. Hide/unhide stays separate and reversible. Development and smoke verification use isolated synthetic workspaces only, never the user's saved workspace.</p>
+<h2 id="confirmation-and-affected-records">Confirmation and affected records</h2>
+<p>The native sheet names the bot and counts its direct conversations, messages, drafts, generation records, owned routine definitions, run history, and unreferenced attachment counts/bytes. It also counts active or queued affected replies, lists groups with remaining member counts, and warns when a group will need repair. Cancel/Escape closes without deleting. There is no default Return shortcut for the destructive action; <strong>Delete Bot</strong> is explicit.</p>
+<p>Pending composer drafts are flushed before loading the impact. Confirmation is tied to the captured bot identity, not the current sidebar selection. One deletion can be accepted at a time. A stale or failed operation disables confirmation until <strong>Review Current Impact</strong> loads a fresh plan. Export is a separate action: cancel first to <a href="WORKSPACE-EXPORT.html">export a copy</a>. Deletion cannot be undone by the app.</p>
+<table>
+<thead>
+<tr>
+<th>Record</th>
+<th>Policy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bot and its direct conversations</td>
+<td>Permanently removed; identity is never reassigned</td>
+</tr>
+<tr>
+<td>Direct messages, drafts, generation records</td>
+<td>All removed, not just the loaded page</td>
+</tr>
+<tr>
+<td>Owned routines</td>
+<td>Definitions and run history removed; unrelated owners' routines stay</td>
+</tr>
+<tr>
+<td>Group conversations</td>
+<td>Retained with this bot removed from future membership</td>
+</tr>
+<tr>
+<td>Group messages/drafts/generation history</td>
+<td>Retained, including partial replies and immutable speaker-name snapshots</td>
+</tr>
+<tr>
+<td>Shared provider configuration and credentials</td>
+<td>Not deleted or read by deletion</td>
+</tr>
+<tr>
+<td>Direct attachment content</td>
+<td>Delete only IDs with no surviving message/draft reference; confirmation includes count and total bytes</td>
+</tr>
+<tr>
+<td>Missing/corrupt affected attachment content</td>
+<td>Reject deletion rather than silently lose or miscount content</td>
+</tr>
+</tbody>
+</table>
+<p>The <a href="ROUTINES.html">routine occurrence ledger</a>, introduced in schema v2, is retained in schema v3. Confirmation includes owned history and active claims, even claims still waiting for credentials before a generation exists. Native routine execution controls are connected with explicit consent and awake-only scheduling. The <a href="ATTACHMENTS.html">attachment foundation</a> stores exact text bytes under the same transaction boundary; shared/surviving references protect those bytes from deletion.</p>
+<h2 id="transaction-and-concurrency-contract">Transaction and concurrency contract</h2>
+<p><code>WorkspaceRepository.botDeletionPlan(botID:)</code> captures the affected identities and counts in one serialized Core Data operation. <code>BotDeletionPlan.hasSameContent(as:)</code> compares destructive structure—bot name, direct record IDs, routine/run IDs, deleted attachment IDs/total bytes, and group titles/remaining ordered membership—not the global workspace revision. Unrelated provider edits or another conversation's stream do not invalidate consent. Content changes within an already counted message/draft remain part of that record; this is not a byte-for-byte content checksum confirmation.</p>
+<p><code>GenerationCoordinator.deleteBot(expected:)</code> validates the current plan before cancelling affected work. Newly active/queued replies require fresh confirmation; naturally completed ones need not. Cancellation scope comes from the repository, not caller-supplied extra conversation IDs. Per-bot/conversation operation epochs invalidate sends/retries suspended before deletion, and affected queued jobs cannot start while their siblings are stopped. Already running unrelated conversations are not cancelled. Queue starts may be briefly suspended while deletion is coordinated.</p>
+<p>Affected transports are cancelled and awaited before physical deletion. The repository transaction recomputes destructive impact and requires affected generation records to be terminal, then removes all direct records/routines/bot and updates group membership in one save. Save failure rolls back this transaction. Earlier provider cancellation is not an undoable database change: if deletion later fails, records remain but replies may already be stopped and require explicit Retry. Cancelling a request also cannot undo work already performed by a remote provider.</p>
+<p>Quit and repository reconnect join an accepted deletion before closing/replacing its store. A failure during the quit wait keeps the app open. Cancelling a pending impact lookup or reconnecting cannot reopen a stale sheet. Success clears only deleted presentation caches and targets; a post-commit refresh error does not falsely say the deletion failed. Late transcript callbacks cannot repopulate a deleted row.</p>
+<h2 id="readable-groups-with-zero-or-one-member">Readable groups with zero or one member</h2>
+<p>Removing members can leave a group with fewer than two available bots. Its history and draft stay readable. The composer shows <strong>Group needs repair</strong> and an <strong>Edit Group…</strong> action. Sending and retrying are rejected at both native and core boundaries before credential reads/transmission. Historical replies from the deleted bot remain attributed but cannot be retried as that deleted identity.</p>
+<p>Normal group creation and replacement still require 2–6 distinct valid members. The profile CAS operation accepts an exact existing 0/1-member baseline so the native editor can repair it; stale baselines still reject. Existing hidden members may be retained under the ordinary profile-editing rules. Close/reopen preserves this state.</p>
+<h2 id="verification-and-limits">Verification and limits</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> test</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> deletion-smoke</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> deletion-smoke <span class="at">--small</span></span></code></pre></div>
+<p>Original deletion milestone suite: <strong>291 tests passed</strong> (153 core + 138 native), including 8 repository deletion tests, 8 coordinator deletion tests and 12 native deletion tests.</p>
+<p>Repository tests cover more than 100 direct messages, exact row removal, zero/one member group preservation and repair, restart, rollback, stale impact, active-work rejection, unrelated revisions, providers and unsupported attachments. Coordinator tests cover affected active/queued cancellation, unrelated streams, stale/new activity, paused preparation/retry, failure and explicit retry, and no credentials for degraded groups. Native tests cover identity-bound confirmation, draft/cache preservation, Cancel, stale reload, zero-member groups, reopen/repair, and accepted close/reconnect.</p>
+<p>The sandboxed native smoke creates two bots and a group, uses an offline provider fixture to persist group history, renders the real confirmation sheet, invokes its controller action, reopens SQLite and verifies the retained group/history/provider and removed bot/direct conversation/routine. It captures the narrow repair UI too. It does not click the physical context menu/button through XCUITest, prove VoiceOver focus restoration, simulate disk-full/power loss, or certify macOS 14 runtime behavior. No live provider or real user workspace is used. Signing remains local/ad-hoc.</p>
+<p>The full <a href="NATIVE-REWRITE-CONTRACT.html">rewrite contract</a> remains in progress.</p>
+</main></body></html>

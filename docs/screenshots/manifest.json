@@ -1,0 +1,569 @@
+{
+  "formatVersion": 1,
+  "capturedAtUTC": "2026-09-10T02:45:55.998903+00:00",
+  "sourceCommit": "ab2c2f3ad60fc5a1377297bb0e4aae146a5ca137",
+  "captureKind": "native-window-render; isolated synthetic fixtures, not desktop capture",
+  "limitations": [
+    "Fixture screenshots are not proof of live provider or physical UI interaction.",
+    "Unread uses explicit fixture foreground, not the real window-focus gate.",
+    "User-supplied reference screenshots and production auth are never inputs."
+  ],
+  "scenarios": [
+    {
+      "id": "sample-chat",
+      "command": "scripts/native-prototype.sh snapshot",
+      "exitCode": 0
+    },
+    {
+      "id": "sample-picker",
+      "command": "scripts/native-prototype.sh snapshot --picker",
+      "exitCode": 0
+    },
+    {
+      "id": "sample-group-picker",
+      "command": "scripts/native-prototype.sh snapshot --group",
+      "exitCode": 0
+    },
+    {
+      "id": "workspace",
+      "command": "scripts/native-app.sh smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "workspace-minimum",
+      "command": "scripts/native-app.sh smoke --minimum",
+      "exitCode": 0
+    },
+    {
+      "id": "provider-chat",
+      "command": "scripts/native-app.sh provider-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "provider-settings",
+      "command": "scripts/native-app.sh provider-smoke --settings",
+      "exitCode": 0
+    },
+    {
+      "id": "router-settings",
+      "command": "scripts/native-app.sh provider-smoke --router-models",
+      "exitCode": 0
+    },
+    {
+      "id": "codex-chat",
+      "command": "scripts/native-app.sh codex-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "codex-settings",
+      "command": "scripts/native-app.sh codex-smoke --settings",
+      "exitCode": 0
+    },
+    {
+      "id": "edit-bot",
+      "command": "scripts/native-app.sh profile-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "edit-group",
+      "command": "scripts/native-app.sh profile-smoke --edit-group",
+      "exitCode": 0
+    },
+    {
+      "id": "reply",
+      "command": "scripts/native-app.sh reply-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "export",
+      "command": "scripts/native-app.sh export-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "deletion",
+      "command": "scripts/native-app.sh deletion-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "routine",
+      "command": "scripts/native-app.sh routine-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "attachment",
+      "command": "scripts/native-app.sh attachment-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "appearance",
+      "command": "scripts/native-app.sh appearance-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "appearance-minimum",
+      "command": "scripts/native-app.sh appearance-smoke --minimum",
+      "exitCode": 0
+    },
+    {
+      "id": "unread",
+      "command": "scripts/native-app.sh unread-smoke --fixture-foreground",
+      "exitCode": 0
+    },
+    {
+      "id": "group-round",
+      "command": "scripts/native-app.sh group-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "group-round-minimum",
+      "command": "scripts/native-app.sh group-smoke --minimum",
+      "exitCode": 0
+    },
+    {
+      "id": "mention",
+      "command": "scripts/native-app.sh mention-smoke",
+      "exitCode": 0
+    },
+    {
+      "id": "mention-minimum",
+      "command": "scripts/native-app.sh mention-smoke --minimum",
+      "exitCode": 0
+    }
+  ],
+  "images": [
+    {
+      "scenario": "sample-chat",
+      "file": "sample-chat--desktop-chat.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "2bed283a9b3f8fb94af222eb69002b0a8e7d86d96143f9de0215db7cc9ce4d4d"
+    },
+    {
+      "scenario": "sample-picker",
+      "file": "sample-picker--desktop-picker.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "be280dbd01c9850ac2c064567dc4fd8119844fe4636c59d46c8a72ca483d9b0a"
+    },
+    {
+      "scenario": "sample-group-picker",
+      "file": "sample-group-picker--desktop-group.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "e2a6a182a5c634a9db52037960659ddca15345992799ffae820f15c811ebd558"
+    },
+    {
+      "scenario": "workspace",
+      "file": "workspace--desktop-durable-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "80cb86a289aa66d309b3f6714521dd5a5150f82c19b5c0ef7835ccb2025c55a6"
+    },
+    {
+      "scenario": "workspace-minimum",
+      "file": "workspace-minimum--small-durable-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "2b784ef41a722a0770c1f86cf5ae5801a54efd989907e1da15b5fa5757b48734"
+    },
+    {
+      "scenario": "provider-chat",
+      "file": "provider-chat--desktop-provider-chat.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "8ffe4be0f4469043ae48800798c2d4498558ef905edbbf5d4245548c7cbb425a"
+    },
+    {
+      "scenario": "provider-settings",
+      "file": "provider-settings--desktop-provider-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "a9b1876ea214e6dadcd37c117682cb028d5a8ac23e60aceeeac73da5963a82b8"
+    },
+    {
+      "scenario": "router-settings",
+      "file": "router-settings--desktop-router-model-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "0e7e16990c8e97ad5e0905a0008905464bb03ed5f05d0333d02926650d104851"
+    },
+    {
+      "scenario": "codex-chat",
+      "file": "codex-chat--desktop-codex-chat.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "4e91700e3a35beef7b560becdb6520752ac331595d94ad3afb726e51a9c5e751"
+    },
+    {
+      "scenario": "codex-settings",
+      "file": "codex-settings--desktop-codex-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "1a2693c3e02c070e9c3090aefbd049c0b90dd5611edd66b9fa0f3f36c6f6d0cd"
+    },
+    {
+      "scenario": "edit-bot",
+      "file": "edit-bot--desktop-edit-bot.png",
+      "width": 480,
+      "height": 553,
+      "sha256": "2a8817f767106e32c9cd8887b758b2163f65693794f73c3eb27522a2d542539a"
+    },
+    {
+      "scenario": "edit-group",
+      "file": "edit-group--desktop-edit-group.png",
+      "width": 480,
+      "height": 553,
+      "sha256": "ddbd7406e9130eaf1023a47f83309b5bdb6d9a248a65eecdfa628860860bf05c"
+    },
+    {
+      "scenario": "reply",
+      "file": "reply--desktop-reply-chat.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "e67552baaab6a6508b1b40832df9ac7bb66d14fef02b76afeca4b5b5d643279e"
+    },
+    {
+      "scenario": "export",
+      "file": "export--desktop-export-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "d4bd9f59115c57570b495153dfc3dba39b1ca71a47e3c519fa2d8d488d84b405"
+    },
+    {
+      "scenario": "deletion",
+      "file": "deletion--desktop-delete-confirmation.png",
+      "width": 500,
+      "height": 411,
+      "sha256": "07580f5ed9417174b98a2d3d7a936ff97f9167f2e7d0183128cf752dcadffab0"
+    },
+    {
+      "scenario": "deletion",
+      "file": "deletion--desktop-degraded-group.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "07bcb6345d8cd9d9a81f0da57ee5ca9bb6289236a0378a234d78d1aada8a4642"
+    },
+    {
+      "scenario": "routine",
+      "file": "routine--desktop-routine-editor.png",
+      "width": 480,
+      "height": 693,
+      "sha256": "471d743d6be684ccf0976005ccd2824e7a34744ac60bf6a7deab54edb9a3f754"
+    },
+    {
+      "scenario": "routine",
+      "file": "routine--desktop-routine-history.png",
+      "width": 600,
+      "height": 550,
+      "sha256": "40e882f4665b91b65684bfd268bd8f1da817396fdd1d293ce6643b1a2d1efadd"
+    },
+    {
+      "scenario": "attachment",
+      "file": "attachment--desktop-attachment-confirmation.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "d9d6f708edd19055d5d30e5054f584b0bbbe6644bde15a698c6a3a00def589ab"
+    },
+    {
+      "scenario": "attachment",
+      "file": "attachment--desktop-durable-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "73ae9b05b08b77df88fa511be9b199682d8285c282499628965a6fa28e954a86"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-light-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "188dd23d2cf68e13d6d39aa26ba2525bac39b40af9b4d7e69cd146f8033ad0cf"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-light-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "b68c3b2499fa4d3b716379dac219cfc45894c8720dc399c62e35ef1b4b2be562"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-dark-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "6b13f8b44e4d9aa50bc8b5d34820aca6d81661022f4934c4b9054382f8b4c3b9"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-dark-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "4056c2f98330d827b18517c6b1c63ec50a1d0af2421802764bf40ba0c95767d6"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-system-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "6b13f8b44e4d9aa50bc8b5d34820aca6d81661022f4934c4b9054382f8b4c3b9"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-system-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "4616a02785ac6fda176e3a95e317e8d7831f58b70dfcc4cf51fd13c4103df4d9"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-light-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "188dd23d2cf68e13d6d39aa26ba2525bac39b40af9b4d7e69cd146f8033ad0cf"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-appearance-light-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "b68c3b2499fa4d3b716379dac219cfc45894c8720dc399c62e35ef1b4b2be562"
+    },
+    {
+      "scenario": "appearance",
+      "file": "appearance--desktop-durable-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "9f40790acf1345b0c29ccf8d011b44601ea112d036f3e1d5721c597e4a198a4c"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-light-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "b45a0e0965c7f2d593cab17c876818455cf7ecf51d923f10ea08e4868fc394cb"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-light-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "b68c3b2499fa4d3b716379dac219cfc45894c8720dc399c62e35ef1b4b2be562"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-dark-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "230086dd005f73f4697c18a3dc9e6272cb52a37b9fad576945eb0e4aaa712613"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-dark-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "4056c2f98330d827b18517c6b1c63ec50a1d0af2421802764bf40ba0c95767d6"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-system-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "230086dd005f73f4697c18a3dc9e6272cb52a37b9fad576945eb0e4aaa712613"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-system-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "4616a02785ac6fda176e3a95e317e8d7831f58b70dfcc4cf51fd13c4103df4d9"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-light-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "b45a0e0965c7f2d593cab17c876818455cf7ecf51d923f10ea08e4868fc394cb"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-appearance-light-settings.png",
+      "width": 580,
+      "height": 772,
+      "sha256": "b68c3b2499fa4d3b716379dac219cfc45894c8720dc399c62e35ef1b4b2be562"
+    },
+    {
+      "scenario": "appearance-minimum",
+      "file": "appearance-minimum--small-durable-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "49bfb0ca0156dcd0b3539240a90427dc21b9c6c11c5a8785c9ba522a71b9ae50"
+    },
+    {
+      "scenario": "unread",
+      "file": "unread--desktop-unread-dark-before.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "434e0539f1674323304cb7f76f5fdb5369b882eb637f90d12614348a3d7405cc"
+    },
+    {
+      "scenario": "unread",
+      "file": "unread--desktop-unread-light-before.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "a73626bba01812a42848e9a06fb70e9e71a519a766192e666309e171134b46e2"
+    },
+    {
+      "scenario": "unread",
+      "file": "unread--desktop-unread-after.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "9a082e639dede0a8430828ba6b04eae8a6d50c473c5c843e1fd458fabdaf3018"
+    },
+    {
+      "scenario": "unread",
+      "file": "unread--desktop-durable-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "e8c65ccc1391838cc5810ad77183f6b726b70e63a200fe3daadb405eae44d935"
+    },
+    {
+      "scenario": "group-round",
+      "file": "group-round--desktop-group-composer-light.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "bbbc355f70f3dcfcf96fc8db39ab7e5e7a251b352b19a437b2bc9d1cc1d024f6"
+    },
+    {
+      "scenario": "group-round",
+      "file": "group-round--desktop-group-composer-dark.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "e2867c2079cf4bd6df4dad2de51d6b631a0309612e450b327c2d84c263ae1dc1"
+    },
+    {
+      "scenario": "group-round",
+      "file": "group-round--desktop-group-round-confirmation.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "82d9a0aa4397d5db0ee5b54ce6c6e7dfd80418b36f262fd83da7be2d7ac9e500"
+    },
+    {
+      "scenario": "group-round-minimum",
+      "file": "group-round-minimum--small-group-composer-light.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "a672d842e4b46730e412547bd4b1d0a82c99441265992967b30a6a30a8606733"
+    },
+    {
+      "scenario": "group-round-minimum",
+      "file": "group-round-minimum--small-group-composer-dark.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "6270414421e0a2d5fb5bbc71c101d9b5caf45fcbf2cf2642205b8d984c102dfe"
+    },
+    {
+      "scenario": "group-round-minimum",
+      "file": "group-round-minimum--small-group-round-confirmation.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "82d9a0aa4397d5db0ee5b54ce6c6e7dfd80418b36f262fd83da7be2d7ac9e500"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-mention-composer-light.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "c1ae38c8931e560b2c2295ab787c5632adc7ae773c7a076378bd5f3e17666d64"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-mention-composer-dark.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "925d785a9a0552d70e04a495d46c29dbab904a0c5a1c13d626c7c1727cb8e3dd"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-mention-confirmation-light.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "aab89acff066cc43eacc30e8ab00d606669c73266451d2d326715a5792e57f7a"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-mention-confirmation-dark.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "3257b93a5d6907c66157d34b47262a7df23be9f2df9ab28eed274a8a3f3fdae3"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-mention-invalid-light.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "21a059e7e27f34dea8c8fd283e0db380a07476ffed68d192f965b5288a52d633"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-mention-invalid-dark.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "df6f1db1b21202f4913854f6fa90973958edd4865de042fda6cb86c602d2b091"
+    },
+    {
+      "scenario": "mention",
+      "file": "mention--desktop-durable-workspace.png",
+      "width": 1280,
+      "height": 880,
+      "sha256": "df6f1db1b21202f4913854f6fa90973958edd4865de042fda6cb86c602d2b091"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-mention-composer-light.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "35faa3d621ed20f1174f3689d718c2ace6c44ce2c32638f270158354baea1ef9"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-mention-composer-dark.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "06dee97b6d2afe1713690cf7ff0a1de8ff239f72a0649f578d85bacbe455e802"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-mention-confirmation-light.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "7f55094eceadd5f15f3ea9c6cae948bcc305dff8e90c34d4f690ba8b4de175f9"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-mention-confirmation-dark.png",
+      "width": 520,
+      "height": 560,
+      "sha256": "6cebaf75bfc99629ef3a5668547d48e55f5a6d7960202db3cfc5b6473f9693ea"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-mention-invalid-light.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "9b551017b109a199fd15e310c44e2c3c00f470668e27897536e2766692f203a4"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-mention-invalid-dark.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "f49eb97da71ca3a5e2e269d29c037f8e3a9d2a0ed945a2bba273b67066876bd6"
+    },
+    {
+      "scenario": "mention-minimum",
+      "file": "mention-minimum--small-durable-workspace.png",
+      "width": 760,
+      "height": 632,
+      "sha256": "f49eb97da71ca3a5e2e269d29c037f8e3a9d2a0ed945a2bba273b67066876bd6"
+    }
+  ]
+}

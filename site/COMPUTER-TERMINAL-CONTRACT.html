@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Computer and terminal surfaces — current boundary and proposed contract · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/COMPUTER-TERMINAL-CONTRACT.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="computer-and-terminal-surfaces--current-boundary-and-proposed-contract">Computer and terminal surfaces — current boundary and proposed contract</h1>
+<p><strong>Status (2026-09-10):</strong> the native app displays <strong>No computer connected</strong>. No <code>WKWebView</code>, terminal protocol client, VNC/SPICE renderer, shell executor, or remote computer adapter is wired into the inspector. This document records the requested future surface without presenting it as shipped functionality or deployment authority.</p>
+<h2 id="c01--current-inspector-computer-card-implemented">C01 — current inspector computer card (implemented)</h2>
+<pre class="text"><code>+--------------------------+
+|      desktop icon        |
+| No computer connected    |
+| No live computer service |
+| is configured ...        |
++--------------------------+
+        Bot&#39;s screen
+Routines                 +</code></pre>
+<ul>
+<li>Entry: select a conversation and show inspector at a width that permits it.</li>
+<li>Behavior: static disconnected explanation; no connection, keyboard forwarding, screen capture, frame update, account reuse, or click-to-expand desktop operation.</li>
+<li>Evidence: <code>WorkspaceView.swift:963-978</code>; W-screen catalog; wide native fixture images.</li>
+<li>The name under the card is a UI label, not proof a computer is allocated to that Bot.</li>
+</ul>
+<h2 id="c02--deployment-information-is-outside-the-public-contract">C02 — deployment information is outside the public contract</h2>
+<pre class="text"><code>Public app documentation                 Private infrastructure
++----------------------------+           +----------------------------+
+| Disconnected UI            |           | Not bundled or published   |
+| Proposed permission gates  |    X      | No automatic connection    |
+| Synthetic fixture evidence |           | No configuration transfer  |
++----------------------------+           +----------------------------+</code></pre>
+<p>This public documentation contains no private terminal service configuration, network topology, addresses, routes, ports, credentials, or deployment history. A disconnected app card does not establish an available remote session. Any future connection needs its own explicitly approved configuration and live verification; private operational findings are not part of this site's contents.</p>
+<h2 id="c03--proposed-native-terminal-inspector-and-expansion">C03 — proposed native terminal inspector and expansion</h2>
+<pre class="text"><code>INSPECTOR                         EXPANDED TERMINAL
++-------------------------+      +------------------------------------------+
+| Terminal · chosen host  |      | Terminal · host / guest   [Disconnect] × |
+| [Connect]               | ---&gt; | Mode: View / explicitly enabled control  |
+| No implicit connection  |      |------------------------------------------|
++-------------------------+      | terminal cells, cursor, scrollback       |
+       select / expand          | status: connecting / live / closed/error |
+                                +------------------------------------------+</code></pre>
+<p>This ASCII is a <strong>proposal</strong>, not a screenshot of existing source.</p>
+<h3 id="entry-and-lifecycle-requirements">Entry and lifecycle requirements</h3>
+<ul>
+<li>Explicitly identify the destination and connection type before connecting. Do not derive a destination from arbitrary bot text or automatically reuse another app's auth.</li>
+<li>Connect only through the user-configured/approved service. No automatic public listener, installation, credential generation, remote restart, or provisioning is implied.</li>
+<li>State machine: disconnected → connecting → connected → disconnected, with explicit failed/auth-required/network-unavailable states. A terminal prompt is separate from a successful WebSocket upgrade. A blank frame must not be labeled a usable shell.</li>
+<li>One bound session owns its destination and Bot context. Switching Bots cannot silently send subsequent keystrokes to a prior guest or create extra remote sessions per thumbnail.</li>
+<li>Expanding/collapsing should reuse the intended session; define visibility/idle disconnect, app sleep/quit handling and cleanup before implementation. No hidden reconnect storm.</li>
+</ul>
+<h3 id="input-rendering-and-permission-requirements">Input, rendering and permission requirements</h3>
+<ul>
+<li>Preserve terminal escape sequences, Unicode, cursor moves, colors, scrollback, resize and paste semantics through a real terminal renderer; raw text concatenation is not enough.</li>
+<li>Choose and review the renderer explicitly; this document adopts no dependency. A native shell with a WebView terminal would not make the whole app a Tauri/browser rewrite.</li>
+<li>Distinguish observation from writable interaction. Explain that a writable terminal can mutate the remote system. Do not call JavaScript key suppression a security boundary; establish any required read-only enforcement on the actual service side.</li>
+<li>No model-driven typing, clipboard collection, file transfer, credential insertion or autonomous command execution merely because a human opened the terminal.</li>
+<li>Prevent credentials/query tokens from entering screenshots, logs, history or workspace export. Record connection metadata separately only after defining its persistence policy.</li>
+<li>Keyboard capture begins only in the terminal's focused, explicitly enabled control mode; Escape and Disconnect remain reachable. Switching focus must not send app shortcuts remotely.</li>
+</ul>
+<h3 id="acceptance-evidence-before-labeling-it-implemented">Acceptance evidence before labeling it implemented</h3>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>Required proof</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C-T01</td>
+<td>Chosen private route is reachable; WebSocket upgrade verified, not only HTTP 200</td>
+</tr>
+<tr>
+<td>C-T02</td>
+<td>Actual guest prompt/output rendered with destination attribution</td>
+</tr>
+<tr>
+<td>C-T03</td>
+<td>Resize, Unicode, cursor/color and scrollback correct in inspector/expanded view</td>
+</tr>
+<tr>
+<td>C-T04</td>
+<td>Explicitly authorized input goes to the named guest; disabled control truly cannot write under the chosen threat model</td>
+</tr>
+<tr>
+<td>C-T05</td>
+<td>Bot switch, collapse, disconnect, network drop, sleep and quit terminate/reuse sessions as specified</td>
+</tr>
+<tr>
+<td>C-T06</td>
+<td>No unintended shell input, secret logging, public exposure or user-workspace mutation in fixtures</td>
+</tr>
+<tr>
+<td>C-T07</td>
+<td>Keyboard focus, accessible status, copy/paste disclosure and minimum-size layout verified</td>
+</tr>
+</tbody>
+</table>
+<h2 id="c04--graphical-desktop-reference--future-separate-from-terminal">C04 — graphical desktop (reference / future, separate from terminal)</h2>
+<pre class="text"><code>Remote computer with a desktop session
+  → separately reviewed graphical display transport
+  → authenticated private connection + actual display renderer
+  → inspector thumbnail → connecting overlay → expanded framebuffer</code></pre>
+<p>The reference images demonstrate this visual idea, not an available desktop adapter for the rewrite. Provisioning or modifying a remote computer requires a separate, explicit infrastructure decision. Terminal output and graphical desktop frames are different kinds of data; neither is currently connected to this app. The reference's <strong>Teach a task</strong> affordance additionally implies an automation/recording contract that is not specified, implemented, or authorized here.</p>
+<h2 id="sources-and-related-contracts">Sources and related contracts</h2>
+<ul>
+<li><a href="REFERENCE-SCREENS.html">Reference layouts and observations</a></li>
+<li><a href="FEATURE-ATLAS.html">Current native feature atlas</a></li>
+<li><a href="NATIVE-REWRITE-CONTRACT.html#6-endpoint-and-permission-contract">Native rewrite permission boundary</a></li>
+</ul>
+</main></body></html>

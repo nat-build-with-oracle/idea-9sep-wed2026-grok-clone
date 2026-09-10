@@ -95,8 +95,10 @@ Explicit Run Now             Launch / wake / 30-second awake timer
 - Migration recognizes the old model explicitly, migrates to a temporary store, validates it,
   retains a consistent recovery copy and uses Core Data's store replacement API. Unknown schemas
   fail closed instead of resetting user data. A failed recovery retains its backup for recovery.
-- Export format **2**, source schema **2**, includes every routine definition and run plus
-  `summary.routineRunCount`. The format remains text-only and excludes stored credentials.
+- Current export format **3**, export source-schema marker **3**, includes every routine
+  definition and run plus `summary.routineRunCount`, and exact referenced attachment bytes.
+  These export markers are separate from the current Core Data v4 store model. Stored
+  credentials remain excluded; see the [export contract](WORKSPACE-EXPORT.md).
   Routine prompts, context already in messages, and provider destinations are private content:
   export does not scrub secrets a user has pasted into them.
 

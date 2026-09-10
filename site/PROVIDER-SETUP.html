@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Provider setup and authentication boundaries · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/PROVIDER-SETUP.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="provider-setup-and-authentication-boundaries">Provider setup and authentication boundaries</h1>
+<p>Settings → New configuration → Setup template prefills editable connection fields. It does <strong>not</strong> connect, read other applications' credentials, or verify account access. Changing a template confirms before discarding edited fields, clears entered credentials and resets loopback HTTP permission. Existing saved configurations remain manual/editable.</p>
+<h2 id="choose-credential-storage-explicitly">Choose credential storage explicitly</h2>
+<ul>
+<li><strong>Protected Keychain</strong> (default): data-protection Keychain, requiring authorized signing. Storage failure remains an error; it never changes modes automatically.</li>
+<li><strong>This session only</strong>: the app retains the key in process memory. Only an opaque reference and provider metadata are persisted. Quit/relaunch requires key re-entry; missing session keys keep drafts and never start a request. This makes an ad-hoc local build usable without claiming it has a production signing profile.</li>
+</ul>
+<p>Changing the API root or storage mode requires re-entering the key. The app never reads a stored key into the form or silently copies it between storage modes. Swift memory is not a secure-zeroization guarantee; this option avoids deliberate credential writes to disk, not OS swap, debugger or compromised-process access. Chats and non-secret settings still persist normally in either mode.</p>
+<h2 id="zai-general-api">Z.ai general API</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Template</td>
+<td>Z.ai general API</td>
+</tr>
+<tr>
+<td>API root</td>
+<td><code>https://api.z.ai/api/paas/v4</code></td>
+</tr>
+<tr>
+<td>Suggested model</td>
+<td><code>glm-5.3</code>, editable; account availability is not assumed</td>
+</tr>
+<tr>
+<td>Credential</td>
+<td>Z.ai general API key</td>
+</tr>
+<tr>
+<td>HTTP exception</td>
+<td>Off</td>
+</tr>
+</tbody>
+</table>
+<p>The documented general API accepts chat-completions requests with bearer API-key authentication. <a href="https://docs.z.ai/guides/overview/quick-start">Z.ai quick start</a>.</p>
+<p>This standalone app does not use Coding Plan quota. That plan has separate endpoint and supported-tool restrictions; do not treat subscription quota as general API balance or switch endpoints to work around an account rejection. <a href="https://docs.z.ai/devpack/faq">Z.ai Coding Plan FAQ</a>.</p>
+<p>HTTP 429 can indicate account balance/quota as well as a transient rate limit. Z.ai code <code>1113</code> specifically indicates insufficient balance or no resource package. The app does not automatically retry failed requests or rotate accounts. <a href="https://docs.z.ai/api-reference/api-code">Z.ai error codes</a>.</p>
+<h2 id="user-managed-9router">User-managed 9router</h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Template</td>
+<td>9router local gateway</td>
+</tr>
+<tr>
+<td>API root</td>
+<td><code>http://127.0.0.1:20128/v1</code> for the documented local setup</td>
+</tr>
+<tr>
+<td>Model</td>
+<td>Exact ID from the router's <code>/v1/models</code> response/dashboard</td>
+</tr>
+<tr>
+<td>Credential</td>
+<td>The <strong>router API key</strong>, not the upstream key or ChatGPT OAuth token</td>
+</tr>
+<tr>
+<td>HTTP exception</td>
+<td>Explicitly check loopback HTTP for this local URL</td>
+</tr>
+</tbody>
+</table>
+<p>The app calls <code>POST /v1/chat/completions</code> through its existing text/SSE adapter. 9router's model convention is <code>providerAlias/modelId</code>, such as <code>cx/&lt;model-id&gt;</code> or <code>glm/&lt;model-id&gt;</code>; use the exact available ID, not these placeholders. The source reviewed exposes <code>GET /v1/models</code> and enables chat API-key validation by default. Runtime/deployment settings can differ. <a href="https://github.com/decolua/9router">9router upstream</a>, <a href="https://github.com/decolua/9router/blob/699edac3/src/app/api/v1/models/route.js">model route</a>, <a href="https://github.com/decolua/9router/blob/699edac3/src/sse/handlers/chat.js">chat handler</a>.</p>
+<p>Start/configure the gateway separately; BotWorkspace does not install or launch it, import its upstream account tokens, expose a local server, or claim upstream subscription eligibility. The gateway receives your conversation content and can forward it to its configured upstream. Locality does not make that forwarding private.</p>
+<h3 id="discover-local-models">Discover local models</h3>
+<p>After entering a loopback API root and explicitly enabling HTTP if needed, click <strong>Discover local models</strong>. This sends only a credential-free <code>GET</code> to the root's <code>/models</code> route. Filter the result and explicitly choose an ID; your typed model is not replaced automatically. Prefixes, case and internal spaces are preserved.</p>
+<p>Discovery refuses remote origins, redirects, non-JSON responses, malformed IDs and oversized responses (1 MiB / 2,048 models). The filtered menu shows at most 80 IDs. Changing the root, HTTP permission, template or configuration cancels/invalidates the old lookup, as does closing Settings. Errors do not include raw server text. No cookies, saved keys, credential-store reads or conversation content are involved. An empty result is reported honestly, and a successful list is <strong>not</strong> validation of the router key, upstream account, model permissions or a successful chat request. Protected model-list deployments can use a manually entered model ID instead.</p>
+<p>URLProtocol tests and a native fixture smoke cover this path. A real 9router end-to-end chat test remains open:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> provider-smoke <span class="at">--router-models</span></span></code></pre></div>
+<h2 id="chatgpt-login-is-not-an-openai-platform-key">ChatGPT login is not an OpenAI Platform key</h2>
+<p>The OpenAI Platform template requires a Platform API key and an available model. Existing Codex ChatGPT login (<code>auth.json</code> or OS credential storage) is a different authentication flow. Do not paste those tokens into the provider credential field. <a href="https://learn.chatgpt.com/docs/auth">Official Codex authentication</a>.</p>
+<h3 id="experimental-native-codex-login">Experimental native Codex login</h3>
+<ol type="1">
+<li>In Settings, choose <strong>New configuration → Provider type → Codex login (experimental)</strong>.</li>
+<li>Give it a name and choose a model supported by your Codex account. The initial suggestion is <code>gpt-5.6-luna</code>; availability is not assumed or discovered automatically.</li>
+<li>Click <strong>Import Codex auth.json…</strong> and explicitly select the file maintained by your Codex login. In the macOS file picker, Show Hidden Files is ⇧⌘. and Go to Folder is ⇧⌘G. No home-folder scan or startup credential import occurs.</li>
+<li><strong>Save and use</strong>, then send from the composer. Saving is not a connection test.</li>
+</ol>
+<p>The importer accepts ChatGPT-mode JSON up to 1 MiB and retains only the access token and optional account ID in process memory. It never copies the file, keeps its pathname, uses its refresh/ID token, writes OAuth material to Keychain, or changes Codex's login. Quit/relaunch or provider rejection requires explicit re-import of a current file; Codex remains the only refresh owner. The API-key field is never used for this login, and switching provider kind requires fresh, kind-matching credentials rather than copying a stored value.</p>
+<p>Requests go only to <code>https://chatgpt.com/backend-api/codex/responses</code>, with normal TLS, no redirects, and this app's own client identity. Text input includes the same disclosed conversation context as other providers. Tools are explicitly empty/disabled; unknown or tool output fails closed. <code>store: false</code> is a request setting, not a promise about the provider's retention policy. There is no shell, MCP, browser, computer, file-action or tool interpreter in this adapter.</p>
+<p>This is implementation-level compatibility with Codex's backend, <strong>not a supported public third-party API or subscription-entitlement guarantee</strong>. Backend/model changes can break it. There is no automatic fallback to another endpoint/account/transport. <a href="CODEX-ADAPTER-CONTRACT.html">Adapter contract and source references</a>.</p>
+<p>Codex App Server is the documented managed-login integration surface but is not used here. The inspected protocol does not establish one universal tool-free turn switch; <code>approvalPolicy: never</code> is not equivalent to disabling tools. <a href="https://learn.chatgpt.com/docs/app-server">Official App Server documentation</a>.</p>
+<p>Normal automated tests and <code>codex-smoke</code> use only synthetic credentials and an intercepted URL load. An explicit <code>codex-smoke-stdin</code> developer command is separate: it reads a deliberately supplied auth JSON from stdin, makes a minimal <strong>real</strong> fixed-origin reply request, verifies native persistence/attribution in a temporary workspace, and exits. It does not open the normal workspace, refresh the login, or put secrets in arguments or files. Do not run it in CI or pipe credentials to an unreviewed binary. It can consume account quota. Local account diagnostics stay private; no <code>pass</code> scanning or credential lookup is performed by the app.</p>
+<p>Keep keys and auth files out of screenshots, logs, repository fixtures and source control. Swift process memory does not guarantee secure zeroization or protection against OS swap, debuggers, crash dumps or a compromised process.</p>
+</main></body></html>

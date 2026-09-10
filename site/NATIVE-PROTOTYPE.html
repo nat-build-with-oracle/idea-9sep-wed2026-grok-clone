@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Native feasibility prototype · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/NATIVE-PROTOTYPE.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="native-feasibility-prototype">Native feasibility prototype</h1>
+<p>This is a reversible SwiftUI/AppKit spike for step 2 of the <a href="NATIVE-REWRITE-CONTRACT.html">native rewrite contract</a>, not the finished app. It uses original native code and vector avatars; the reference PNG is not embedded in the executable. SwiftUI remains a recommendation for macOS-first, not a user-confirmed cross-platform decision.</p>
+<p><strong>Scope note:</strong> this page describes the sample-only <code>NativeShellPrototype.app</code>. The same native shell now also builds a separate durable <code>BotWorkspace.app</code>; see <a href="DURABLE-WORKSPACE.html">durable workspace</a>. The sample bundle still uses session-only fixtures and never silently copies them into the durable store.</p>
+<h2 id="run-and-reproduce">Run and reproduce</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> build       <span class="co"># local ad-hoc-signed sandboxed .app</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> run         <span class="co"># normal macOS launch</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> test        <span class="co"># model and composer-policy tests</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> snapshot    <span class="co"># native window-view render, then quit</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> snapshot <span class="at">--small</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> snapshot <span class="at">--picker</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-prototype.sh</span> snapshot <span class="at">--group</span></span></code></pre></div>
+<p>The app is <code>Prototypes/NativeShell/.build/NativeShellPrototype.app</code>. Snapshot mode prints the PNG path in the prototype's sandbox temporary directory. It renders this app's view hierarchy, not the desktop or any other application. Screenshots and build output are ignored artifacts. Public sample content is synthetic; private reference names, account details and conversation history are not included.</p>
+<h2 id="what-the-prototype-contains">What the prototype contains</h2>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Available now</th>
+<th>Boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Workspace</td>
+<td>Native window controls, dark three-pane layout, split handles, auto-collapsing inspector</td>
+<td>Divider preferences are not saved; interactive resize quality remains a manual gate</td>
+</tr>
+<tr>
+<td>Sidebar</td>
+<td>Sample bots, search, conversation selection, hide/show-hidden</td>
+<td>Session-only; sample history is not current data</td>
+</tr>
+<tr>
+<td>New chat</td>
+<td>Search existing bots; create bot; select 2–6 bots and create group</td>
+<td>Original independent local IDs; no model or cloud work</td>
+</tr>
+<tr>
+<td>Transcript</td>
+<td>Selectable native text, timestamps, default latest-message position</td>
+<td>Small fixture only; no paginated persistence or performance claim</td>
+</tr>
+<tr>
+<td>Composer</td>
+<td>AppKit text editor, local user messages, per-conversation drafts</td>
+<td>Return policy is tested, live IME routing is not; changes disappear on quit</td>
+</tr>
+<tr>
+<td>Inspector</td>
+<td>Explicit disconnected computer; paused preview routine list</td>
+<td>No screen capture, remote-control adapter or scheduler</td>
+</tr>
+<tr>
+<td>Panels</td>
+<td>Bot creation, template catalog, profile, settings, add paused routine</td>
+<td>Settings is a prototype sheet, not the contracted separate production scene</td>
+</tr>
+</tbody>
+</table>
+<p>Local send is deliberately a <strong>preview action</strong>, not the production provider-unconfigured behavior. Its notice states that no provider is connected and the session is not saved. Adding a routine does not schedule anything. Attachments expose an availability explanation rather than reading files. Template entries create separate local bots, not downloaded integrations.</p>
+<h2 id="layout-and-flow">Layout and flow</h2>
+<pre class="text"><code>+-------------------+---------------------------+----------------------+
+| native controls + | Bot / group       details | Settings / collapse  |
+| Search            |---------------------------|----------------------|
+| Bot conversations | Selectable transcript     | Computer disconnected|
+|                   |                           | Paused routines      |
+| Marketplace       |                           |                      |
+| Profile           | +  Native composer  Send  |                      |
++-------------------+---------------------------+----------------------+
+          Cmd+N -&gt; recipient picker -&gt; existing bot -&gt; conversation
+                                  -&gt; create bot   -&gt; conversation
+                                  -&gt; select 2–6   -&gt; group conversation</code></pre>
+<p>At 800×650pt the inspector is absent and the composer remains visible; at 1280×880pt all three panes render. This is screenshot inspection, not an exhaustive resize test.</p>
+<h2 id="verification-record--2026-09-09">Verification record — 2026-09-09</h2>
+<p>Host: macOS 26.5.1, Apple Silicon, Xcode 26.6, Swift 6.3.3. Deployment target is macOS 14; that OS has <strong>not</strong> been runtime-tested.</p>
+<ul>
+<li>The original <strong>25 model/input-policy tests</strong> remain passing, with one additional synthetic-fixture regression test. Five AppKit tests cover plain-text/undo/accessibility configuration, marked-text preservation across SwiftUI updates, selector refusal without a key event, composer replacement/teardown, and disabled-editor behavior. They do not simulate or claim a live IME session. Seven durable UI-adapter tests bring the base shell suite to <strong>38 passing tests</strong>. A further 13 provider-presentation tests now bring the shell package to <strong>51 tests</strong>; see <a href="PROVIDER-CORE.html">provider integration</a>.</li>
+<li>Native <code>.app</code> was launched normally through Launch Services and in snapshot mode, producing chat, narrow-chat, recipient and group renders. An initial latest-message clipping defect was found visually and corrected with the native default bottom scroll anchor; desktop and narrow confirmation renders show the final bubble above the composer.</li>
+<li>Local code-signature verification passes. Extracted entitlement is only <code>com.apple.security.app-sandbox=true</code>; no network/file-access privilege was added. This is ad-hoc development signing, <strong>not</strong> Developer ID, notarization, or distribution readiness.</li>
+<li>Shared source now includes provider settings/fixture URLs and a provider integration service. The sample-only bundle does not connect that service and still lacks outgoing network entitlement. The durable bundle explicitly enables outgoing network access. Neither embeds a WebView or invokes a command-execution backend; this is not a network packet-capture claim.</li>
+<li>Swift formatting lint, shell syntax check and whitespace validation are part of the verification commands below.</li>
+</ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">swift</span> test <span class="at">--package-path</span> Prototypes/NativeShell</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">xcrun</span> swift-format lint <span class="at">--strict</span> <span class="at">--recursive</span> Prototypes/NativeShell/Sources Prototypes/NativeShell/Tests</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> <span class="at">-n</span> scripts/native-prototype.sh</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">codesign</span> <span class="at">--verify</span> <span class="at">--strict</span> Prototypes/NativeShell/.build/NativeShellPrototype.app</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> diff <span class="at">--check</span></span></code></pre></div>
+<h3 id="still-open--do-not-mark-these-passed">Still open — do not mark these passed</h3>
+<ul>
+<li>Real keyboard event routing: IME candidate acceptance, Shift+Return, shortcuts, picker arrows, focus restoration, undo, text selection and VoiceOver. Pure input-policy tests are not end-to-end IME evidence.</li>
+<li>Full accessibility tree audit, interactive pane dragging, large text and reduced-motion checks.</li>
+<li>T13: 10,000 <strong>persisted</strong> messages, paginated initial 100, 50 updates/sec and Instruments timing. Small fixture rendering proves none of those thresholds.</li>
+<li>Historical schema migrations, file attachment/export boundaries, live provider/Keychain signing verification and full native provider interaction, routine execution and remaining lifecycle recovery. Persistence and provider core now have separate implementation evidence in <a href="DURABLE-WORKSPACE.html">durable workspace</a> and <a href="PROVIDER-CORE.html">provider core</a>; those are not full UI/release completion.</li>
+<li>Remaining production bot/group edits and lifecycle semantics; full Settings-window keyboard/discard/a11y verification; macOS 14 execution; release signing/notarization.</li>
+</ul>
+<p>Full R01–R09 / T01–T18 acceptance remains governed by the production contract. This milestone neither completes the full rewrite nor replaces the remaining work with a mock UI.</p>
+</main></body></html>

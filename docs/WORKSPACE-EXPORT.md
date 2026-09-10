@@ -26,8 +26,9 @@ message, prompt, name or selected attachment remains user content. The native UI
 Routine-run history includes immutable provider bindings and typed outcomes. Format 3
 adds the [attachment storage foundation](ATTACHMENTS.md): exact content once per
 referenced ID, with metadata/hash/reference validation. Missing or corrupt content
-rejects capture rather than silently losing files. Native file selection/chips and
-confirmed provider transmission, as well as import/restore, are still unimplemented;
+rejects capture rather than silently losing files. Native file selection, chips and confirmed text transmission are now implemented
+and covered by the separate [attachment workflow](ATTACHMENTS.md). Real OS-panel
+sandbox grants remain a manual verification gate. Import/restore is not implemented;
 this does not close all R04/R06/T11 acceptance requirements.
 
 ## Format contract

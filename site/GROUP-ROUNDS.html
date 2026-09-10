@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ordered group replies · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/GROUP-ROUNDS.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="ordered-group-replies">Ordered group replies</h1>
+<p>An explicitly selected group can ask <strong>one to six current members</strong>, in the displayed order. One user message is stored. Each selected bot has its own attributed generation and reply; the app does not pretend a single response is a team of independent workers.</p>
+<h2 id="user-contract">User contract</h2>
+<ul>
+<li>Selection order is reply order. The composer shows the recipients, and the round confirmation lists every recipient in full, the provider/model, context and any files.</li>
+<li>Multiple recipients mean <strong>multiple separate provider requests</strong>, potentially with separate charges or quota usage. Review is required even for a text-only round. No request starts while this confirmation is merely open.</li>
+<li>Every member receives the <strong>same pre-round conversation context and text attachments</strong>, plus its own bot instructions. Later members do not receive earlier members' replies from this round. This is an ordered set of independent answers, not a recursive bot conversation.</li>
+<li>There is one active request per conversation and at most three across the app. A later send in the same conversation queues behind the entire accepted round.</li>
+<li>A provider failure is visible on that member. Other already-approved members continue in order; failed members are not automatically retried.</li>
+<li><strong>Stop round</strong> cancels the active and remaining queued members of that user message. Completed replies and persisted partial text remain. Unrelated user messages are not stopped. Cancellation cannot undo bytes already sent or provider charges already incurred.</li>
+<li><strong>Finish or Stop the round before Retry.</strong> Retry targets only the chosen failed/cancelled/interrupted member. It retains the original user message and earlier output; completed siblings are not resent. File retries still require a fresh exact disclosure.</li>
+<li>Relaunch marks unfinished work interrupted, with manual retry only. Nothing is auto-replayed.</li>
+</ul>
+<p><a href="GROUP-MENTIONS.html">Draft mentions</a> can instead select the ordered recipients. Every mention send requires review, including one recipient; malformed or unresolved mentions never fall back to manual recipients. Binary/image transmission and recursive agent/tool execution remain unsupported.</p>
+<h2 id="flow-and-persistence">Flow and persistence</h2>
+<pre class="text"><code>ordered recipients + draft
+  -&gt; capture pre-round transcript and file bytes once
+  -&gt; derive one request fingerprint per recipient
+  -&gt; show aggregate disclosure (no credentials, no transport)
+  -&gt; user confirms
+  -&gt; recapture; compare every fingerprint and target order
+  -&gt; authorize every request
+  -&gt; atomic revision-guarded save
+       one user message
+       N queued generations, indexed 0 ... N-1
+       captured target names
+       clear only the matching draft
+  -&gt; enqueue N jobs contiguously
+       member 1 -&gt; member 2 -&gt; ... -&gt; member N
+         completed / failed per member
+
+Stop round
+  -&gt; invalidate round epoch + suspend dispatch (before any await)
+  -&gt; remove queued siblings + cancel active transport
+  -&gt; atomically cancel nonterminal siblings
+  -&gt; join active transport + resume unrelated dispatch</code></pre>
+<p><code>Generation.userMessageID</code> is the round key. Optional <code>roundIndex</code> and <code>targetSpeakerNameSnapshot</code> fields are added to the existing Codable generation payload; the Core Data model stays <strong>v4</strong> and JSON export stays <strong>v3</strong>. Older payloads decode those optional fields as nil. A multi-recipient user message has no singular <code>generationID</code>; assistant messages retain their generation link. No separate Round entity or migration is needed.</p>
+<p>The aggregate <code>RoundTransmissionPlan</code> contains ordered request metadata/fingerprints, not credentials or file bytes. The coordinator compares the whole plan before reading a credential. If context, members, bot instructions, files, provider/model or selection order changes, review fails closed. A workspace mutation during authorization rejects the revision-guarded save; the draft remains and zero requests start. The user can review the updated round again.</p>
+<p>If a Stop save fails, transport still stops and queued siblings are never reinserted. The unpersisted cancellation remains available for explicit Stop retry or orderly shutdown recovery. The app reports the persistence failure rather than claiming the stored statuses are cancelled.</p>
+<h2 id="verification-boundaries">Verification boundaries</h2>
+<ul>
+<li><code>GroupRoundRepositoryTests</code>: atomicity, identities/reservations, attachments/drafts, ordering, rename-stable attribution, legacy payload decoding, restart and terminal guards.</li>
+<li><code>GroupRoundCoordinatorTests</code>: frozen context and one file/history read per preparation, whole-round consent before credentials, zero-effect preparation/save failures, queue order, cancellation races/save recovery, per-member failure and retry.</li>
+<li>Native tests and offline visual smoke cover the selection/confirmation/send/stop integration; they do not prove provider account entitlement, a real unlocked-window keyboard/VoiceOver session, notarization or runtime compatibility on an actual macOS 14 host.</li>
+</ul>
+<p>Existing <a href="PROVIDER-CORE.html">provider</a>, <a href="ATTACHMENTS.html">attachment</a>, <a href="PROVIDER-SETUP.html">credential</a> and <a href="UNREAD-CONVERSATIONS.html">unread</a> boundaries continue to apply.</p>
+</main></body></html>

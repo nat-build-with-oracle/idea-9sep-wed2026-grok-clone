@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Group draft mentions · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/GROUP-MENTIONS.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="group-draft-mentions">Group draft mentions</h1>
+<p>Use <strong>Mention</strong> above the composer to insert a current group member at the cursor, or type:</p>
+<pre class="text"><code>@Research
+@&quot;Writing Partner&quot;
+\@literal-handle</code></pre>
+<p>A mention starts at the beginning, whitespace or opening/separator punctuation. Bare names contain Unicode letters/numbers, <code>_</code> or <code>-</code>; names containing spaces or other punctuation use JSON-string quoting and escaping. Names match case-sensitively after NFC normalization. Emails, URL spans and code spans/fences are not recipient instructions. A routing escape <code>\@</code> at a mention boundary means literal <code>@</code>; embedded non-routing escapes, code and URL text stay unchanged. Inline backtick delimiters match exact run lengths; an unmatched inline run stays literal. Fences start at a line boundary (up to three spaces), use at least three backticks or tildes, and close with the same marker at least as long followed only by spaces or tabs on that line. An inline match may close at the first equal-length boundary run, but cannot cross a fence boundary to pair with its contents. An unclosed fence extends to the end of the draft. These are explicit routing exclusions, not a complete Markdown or email-address validator.</p>
+<h2 id="identity-and-user-experience">Identity and user experience</h2>
+<ul>
+<li>The picker inserts <code>@"Name"{full-uuid}</code> as plain text, replacing the native selection. This syntax persists in the ordinary local draft across restart. It is deliberately visible, not an unpersisted rich-text chip. Native undo applies to insertion.</li>
+<li>Bound tokens require both the current member UUID and matching name. A removed member or renamed binding is stale, not silently redirected. Reinsert it with Mention.</li>
+<li>Name-only mentions require one unique current member. Duplicate names are resolved by picking a member; menus, recipient preview and confirmation include a distinguishing ID prefix. Full identity is available in help/accessibility text.</li>
+<li>First mention occurrence determines reply order; repeating a member does not create another request. One to six members are supported. Any incomplete, malformed, unknown, ambiguous or stale recognized mention blocks the <strong>whole send</strong>, even alongside valid mentions.</li>
+<li>Mentions <strong>replace</strong> manual recipients. The ordered preview becomes read-only; edit mentions to change it. Removing all mentions restores the previous manual selection. Manual changes cannot retarget a reviewed mention send.</li>
+<li>Every mention send uses the existing group-round review, <strong>including one recipient</strong>. Nothing is sent and no credential is read merely because the review is open.</li>
+<li>Insertions are one-shot and bound to conversation, workspace context and expected draft. Navigation, newer text, disabled editor or active marked text rejects the insertion. Finish composing and choose Mention again; the app does not queue a surprise edit after IME.</li>
+</ul>
+<p>The parser only sees the current <strong>group user draft</strong>. Direct-chat text, previous messages, assistant output, reply previews and attachment bodies never change recipients.</p>
+<h2 id="flow-and-transmission-boundary">Flow and transmission boundary</h2>
+<pre class="text"><code>raw local draft + current group members
+  -&gt; resolve all mentions, or show error and retain draft
+  -&gt; ordered identities + readable message text
+  -&gt; capture routing signature and full round transmission plan
+  -&gt; review names/identities, provider/model, context, files, request count
+  -&gt; confirm; re-resolve raw draft and compare captured identities
+  -&gt; existing whole-plan/revision checks, then credential authorization
+  -&gt; atomic one-user/N-generation commit and exact-source draft clear
+  -&gt; existing ordered replies, Stop round and manual per-member Retry</code></pre>
+<p>Valid bound <code>{UUID}</code> suffixes are removed from <code>SendCommand.text</code>/<code>SendRoundCommand.text</code>; readable <code>@"Name"</code> spelling remains. Literal routing escapes are unescaped outside excluded code/URLs. Local bindings therefore do not enter the stored user transcript or its later provider context. Drafts and user-selected workspace exports <strong>do</strong> contain raw local bindings; they are identifiers, not credentials. Arbitrary UUID text outside a mention is not scrubbed.</p>
+<p>The transient <code>MentionRoutingSnapshot</code> binds conversation, raw source, readable text and ordered UUID/name snapshots. Confirmation re-resolves and compares this snapshot instead of comparing manual selections. Draft/provider/member changes require fresh review. The existing coordinator also compares every request fingerprint before credentials and rejects stale revisions during authorization before committing or dispatching requests.</p>
+<p>Both send commands accept optional transient <code>expectedDraftText</code>. When supplied, atomic clear requires exact raw source equality as well as matching reply and attachment identities; otherwise legacy trimmed comparison remains. A newer draft survives. No draft entity, Core Data version or JSON export version changes for mentions.</p>
+<h2 id="verification-and-remaining-boundaries">Verification and remaining boundaries</h2>
+<ul>
+<li><code>GroupMentionTests</code>: grammar, Unicode, identity, order, lexical exclusions, sanitized output and long input; pure text only.</li>
+<li><code>MatchingDraftSourceTests</code>: real temporary SQLite atomic raw-source matching, sanitized transcript, newer-draft preservation and legacy behavior for single/round sends.</li>
+<li><code>MentionWorkspaceTests</code>: offline routing, consent, persistence, stale-review and context isolation at the native presentation boundary.</li>
+<li><code>NativeComposerAppKitTests</code>: hosted native selection replacement/spacing/undo and stale, disabled, marked-text and exactly-once command guards.</li>
+<li><code>scripts/native-app.sh mention-smoke</code> (<code>--minimum</code> for 760×600): isolated provider fixture and native Light/Dark composer/error/confirmation renders. No normal user workspace or preference mutation, real credentials or live network.</li>
+</ul>
+<p>These checks do not prove physical keyboard/IME/VoiceOver operation, actual unlocked-window focus, macOS 14 runtime support, real provider entitlement, signing or notarization. Mention routing grants no tools, shell, file access or private third-party API permission. Existing <a href="GROUP-ROUNDS.html">group round</a>, <a href="PROVIDER-CORE.html">provider</a>, <a href="ATTACHMENTS.html">attachment</a> and <a href="WORKSPACE-EXPORT.html">export</a> boundaries remain unchanged.</p>
+</main></body></html>

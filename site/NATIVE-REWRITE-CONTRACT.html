@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Native rewrite: product and engineering contract · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/NATIVE-REWRITE-CONTRACT.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="native-rewrite-product-and-engineering-contract">Native rewrite: product and engineering contract</h1>
+<p>Status: <strong>production contract in progress; native shell and durable local workspace available</strong> · 2026-09-09</p>
+<p>This supersedes the browser-first sketch. It is not authorization to connect to private Grok Bot endpoints or operate the user's computer. The goal remains an original app based on the supplied reference, not a screenshot pasted into a wrapper.</p>
+<h2 id="1-decision-and-evidence">1. Decision and evidence</h2>
+<p><strong>Recommend SwiftUI + targeted AppKit for a macOS-first v1.</strong> Choose Tauri 2 instead if Windows/Linux delivery is a first-release requirement. That product priority is the remaining material platform decision; it has been asked, not assumed confirmed.</p>
+<p>Decision drivers, in order:</p>
+<ol type="1">
+<li>Native macOS input, windows, menus, accessibility, and lifecycle behavior.</li>
+<li>Fidelity to the supplied messaging UI without reproducing private service dependencies.</li>
+<li>A testable domain/persistence/provider boundary, independent of rendering.</li>
+</ol>
+<p>Current repository evidence:</p>
+<ul>
+<li><code>PROPOSAL.md</code> is an idea capsule, not an implemented product specification.</li>
+<li><code>PRODUCT.md</code> records the native planning change and the lack of supplied backend credentials.</li>
+<li><code>DESIGN.md</code> records the three-pane reference and proposed dimensions.</li>
+<li>The supplied image is preserved unchanged locally, with SHA-256 matching the original attachment. This third-party design reference is intentionally excluded from the public repository and is not an app/test dependency.</li>
+<li>Local inspection found macOS 26.5.1 / arm64, Xcode 26.6, Swift 6.3.3, selected Xcode developer directory. Rust/Cargo were not found on PATH; this is a setup cost, not evidence Tauri is impossible.</li>
+<li>No proprietary app source was imported. <code>Packages/WorkspaceCore</code> now implements the durable repository; the native shell remains under <code>Prototypes/NativeShell</code> with separate sample/durable bundles. Other section 10 paths remain planned.</li>
+<li>The <a href="NATIVE-PROTOTYPE.html">sample verification record</a> and <a href="DURABLE-WORKSPACE.html">durable workspace evidence</a> are bounded milestone evidence, not fulfillment of all requirements below or confirmation of the open cross-platform decision.</li>
+<li><a href="GROUP-ROUNDS.html">Ordered explicit group rounds</a> now provide one shared user message, ordered attributed replies, aggregate consent and round-wide Stop. Mention-driven selection below remains unfinished; this checkpoint does not narrow R04 or the group contract.</li>
+</ul>
+<h3 id="option-comparison">Option comparison</h3>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>SwiftUI + AppKit</th>
+<th>Tauri 2 + web UI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Actual UI</td>
+<td>Native view hierarchy, selective AppKit bridges</td>
+<td>System WebView UI with Rust host; desktop-native shell, not native controls throughout</td>
+</tr>
+<tr>
+<td>Screenshot fidelity</td>
+<td>Custom SwiftUI layout/shapes; bridge editor when needed</td>
+<td>CSS offers direct layout matching, but native input/window behavior still needs deliberate work</td>
+</tr>
+<tr>
+<td>macOS integration</td>
+<td>Platform APIs directly</td>
+<td>Native integration through Rust commands/plugins or platform-specific bridges</td>
+</tr>
+<tr>
+<td>Cross-platform</td>
+<td>Separate Windows/Linux implementation</td>
+<td>Shared web UI, with platform packaging/testing still required</td>
+</tr>
+<tr>
+<td>Toolchain here</td>
+<td>Xcode and Swift available</td>
+<td>Rust/Cargo setup required; web build toolchain also selected</td>
+</tr>
+<tr>
+<td>Trust boundary</td>
+<td>Swift domain services → OS/provider APIs</td>
+<td>WebView → narrowly scoped Tauri commands/capabilities → OS/provider APIs</td>
+</tr>
+<tr>
+<td>Dependency posture</td>
+<td>Apple frameworks; no third-party requirement</td>
+<td>Tauri/Rust/web dependencies are an explicit adoption decision</td>
+</tr>
+</tbody>
+</table>
+<p>Do not claim either option is inherently faster, smaller, or safer without measuring the actual build. SwiftUI does not mean all views must be pure SwiftUI. Tauri does not remove the need for permissions, secrets handling, migrations, or background-runtime design.</p>
+<h3 id="proposed-stack">Proposed stack</h3>
+<ul>
+<li>Deployment target: macOS 14+ (proposed compatibility baseline; validate on that OS, not just this host).</li>
+<li>SwiftUI scene/window composition; AppKit <code>NSTextView</code> for the composer if IME, selection, and paste tests need it. Native transcript prototype decides SwiftUI lazy list versus <code>NSTableView</code>; no embedded web chat as a shortcut.</li>
+<li><code>@MainActor</code> presentation store, value-type domain DTOs, service protocols for effects.</li>
+<li>Core Data behind a <code>WorkspaceRepository</code> protocol with versioned model and serialized writes. Use stable UUID attributes, not managed-object IDs, at service boundaries.</li>
+<li>URLSession provider transport; Keychain for credentials; Foundation/OSLog for redacted diagnostics.</li>
+<li>App Sandbox from the first native build, outgoing network entitlement, and user-selected file access only. Security-scoped access is released after copying selected files into app-managed storage; no broad filesystem entitlement.</li>
+<li>XCTest/Swift Testing for domain/services and XCUITest for native UI. AppKit accessibility identifiers are part of the test contract.</li>
+<li>No Node sidecar, localhost server, private Cursor API adapter, or general-purpose command executor in v1.</li>
+</ul>
+<h2 id="2-scope-and-finish-line">2. Scope and finish line</h2>
+<h3 id="required-v1">Required v1</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Requirement</th>
+<th>Completion evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R01</td>
+<td>Launchable native <code>.app</code> with the screenshot-led sidebar/chat/inspector</td>
+<td>Local app launch plus native-window screenshot comparison</td>
+</tr>
+<tr>
+<td>R02</td>
+<td>Create/edit/hide bots; create/edit groups; search/switch conversations</td>
+<td>UI tests and repository restart tests</td>
+</tr>
+<tr>
+<td>R03</td>
+<td>Persistent messages/drafts, streamed model replies, explicit offline/error/cancel states</td>
+<td>Deterministic provider integration tests and native UI flow</td>
+</tr>
+<tr>
+<td>R04</td>
+<td>Safe local attachments, group targeting, bot profiles, export</td>
+<td>Boundary tests plus UI tests; no missing controls presented as finished</td>
+</tr>
+<tr>
+<td>R05</td>
+<td>Routine CRUD, pause/resume, run-now, visible run history and honest scheduling</td>
+<td>Fake-clock tests including sleep/relaunch and a UI run test</td>
+</tr>
+<tr>
+<td>R06</td>
+<td>Settings for appearance, provider configuration, credentials, workspace export</td>
+<td>Keychain/provider mock tests; secret leak scan; settings UI test</td>
+</tr>
+<tr>
+<td>R07</td>
+<td>Computer inspector that accurately reports disconnected/unsupported</td>
+<td>No fabricated live screen or remote-execution claim; adapter contract defined</td>
+</tr>
+<tr>
+<td>R08</td>
+<td>Local template catalog creating independent bots</td>
+<td>Install twice creates different IDs, with no shared conversations/credentials</td>
+</tr>
+<tr>
+<td>R09</td>
+<td>Keyboard/VoiceOver/window-resize quality and distributable build recipe</td>
+<td>Accessibility/manual matrix plus build/signing verification described below</td>
+</tr>
+</tbody>
+</table>
+<h3 id="not-silently-included">Not silently included</h3>
+<p>Cloud VMs, browser automation, local shell execution, remote desktop control, bot-to-bot autonomous loops, multi-user cloud sync, private Grok/Cursor subscriptions, and 24/7 background jobs require separate contracts and authority. The screenshot does not prove these services are available to a new app. Voice calling is deferred; a microphone control must be absent or clearly unavailable until a speech/voice adapter is deliberately adopted.</p>
+<h2 id="3-ui-contract">3. UI contract</h2>
+<h3 id="ui-01-window-and-layout">UI-01 Window and layout</h3>
+<ul>
+<li>One primary workspace window; use a separate native Settings scene. No fake traffic-light buttons: the window owns real system controls.</li>
+<li>Default sidebar 280pt, allowed 240–400pt; chat minimum 424pt; inspector default 320pt/minimum 280pt. Divider positions persist separately from domain data.</li>
+<li>Proposed minimum content size 760×600pt. Auto-collapse inspector when all three minima cannot fit; preserve user's preferred inspector state when widening again.</li>
+<li>Dark reference tokens: base <code>#070707</code>, sidebar <code>#111111</code>, agent bubble <code>#262626</code>, selected row <code>#353535</code>; system fonts, original vector avatars, real SF Symbols where appropriate.</li>
+<li>Reference image is a design/test artifact, not a release asset containing the user's sample conversations.</li>
+</ul>
+<h3 id="ui-02-sidebar-and-search">UI-02 Sidebar and search</h3>
+<ul>
+<li>Rows show avatar, name, last-message preview, timestamp, unread state; selection is independent of hover.</li>
+<li>Search is case/diacritic-insensitive across bot/group names and message text; names/results identify their conversation. Hidden conversations are excluded from the default list and recoverable via Hidden Chats.</li>
+<li>Cmd+N opens recipient picker; Cmd+F focuses search; Cmd+, opens Settings. Escape closes the top transient surface without deleting drafts or messages.</li>
+<li>Hide never deletes a bot or stops its routines; the action describes that behavior. Permanent delete is a separate confirmation naming impacted conversations/routines.</li>
+</ul>
+<h3 id="ui-03-new-chat-bots-and-groups">UI-03 New chat, bots and groups</h3>
+<ul>
+<li>Picker has existing bots, Create Bot, Create Group; keyboard arrows/Return operate a highlighted option and Escape dismisses.</li>
+<li>Selected group members render removable chips; proposed group size 2–6 distinct non-hidden bots; a group cannot contain itself or another group in v1.</li>
+<li>Create commits domain objects in one transaction; cancel does not leave ghost bots/groups.</li>
+<li>Edit name/description/color/shape; trimmed name 1–80 characters, description at most 8,000. Labels and limits are validated identically at UI/service boundaries.</li>
+<li>Group membership edits affect future replies, not the speaker attribution of existing messages.</li>
+</ul>
+<h3 id="ui-04-transcript-and-composer">UI-04 Transcript and composer</h3>
+<ul>
+<li>Native selectable text, timestamps, reply reference, attachment chips, partial assistant messages, error/retry and stop affordances.</li>
+<li>Return sends; Shift+Return inserts a newline; Return during IME marked-text composition never sends. Empty/whitespace-only text with no valid attachment cannot send.</li>
+<li>Drafts are keyed by conversation ID and persisted within 500ms idle and on conversation switch/app deactivation.</li>
+<li>Auto-scroll only when at bottom before an update; otherwise preserve visible anchor and show Jump to latest. Streaming must not steal selection or focus.</li>
+<li>Copy exports only the selected message text; model output is text, never executable HTML or a tool instruction with authority.</li>
+<li>No provider: message draft remains editable and Configure Provider is offered; sending is not represented as an AI success.</li>
+</ul>
+<h3 id="ui-05-inspector-and-editing">UI-05 Inspector and editing</h3>
+<ul>
+<li>Computer: disconnected by default, with a precise explanation. No placeholder wallpaper labeled live. Routine list belongs to selected bot; group routines choose an explicit owner.</li>
+<li>Routine editor validates name, prompt, trigger, timezone, enabled state. Show next planned run and latest terminal result/error.</li>
+<li>Settings, profile and routine sheets have Cancel/Save semantics; closing without saving discards edits only after a dirty-state warning.</li>
+<li>All image/icon-only controls have accessibility labels. Focus returns to the invoking control after dismissal.</li>
+</ul>
+<h2 id="4-domain-and-persistence-contract">4. Domain and persistence contract</h2>
+<p>Proposed stable types (Swift value types at service boundaries):</p>
+<table>
+<thead>
+<tr>
+<th>Entity</th>
+<th>Essential fields/invariants</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bot</td>
+<td>UUID, name, description, avatar shape/color/image reference, createdAt, hiddenAt?, providerConfigID?</td>
+</tr>
+<tr>
+<td>Conversation</td>
+<td>UUID, kind `direct</td>
+</tr>
+<tr>
+<td>Message</td>
+<td>UUID, conversationID, monotonic persisted sequence, role, speakerBotID?, immutable speakerNameSnapshot?, text, createdAt, replyToID?, attachmentIDs, generationID?</td>
+</tr>
+<tr>
+<td>Draft</td>
+<td>conversationID, text, attachmentIDs, replyToID?, updatedAt</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>UUID, conversationID, userMessageID, attemptID, targetBotID, state, lastEventSequence, error?</td>
+</tr>
+<tr>
+<td>Routine</td>
+<td>UUID, ownerBotID, name, prompt, trigger, timezoneID, enabled, nextRunAt?</td>
+</tr>
+<tr>
+<td>RoutineRun</td>
+<td>UUID, routineID, scheduledOccurrenceID?, status, startedAt?, endedAt?, generationID?, error?</td>
+</tr>
+<tr>
+<td>ProviderConfig</td>
+<td>UUID, kind, baseURL, modelID, secretKeychainReference; never the secret value</td>
+</tr>
+<tr>
+<td>Attachment</td>
+<td>UUID, conversationID, originalName, mediaType, byteCount, contentHash, app-managed opaque content (see <a href="ATTACHMENTS.html#storage-decision-adr-attachment-01">storage ADR</a>)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Bot identity and conversation identity are distinct. A group is a conversation, not a fake bot. Deleting a bot does not reuse its ID for another identity.</li>
+<li>Repository mutations are serialized transactions. User message and initial generation state commit atomically before any network request.</li>
+<li>No network request inside a persistence transaction; no managed object crosses actor/queue boundaries.</li>
+<li>Workspace location: app-managed Application Support directory; fixture/test stores use temporary directories. Source repo is not user-data storage.</li>
+<li>Schema versioned from v1; migration failure must preserve original bytes and open a recovery/error state, never silently reset to demo data.</li>
+<li>Export is a versioned JSON manifest plus safe attachments, excludes secrets and authentication headers, and writes atomically. Import is deferred unless separately accepted; export is not an implied import UI.</li>
+<li>Seed/reference data is opt-in or clearly labeled sample content. Public fixtures must be synthetic, not copied user history or claims of live external work.</li>
+<li>Confirmed delete policy must name counts before action: cancel active work, delete the bot's direct conversation/messages/draft and owned routine definitions/history, remove it from future group membership. Group message history retains immutable speaker-name snapshots. Groups left with fewer than two active members remain readable but require membership repair before sending. Shared provider configuration/credentials are not deleted with a bot. Remove attachment bytes only after no surviving message/draft references them.</li>
+</ul>
+<h2 id="5-service-and-function-contracts">5. Service and function contracts</h2>
+<p>SwiftUI calls domain services, not HTTP endpoints or Core Data directly. Suggested APIs are design contracts, not implemented signatures:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode swift"><code class="sourceCode swift"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">protocol</span> WorkspaceRepository <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">snapshot</span><span class="op">()</span> <span class="fu">async</span> <span class="kw">throws</span> -&gt; <span class="fu">WorkspaceSnapshot</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">apply</span><span class="op">(</span><span class="va">_</span> <span class="va">mutation</span><span class="op">:</span> <span class="dt">WorkspaceMutation</span><span class="op">)</span> <span class="fu">async</span> <span class="kw">throws</span> -&gt; <span class="fu">WorkspaceChange</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="kw">protocol</span> ChatProvider <span class="op">{</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">stream</span><span class="op">(</span><span class="va">_</span> <span class="va">request</span><span class="op">:</span> <span class="dt">ChatRequest</span><span class="op">)</span> -&gt; <span class="fu">AsyncThrowingStream</span><span class="op">&lt;</span><span class="dt">ChatEvent</span>, <span class="dt">Error</span><span class="op">&gt;</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="kw">protocol</span> CredentialStore <span class="op">{</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">read</span><span class="op">(</span><span class="va">_</span> <span class="va">reference</span><span class="op">:</span> <span class="dt">CredentialReference</span><span class="op">)</span> <span class="fu">async</span> <span class="kw">throws</span> -&gt; <span class="fu">Data</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">write</span><span class="op">(</span><span class="va">_</span> <span class="va">secret</span><span class="op">:</span> <span class="dt">Data</span><span class="op">,</span> <span class="va">for</span> <span class="va">reference</span><span class="op">:</span> <span class="dt">CredentialReference</span><span class="op">)</span> <span class="fu">async</span> <span class="kw">throws</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">remove</span><span class="op">(</span><span class="va">_</span> <span class="va">reference</span><span class="op">:</span> <span class="dt">CredentialReference</span><span class="op">)</span> <span class="fu">async</span> <span class="kw">throws</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="kw">protocol</span> ComputerConnection <span class="op">{</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">status</span><span class="op">()</span> <span class="fu">async</span> -&gt; <span class="fu">ComputerStatus</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">func</span> <span class="fu">disconnect</span><span class="op">()</span> <span class="fu">async</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Success contract</th>
+<th>Failure contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>createBot / updateBot</td>
+<td>Return persisted bot and revision; creation IDs generated once</td>
+<td>Invalid input changes nothing; persistence error visible</td>
+</tr>
+<tr>
+<td>createGroup / setMembers</td>
+<td>Commit unique membership and conversation together</td>
+<td>Missing/deleted member rejects transaction, no partial group</td>
+</tr>
+<tr>
+<td>sendMessage</td>
+<td>Persist user message + generation once, then stream</td>
+<td>Save failure makes zero network calls; provider error keeps user message</td>
+</tr>
+<tr>
+<td>cancelGeneration</td>
+<td>Cancel task, persist terminal cancelled state, preserve partial text</td>
+<td>Late events ignored; cancellation isn't an undo of an external request</td>
+</tr>
+<tr>
+<td>retryGeneration</td>
+<td>New attempt linked to same user message; visible retry provenance</td>
+<td>Never duplicate the user message or silently resend after restart</td>
+</tr>
+<tr>
+<td>hideBot / deleteBot</td>
+<td>Hide is reversible; delete has explicit affected-record policy</td>
+<td>Active generation cancelled before deletion; no orphan visible rows</td>
+</tr>
+<tr>
+<td>saveRoutine / runNow</td>
+<td>Validate, persist then schedule; each run has its own record</td>
+<td>Concurrent duplicate occurrence does not create a second run</td>
+</tr>
+<tr>
+<td>stageAttachment</td>
+<td>Copy to app-managed storage after limits/path validation</td>
+<td>Permission/size/type/disk error leaves draft unchanged</td>
+</tr>
+<tr>
+<td>exportWorkspace</td>
+<td>Produce redacted manifest and attachments at chosen location</td>
+<td>Report failure; don't announce a partial export as complete</td>
+</tr>
+</tbody>
+</table>
+<h3 id="chat-state-machine">Chat state machine</h3>
+<pre class="text"><code>draft → persisting → queued → connecting → streaming → completed
+                    │           │             │
+                    └───────────┴─────────────→ failed
+                                └────────────→ cancelled
+
+failed/cancelled → explicit retry → new attempt
+app restart with nonterminal state → interrupted (manual retry)</code></pre>
+<ul>
+<li>Event envelope includes generationID, attemptID, increasing sequence and event kind: started/delta/completed/failed/cancelled.</li>
+<li>Ignore duplicate/out-of-order events already applied; ignore events for stale/cancelled attempts. Handle split UTF-8 and split SSE lines across network chunks.</li>
+<li>Proposed provider deadlines: 30s to first meaningful event, 60s idle between events, 5min total; configurable internally, deterministic in tests. No automatic retry after any response bytes without explicit provider idempotency support.</li>
+<li>One active generation per conversation in v1; other conversations can run independently, proposed global cap 3. Additional sends enqueue visibly and can be cancelled before transmission.</li>
+<li>Partial text is persisted at bounded intervals (at most 1s between flushes while active) and on terminal state. A crash may lose only the documented in-flight interval, not already committed messages.</li>
+</ul>
+<h3 id="group-response-semantics">Group response semantics</h3>
+<p>Default target is the first explicitly selected member (shown in the composer); mentions select one or more named members. If multiple are selected, run a bounded ordered round once per selected bot, attributed in the transcript. No recursive bot-to-bot loop. The group does not claim independent workers while actually returning one anonymous canned response. Cancellation stops the remaining round and preserves completed members' replies.</p>
+<p>Implemented routing details: <a href="GROUP-ROUNDS.html">ordered group rounds</a> and <a href="GROUP-MENTIONS.html">draft mention grammar, identity and consent</a>. Mention order overrides manual choices; a draft without mentions retains explicit manual targeting. Mention sends always require disclosure, including one recipient. This does not close the remaining native input, accessibility, provider or release-verification gates.</p>
+<h2 id="6-endpoint-and-permission-contract">6. Endpoint and permission contract</h2>
+<p>The installed app's <code>api2.cursor.sh/aiserver.v1.GrokBotService/*</code> paths are <strong>research evidence only</strong>, not an authorized integration API for this rewrite.</p>
+<p>For the proposed SwiftUI build:</p>
+<ul>
+<li>No local HTTP API server. UI ↔︎ domain is typed Swift calls; provider requests are isolated in <code>ProviderAdapter</code>.</li>
+<li>Initial candidate provider: a specifically documented OpenAI-compatible chat-completions endpoint, configured by the user. Adapter owns <code>/chat/completions</code>, request/response mapping and SSE parsing; compatibility is proven against a fixture, not inferred from a provider's name.</li>
+<li>Configuration stores the API root (for example a root ending in <code>/v1</code>); append <code>/chat/completions</code> exactly once. Do not infer support for tools, images, usage accounting, resumability, or provider-side idempotency. Until the named provider is selected, the network contract is a tested adapter proposal, not proof that every compatible-looking server works.</li>
+<li>HTTPS required except an explicitly chosen loopback HTTP provider. Reject URL userinfo; do not forward Authorization to a different origin on redirects. Avoid logging URLs with query secrets.</li>
+<li>Credentials entered explicitly; protected Keychain is the default. An explicit session-only option retains the key in process memory until quit and requires re-entry on relaunch; it is never selected automatically on Keychain failure. Provider settings/export store a reference only. Keychain denial/locked/unavailable is an actionable failure, not silent plaintext fallback. Changing storage mode requires key re-entry.</li>
+<li>UI clearly names destination host/model and which conversation/attachments will be transmitted. Connect/test is a user action; no automatic use of credentials from the installed app.</li>
+<li>File access only through user selection and app-managed copies; no whole-home scan. Limit individual attachments to 10MiB and draft total to 25MiB (proposed limits). Baseline sends UTF-8 text attachments; image transmission only when adapter capability explicitly allows it; unsupported binary types fail before network transmission.</li>
+<li>No local tool execution in v1. A future executor must be separately reviewed with narrow per-action approval, identity/expiry binding, audit trail, deny-by-default and revocation; model text cannot grant permission.</li>
+<li>Remote computer integration is a future adapter contract (connection state, frames, disconnect, permission policy). V1 is honestly disconnected, not a simulated operational computer.</li>
+</ul>
+<h2 id="7-routinelifecycle-contract">7. Routine/lifecycle contract</h2>
+<ul>
+<li>Support interval minutes (minimum 5) and daily local time with a named IANA timezone. Store next occurrence in UTC and retain trigger/timezone for recomputation.</li>
+<li>Persist the scheduled-occurrence identifier before launching work; one in-flight run per routine. Run-now is separate from a scheduled occurrence and must not accidentally advance its calendar schedule.</li>
+<li>On wake/relaunch: reconcile all due schedules; run at most one missed occurrence per routine, mark older misses skipped with a reason, and advance to the next future occurrence. No burst catch-up after a week asleep.</li>
+<li>Daily time spring-forward gap: run at the next valid local time that day. Fall-back repeated local time: run once for that date. Interval recurrence uses elapsed absolute time.</li>
+<li>Pause prevents new runs; an active run requires explicit stop or is allowed to finish with UI disclosure. Delete prevents future runs and asks whether to stop an active run; history retention is described before confirmation.</li>
+<li>Offline/provider unconfigured: record blocked/failed reason, no fabricated result. Do not continually retry a due job in a tight loop; compute next occurrence and require explicit retry for the missed run.</li>
+<li>App closed, system asleep or user logged out: no execution promised. Launch-at-login/menu-bar residency, helper agents and cloud scheduling are separate opt-in followups, not hidden launch services.</li>
+</ul>
+<h2 id="8-verification-contract">8. Verification contract</h2>
+<table>
+<thead>
+<tr>
+<th>Test ID</th>
+<th>Fixture/action</th>
+<th>Required observation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T01</td>
+<td>Launch, select all seeded conversations, toggle inspector, resize 1440×900 and 760×600</td>
+<td>No inaccessible composer, overlapping columns or truncated action buttons</td>
+</tr>
+<tr>
+<td>T02</td>
+<td>Screenshot at normalized 1× content coordinates; reference comparison</td>
+<td>Major column/divider anchors within 8pt of agreed normalized baseline; typography/bubble wrapping manually reviewed. Ignore system titlebar and font rasterization in pixel diff; no misleading global pixel threshold</td>
+</tr>
+<tr>
+<td>T03</td>
+<td>Create/edit/hide/unhide bot; relaunch</td>
+<td>Exactly one stable identity; edits persisted; hide didn't delete routines</td>
+</tr>
+<tr>
+<td>T04</td>
+<td>Group duplicates, 0/1/7 members, deleted member</td>
+<td>Validation rejects; 2–6 valid members commits once; historical speaker names remain attributable</td>
+</tr>
+<tr>
+<td>T05</td>
+<td>Stream fixture split at every UTF-8/SSE boundary</td>
+<td>Text reconstructed exactly, correct ordering and one terminal event</td>
+</tr>
+<tr>
+<td>T06</td>
+<td>Cancel, late delta, retry, restart midway</td>
+<td>Partial result retained; late delta ignored; same user message, new attempt; restart shows interrupted</td>
+</tr>
+<tr>
+<td>T07</td>
+<td>Missing key, HTTP 401/429/500, dropped stream, offline</td>
+<td>Actionable distinct error, no secret leak, no silent successful response</td>
+</tr>
+<tr>
+<td>T08</td>
+<td>Disk-full/save failure before send</td>
+<td>Zero provider calls; visible persistence error; no ghost row after relaunch</td>
+</tr>
+<tr>
+<td>T09</td>
+<td>Text/image/unsupported binary, oversize, traversal/symlink inputs</td>
+<td>Only allowed app-managed copies; capability/type/size failures occur before transmission</td>
+</tr>
+<tr>
+<td>T10</td>
+<td>Scheduler advance/wake/relaunch/DST, duplicate callbacks</td>
+<td>Exactly one occurrence run; no catch-up storm; correct next-run and skip history</td>
+</tr>
+<tr>
+<td>T11</td>
+<td>Keychain failure and workspace export/log inspection</td>
+<td>No plaintext secret fallback; sentinel secret absent from store/export/logs/screenshots</td>
+</tr>
+<tr>
+<td>T12</td>
+<td>Two windows or repeated launch requests</td>
+<td>Single authoritative workspace mutation stream; no duplicate scheduled jobs</td>
+</tr>
+<tr>
+<td>T13</td>
+<td>10,000 persisted messages; paginated initial 100; 50 updates/sec fixture</td>
+<td>Initial conversation presentation ≤1s on recorded Apple Silicon test host; no UI task &gt;100ms during scroll/stream (Instruments); stale selection preserved</td>
+</tr>
+<tr>
+<td>T14</td>
+<td>IME composition, Return/Shift+Return, Cmd+N/Cmd+F/Cmd+, Escape, VoiceOver</td>
+<td>Correct input/focus semantics and labeled actionable controls</td>
+</tr>
+<tr>
+<td>T15</td>
+<td>Install template twice</td>
+<td>Independent IDs and conversations; no inherited credentials or live jobs</td>
+</tr>
+<tr>
+<td>T16</td>
+<td>Computer panel without adapter</td>
+<td>Explicit disconnected state; zero requests to private Grok/Cursor APIs</td>
+</tr>
+<tr>
+<td>T17</td>
+<td>Native debug build and installed <code>.app</code> launch</td>
+<td>App actually opens; no browser-only or screenshot-as-app substitute</td>
+</tr>
+<tr>
+<td>T18</td>
+<td>Signing/notarization when external distribution is requested</td>
+<td>Valid Developer ID signing + notarization/stapling evidence; unsigned local build never called distribution-ready</td>
+</tr>
+</tbody>
+</table>
+<p>Minimum OS support requires running the matrix on macOS 14 as well as this host; building with a deployment target is not equivalent evidence. If that runtime is unavailable, publish the explicit validation gap rather than claim verified support.</p>
+<h2 id="9-risks-and-recovery">9. Risks and recovery</h2>
+<ul>
+<li><strong>Native transcript/composer stalls:</strong> first phase is a bounded UI/IME/performance spike. Select AppKit bridge if thresholds fail; don't rewrite the backend to compensate.</li>
+<li><strong>Looks right but is fake:</strong> no screenshot overlay, no canned AI success, no live label on static computer content. T16/T17 are hard acceptance gates.</li>
+<li><strong>Duplicate messages/jobs:</strong> transaction-before-effect, stable identities, attempt IDs and occurrence ledger; cancellation and crash tests are required.</li>
+<li><strong>Credential leakage:</strong> Keychain-only secret storage, redacted diagnostics, cross-origin redirect guard, sentinel leak tests.</li>
+<li><strong>Migration loss:</strong> versioned store, tested fixture migrations, recoverable failure instead of resetting user content.</li>
+<li><strong>Cross-platform scope changes late:</strong> explicit ADR checkpoint before implementation. Tauri alternative changes UI/host/storage technology, not domain semantics or acceptance gates.</li>
+</ul>
+<h2 id="10-proposed-implementation-ownership-and-file-map">10. Proposed implementation ownership and file map</h2>
+<p>These paths are to be created after the platform decision/execution handoff:</p>
+<p>Implementation checkpoint: the core package exists, using immutable code-defined v1/v2/v3 and current v4 Core Data models, explicit migration/recovery, and SwiftPM tests. Routine execution core, native editor/history/controls and awake lifecycle integration are fixture-tested; physical sleep/wake and full accessibility validation remain open (see <a href="ROUTINES.html">routine checkpoint</a>). The shell uses a SwiftPM executable packaged as a native <code>.app</code>, with a selective AppKit window/text bridge. An <code>.xcodeproj</code> is not yet generated and is not claimed as delivered. This packaging choice uses the installed Apple toolchain without introducing a project-generator dependency; release/signing and minimum-OS gates are unchanged.</p>
+<pre class="text"><code>App/BotWorkspace.xcodeproj
+App/BotWorkspaceApp.swift
+App/Presentation/WorkspaceStore.swift
+App/Views/{Workspace,Sidebar,Conversation,RecipientPicker,Inspector,Settings}View.swift
+App/Views/Composer/NativeComposer.swift
+App/Design/{Theme,AvatarShape}.swift
+Packages/WorkspaceCore/Sources/WorkspaceCore/
+  Domain/{Bot,Conversation,Message,Generation,Routine,Attachment}.swift
+  Services/{WorkspaceService,GenerationCoordinator,RoutineScheduler}.swift
+  Contracts/{WorkspaceRepository,ChatProvider,CredentialStore,Clock}.swift
+App/Infrastructure/
+  Persistence/{CoreDataWorkspaceRepository,WorkspaceModel.xcdatamodeld}
+  Provider/{ChatCompletionsAdapter,SSEParser}.swift
+  Security/KeychainCredentialStore.swift
+  Files/AttachmentStore.swift
+Tests/{WorkspaceCoreTests,PersistenceTests,ProviderTests,SchedulerTests}/
+UITests/WorkspaceUITests/
+scripts/{build,test,package}.sh</code></pre>
+<ul>
+<li>Lane A: domain models/contracts, repository and migrations; owns core schema, shares DTO contract before others implement.</li>
+<li>Lane B: native UI, composer, avatar/layout tokens; uses fixture repository, not direct persistence/provider code.</li>
+<li>Lane C: provider streaming, Keychain and scheduler; depends on frozen DTO/protocol contract, uses fake clock and URLProtocol fixtures.</li>
+<li>Integration owner: app composition, security review, end-to-end native tests and release evidence. One owner approves shared protocol/schema changes; lanes cannot silently fork types.</li>
+<li>Native subagent capacity may vary: use independent bounded lanes where available; otherwise execute sequentially without dropping gates. No claim of formal consensus review is made by this document.</li>
+</ul>
+<h2 id="11-adr-and-open-decisions">11. ADR and open decisions</h2>
+<p><strong>Proposed decision:</strong> SwiftUI/AppKit macOS-first, Core Data, URLSession, Keychain, no third-party dependencies.</p>
+<p><strong>Alternative:</strong> Tauri 2 if cross-platform is a v1 requirement; use typed Rust commands, app-data storage, OS secret integration, explicit capability allowlists, same provider/scheduler state machines. WebView UI must not be described as pure native Swift controls.</p>
+<p><strong>Consequences:</strong> stronger macOS fit and existing toolchain; Windows/Linux UI is not free. Native chat performance and IME need early proof. Signing/notarization remains a separate distribution gate requiring actual signing authority.</p>
+<p><strong>Open decisions:</strong></p>
+<ol type="1">
+<li>macOS-only v1 versus Windows/Linux first-release requirement (asked; controls stack choice).</li>
+<li>First model provider and any existing backend contract (not supplied; keep adapter explicit).</li>
+<li>Final app name/bundle identifier and distribution channel (working identifiers only until chosen).</li>
+</ol>
+<p>Implementation must not treat a mock provider as proof of a real credentialed integration or declare the original new-app goal complete when only this plan exists.</p>
+<h2 id="12-sources-and-independent-review">12. Sources and independent review</h2>
+<p>An independent dependency specialist compared the options against official sources and recommended SwiftUI/AppKit for macOS-first, Tauri for a first-release cross-platform requirement. This is an advisory stack review, <strong>not</strong> formal Architect/Critic consensus or implementation approval.</p>
+<p>Primary sources:</p>
+<ul>
+<li><a href="https://developer.apple.com/documentation/swiftui/navigationsplitview">Apple NavigationSplitView</a>: multi-column native navigation composition. Custom split/layout behavior still requires testing against this app's reference.</li>
+<li><a href="https://developer.apple.com/documentation/appkit/nstextview">Apple NSTex​tView</a> and <a href="https://developer.apple.com/documentation/swiftui/nsviewrepresentable">NSViewRepresentable</a>: native text editing and SwiftUI/AppKit integration.</li>
+<li><a href="https://developer.apple.com/documentation/coredata/nspersistentcontainer">Apple NSPersistentContainer</a>: Core Data stack and background contexts; migration and model design remain app responsibilities.</li>
+<li><a href="https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains">Apple macOS Keychains guidance</a>: appropriate secret storage and modern Keychain API guidance.</li>
+<li><a href="https://developer.apple.com/documentation/foundation/urlsessionwebsockettask">Apple URLSessionWebSocketTask</a>: native WebSocket support if a future adapter needs it; this does not prescribe WebSockets for chat-completions SSE.</li>
+<li><a href="https://developer.apple.com/documentation/servicemanagement/smappservice">Apple SMAppService</a>: possible later login-item/helper registration, not permission to promise work while a Mac is asleep/off.</li>
+<li><a href="https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox">Apple App Sandbox</a> and <a href="https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution">notarization</a>: entitlements and distribution requirements.</li>
+<li><a href="https://v2.tauri.app/concept/architecture/">Tauri architecture</a> and <a href="https://v2.tauri.app/security/capabilities/">capabilities</a>: WebView/Rust boundaries and command permissions; system permissions remain a separate obligation.</li>
+</ul>
+<p>Recommendations deliberately exclude unmeasured performance/security superiority claims and do not add dependencies or credentials.</p>
+</main></body></html>

@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Original reference screens — observation archive and ASCII layouts · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/REFERENCE-SCREENS.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="original-reference-screens--observation-archive-and-ascii-layouts">Original reference screens — observation archive and ASCII layouts</h1>
+<p>This archive preserves the screen/layout knowledge from the supplied Grok Bot images. It does <strong>not</strong> describe every hidden page in that proprietary app, infer undocumented backend behavior, or treat its account/VM services as part of BotWorkspace.</p>
+<p>Eight private source images were located and inspected: three original desktop screenshots, four later computer/terminal screenshots, and the previously retained local reference image. Their exact local paths, dimensions and SHA-256 hashes are in an ignored local-only reference index; a local HTML image viewer sits alongside it. These files are ignored. Private screenshots stay in place, unchanged; the public atlas uses our own synthetic native renders instead.</p>
+<p><strong>R</strong> IDs below name observed screens/surfaces, not filenames. <strong>P</strong> IDs identify private source files in that index. Names/message contents are replaced with neutral labels in the ASCII; no private conversation needs to be copied to explain the layout. See the <a href="FEATURE-ATLAS.html#start-here">implemented W/M catalogs</a> for actual product behavior.</p>
+<h2 id="reference-screen-inventory">Reference screen inventory</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Observed screen/surface</th>
+<th>Source images</th>
+<th>What the image actually proves</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R01</td>
+<td>Three-column conversation workspace</td>
+<td>P01, P04, P08</td>
+<td>sidebar + transcript + inspector geometry and visible controls</td>
+</tr>
+<tr>
+<td>R02</td>
+<td>New-chat recipient picker</td>
+<td>P02</td>
+<td>Create new Bot / Create group chat / existing Bot entries</td>
+</tr>
+<tr>
+<td>R03</td>
+<td>New-group recipient selection</td>
+<td>P03</td>
+<td>group context and add-to-group recipient list; not final creation behavior</td>
+</tr>
+<tr>
+<td>R04</td>
+<td>Computer thumbnail in inspector</td>
+<td>P01, P04, P05, P08</td>
+<td>a desktop-like thumbnail, owner label, surrounding routines</td>
+</tr>
+<tr>
+<td>R05</td>
+<td>Expanded computer connecting state</td>
+<td>P06</td>
+<td>dimmed workspace, centered Connecting, expansion controls</td>
+</tr>
+<tr>
+<td>R06</td>
+<td>Expanded Linux desktop / terminal window</td>
+<td>P07</td>
+<td>graphical desktop image with a terminal and task-teaching affordance</td>
+</tr>
+<tr>
+<td>R07</td>
+<td>Routine activity in conversation and inspector</td>
+<td>P01, P04, P08</td>
+<td>routine entries and timeline event labels; not scheduler implementation</td>
+</tr>
+<tr>
+<td>R08</td>
+<td>Dismissed question/prompt state</td>
+<td>P08</td>
+<td>a message with a visible Dismissed badge; not its full workflow</td>
+</tr>
+</tbody>
+</table>
+<h2 id="r01--reference-conversation-workspace">R01 — reference conversation workspace</h2>
+<pre class="text"><code>+-------------------------+--------------------------------+---------------------+
+| macOS controls       +  | Bot avatar + name       share  | settings   collapse |
+| Search                  |--------------------------------|---------------------|
+| selected Bot · time     | routine event                  | computer thumbnail  |
+| last-message preview    | assistant message bubble       |                     |
+| Bot B · time            |   reaction / reply / more      | Bot&#39;s screen        |
+| Bot C · yesterday       | NEW unread divider             | Routines          + |
+| Bot D ...               | time separator                 | routine name        |
+|                         | subsequent reply bubble        | recurrence label    |
+|                         | user bubble aligned right      |                     |
+|                         |                                |                     |
+| Marketplace             | [+] Message Bot          [mic] |                     |
+| Account avatar + name   |                                |                     |
++-------------------------+--------------------------------+---------------------+</code></pre>
+<p><strong>Observed:</strong> bot avatars use different colors/shapes; sidebar previews and relative message times; rounded user/assistant bubbles; date separators; scrollbars; bottom composer; a share/export-looking icon in the conversation header; a microphone-shaped control; separate details column. These are visual observations, not verified click actions.</p>
+<p><strong>BotWorkspace mapping:</strong> W shell/sidebar/transcript/composer/inspector. The native app has real window controls, original avatars, persistence and provider state. It does not copy the pictured account, chat history, microphone implementation or desktop feed. A visible reaction icon is not proof that our app implements reactions; see message menus in the W catalog for the exact current actions. The current JSON export flow is specified independently, not reverse-inferred from the reference share icon.</p>
+<h2 id="r02--new-chat-recipient-picker">R02 — new-chat recipient picker</h2>
+<pre class="text"><code>+----------------------+------------------------------------------------------+
+| Sidebar              | To: Search or create Bots                         ×  |
+| Search               | +--------------------------------------------------+ |
+| + New chat selected  | | + Create new Bot                                 | |
+|                      | | group icon · Create group chat                   | |
+| existing chats       | | avatar · Bot A                       New chat    | |
+|                      | | avatar · Bot B                                   | |
+|                      | | avatar · Bot C                                   | |
+|                      | +--------------------------------------------------+ |
+| Marketplace          |                                                      |
+| Account              | [+] Message Bot                               [mic] |
++----------------------+------------------------------------------------------+</code></pre>
+<p>The screenshot shows the picker replacing the central transcript while the sidebar remains. It does not establish keyboard-arrow semantics, matching rules, duplicate-name handling, creation validation or persistence. The independent native picker contract specifies those behaviors from source, including any current keyboard gaps.</p>
+<h2 id="r03--new-group-selection">R03 — new-group selection</h2>
+<pre class="text"><code>+----------------------+------------------------------------------------------+
+| Sidebar              | To: Search or create Bots                         ×  |
+| + New group chat     | +--------------------------------------------------+ |
+|                      | | avatar · Bot A                 Add to group chat | |
+| existing chats       | | avatar · Bot B                                   | |
+|                      | | avatar · Bot C                                   | |
+|                      | | avatar · Bot D                                   | |
+|                      | +--------------------------------------------------+ |
+|                      |                                                      |
+| Account              | composer retained at bottom                          |
++----------------------+------------------------------------------------------+</code></pre>
+<p>Observed: an existing recipient row has an add-to-group affordance and the sidebar indicates a new group. The image alone does not prove member minimum/maximum, recipient order, final confirmation, or response sequencing. Our 2–6 member validation, ordered rounds and identity-safe mentions come from explicit implementation contracts, not this image.</p>
+<h2 id="r04--inspector-computer-thumbnail">R04 — inspector computer thumbnail</h2>
+<pre class="text"><code>+-----------------------------------+
+| settings                   expand |
+| +-------------------------------+ |
+| | small desktop / terminal view | |
+| | desktop background + dock     | |
+| +-------------------------------+ |
+|           Bot&#39;s screen            |
+| Routines                        + |
+| clock  Routine                    |
+|        Every N hours              |
++-----------------------------------+</code></pre>
+<p>The thumbnail is a <strong>graphical desktop image</strong>, not merely a terminal byte stream. P05 is a close view of this area. There is no proof in the images of codec, frame rate, QEMU configuration, VNC, SPICE, WebRTC, auth tokens or a reusable public endpoint. BotWorkspace's corresponding region is currently a truthful disconnected card.</p>
+<h2 id="r05--expanded-connecting-overlay">R05 — expanded connecting overlay</h2>
+<pre class="text"><code>+--------------------------------------------------------------------------+
+| native window controls                         [Teach a task] [collapse]  |
+| background workspace dimmed                                              |
+| +----------------------------------------------------------------------+ |
+| |                                                                      | |
+| |                                                                      | |
+| |                         avatar / spinner                             | |
+| |                            Connecting                                | |
+| |                                                                      | |
+| |                                                                      | |
+| +----------------------------------------------------------------------+ |
++--------------------------------------------------------------------------+</code></pre>
+<p>Observed: a large bordered dark computer surface over a dimmed workspace and a centered connection label. Unknown from this still image: timeout, cancel/retry rules, destination selection, reconnect policy, credential exchange, focus capture, or whether background streams remain active. Those must be explicitly designed for any independent adapter.</p>
+<h2 id="r06--expanded-desktop-with-terminal-window">R06 — expanded desktop with terminal window</h2>
+<pre class="text"><code>+--------------------------------------------------------------------------+
+| workspace dimmed behind                 [Teach a task] [collapse]         |
+| +----------------------------------------------------------------------+ |
+| | +--------------------------------------------+                       | |
+| | | Terminal title                   _ [] ×    |                       | |
+| | | menu bar                                   |                       | |
+| | | shell prompt + command/output              |   desktop wallpaper   | |
+| | | cursor                                     |                       | |
+| | +--------------------------------------------+                       | |
+| |                                                                      | |
+| |                     browser / tools / terminal dock                   | |
+| +----------------------------------------------------------------------+ |
++--------------------------------------------------------------------------+</code></pre>
+<p>The terminal is <strong>inside the remote desktop</strong>. That differs from embedding a standalone terminal renderer without a desktop/window manager. The visible Teach a task control does not establish recording, automation, permission or replay semantics; none is implemented or authorized by this reference. For the proposed terminal alternative, see <a href="COMPUTER-TERMINAL-CONTRACT.html">the computer/terminal contract</a>.</p>
+<h2 id="r07--routine-evidence-inside-chat">R07 — routine evidence inside chat</h2>
+<pre class="text"><code>Transcript                           Inspector
+----------------------------------   ---------------------------
+Created routine · Routine name       Routines                  +
+assistant response                   clock · Routine name
+(time separator)                             Every N hours
+later scheduled-looking response
+Updated routine · Routine name</code></pre>
+<p>The screenshots contain recurring-looking responses and routine event labels. They cannot establish backend scheduling, timezones, DST, missed-run behavior, whether an app is running, or cancellation semantics. Our app instead has a specified awake-only scheduler, explicit provider/owner consent, and durable run history. No weather data from these private conversations is a reusable fixture or a verified provider result.</p>
+<h2 id="r08--dismissed-questionprompt">R08 — dismissed question/prompt</h2>
+<pre class="text"><code>+-----------------------------------------------+
+| introductory assistant message                |
++-----------------------------------------------+
++-----------------------------------------------+
+| question text                    • Dismissed   |
++-----------------------------------------------+</code></pre>
+<p>Only the final visual badge is observed. The trigger, dismiss action, input form, notification policy and durable state are not supplied. There is no equivalent current BotWorkspace feature claim; any future prompt/question flow needs its own contract.</p>
+<h2 id="feature-parity-and-intentional-differences">Feature parity and intentional differences</h2>
+<table>
+<thead>
+<tr>
+<th>Reference detail</th>
+<th>Native app status</th>
+<th>Documentation consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dark three-pane messaging</td>
+<td>implemented with Light/System alternatives</td>
+<td>W shell/appearance maps geometry, not private content</td>
+</tr>
+<tr>
+<td>Recipient dropdown and group affordance</td>
+<td>independently implemented picker</td>
+<td>validate against M/W code, not assumed reference keyboard behavior</td>
+</tr>
+<tr>
+<td>Colored geometric avatars</td>
+<td>original local implementation</td>
+<td>no extracted proprietary assets</td>
+</tr>
+<tr>
+<td>Message reply affordance</td>
+<td>implemented local reply workflow</td>
+<td>persistence and jump behavior separately tested</td>
+</tr>
+<tr>
+<td>Reactions / dismissal chip</td>
+<td>no parity claim</td>
+<td>record as observed, not shipped</td>
+</tr>
+<tr>
+<td>Mic / voice</td>
+<td>no voice backend</td>
+<td>no fake operational microphone</td>
+</tr>
+<tr>
+<td>Routine labels</td>
+<td>independent native scheduler/history</td>
+<td>no inherited 24/7 service claim</td>
+</tr>
+<tr>
+<td>Computer thumbnail/expanded desktop</td>
+<td>disconnected current app</td>
+<td>C contract remains proposed for live integration</td>
+</tr>
+<tr>
+<td>Teach a task</td>
+<td>reference-only affordance</td>
+<td>no recording, automation or replay implemented</td>
+</tr>
+<tr>
+<td>Account display</td>
+<td>independent local display profile</td>
+<td>no imported account session or private credentials</td>
+</tr>
+<tr>
+<td>Marketplace</td>
+<td>local synthetic template catalog</td>
+<td>no assumption of a remote plugin store or subscription</td>
+</tr>
+<tr>
+<td>Header share icon</td>
+<td>independently specified JSON export</td>
+<td>do not infer original app's share transport</td>
+</tr>
+</tbody>
+</table>
+<h2 id="archive-integrity-and-privacy">Archive integrity and privacy</h2>
+<ul>
+<li>Keep the original private images unchanged. The local index records hashes/dimensions and labels each image; it does not rename a reference capture into an app screenshot.</li>
+<li>Public docs contain neutral ASCII, descriptions and original synthetic native renders. No user names, message history, reference account avatars or extracted bundle images are required to build the app or view the public gallery.</li>
+<li>No hidden proprietary screen or private API function is claimed from an unverified bundle string. The earlier native contract records endpoint research only as a boundary, not an executable integration recipe.</li>
+<li>Private session memory and infrastructure details are not included in the public documentation. Only current app source establishes implemented behavior.</li>
+</ul>
+</main></body></html>

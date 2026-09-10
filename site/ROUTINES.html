@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Routine execution contract and implementation · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/ROUTINES.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="routine-execution-contract-and-implementation">Routine execution contract and implementation</h1>
+<p>Status: <strong>native routine editing, execution controls, history and awake lifecycle are implemented</strong>. Verified with synthetic temporary stores and offline providers. This is not a claim of 24/7 background service, live-provider certification, physical sleep testing, or complete accessibility coverage.</p>
+<p>Schema v3 preserves this routine ledger and adds attachment storage. Existing routine consent is not file-transmission consent: runs whose recent context includes stored attachments are recorded as blocked before credential reads or network calls because interactive <a href="ATTACHMENTS.html">attachment confirmation</a> does not widen routine authorization.</p>
+<h2 id="execution-boundary">Execution boundary</h2>
+<pre class="text"><code>Explicit Run Now             Launch / wake / 30-second awake timer
+       |                                      |
+       +------------ RoutineScheduler --------+
+                            |
+                 CAS occurrence claim + next UTC time
+                 + optional skipped-range summary
+                            |
+               persisted RoutineRun (queued)
+                            |
+                  GenerationCoordinator
+                   /                  \
+     missing/changed provider       binding still matches
+     or unavailable credential              |
+               |                 message + generation committed
+          blocked record                    |
+                                 shared queue (global cap 3)
+                                            |
+                                   URLSession / provider
+                                            |
+                               run + generation terminal state</code></pre>
+<ul>
+<li>A routine explicitly belongs to one bot. Its output goes to that bot's direct conversation, not an implicitly selected group. The group editor requires an explicit owner and discloses it.</li>
+<li><code>RoutineProviderBinding</code> captures the provider ID, kind, API root, model and loopback policy. It contains no credential value or credential reference. Changes to the bound destination/model require new routine authorization; the composer selection cannot redirect an automatic run.</li>
+<li>The dispatched input includes the captured routine prompt and the owner's recent direct-chat context (the same bounded 100-message provider context as interactive chat). Native enabling controls disclose and require authorization for the prompt, full API root/model and context. Binding changes invalidate consent; Run Now separately confirms the immutable definition.</li>
+<li>A run is claimed in one serialized repository transaction <strong>before</strong> credential lookup or transport. Its prompt/name/provider metadata is immutable even if the definition is edited.</li>
+<li>A second active run or duplicate scheduled occurrence is rejected at the repository boundary. Run Now is allowed while paused and does not advance the scheduled occurrence.</li>
+<li>Automatic sends do not clear the user's draft, even when its text equals the routine prompt.</li>
+<li>Failed or missing setup creates a typed blocked result, not a fabricated assistant answer. No automatic credential discovery, account rotation, credential refresh or request retry is added.</li>
+<li>Routine-associated generation attempts cannot be retried through the ordinary chat retry path. An explicit new run creates a new history record rather than rewriting the old occurrence.</li>
+</ul>
+<h2 id="clock-and-catch-up-policy">Clock and catch-up policy</h2>
+<ul>
+<li>Intervals are 5–525,600 minutes of absolute elapsed time. Daily triggers use a named timezone and an explicit Gregorian calendar, independent of the user's display calendar.</li>
+<li>Spring-forward gaps select the first valid local instant. Fall-back selects the first copy of the requested local time and uses one occurrence ID for that local date.</li>
+<li>A tested transition fallback handles Foundation's partial-hour-gap behavior (Lord Howe); exact component round-trips handle historical sub-minute timezone offsets.</li>
+<li>A wholly nonexistent local date, such as Samoa's skipped December 30, 2011, has no invented job.</li>
+<li>Reconciliation chooses at most one latest missed occurrence and moves <code>nextRunAt</code> into the future in the same transaction. Older misses are one terminal skipped-range record with count, first and last occurrence, not a catch-up burst or unbounded list of generated jobs.</li>
+<li>Clock rollback never creates an occurrence before its next scheduled instant. Ledger terminal timestamps are clamped to creation time when the wall clock has moved backwards.</li>
+<li><code>RoutineScheduler</code> takes an injectable clock. The host must call reconcile on launch/wake and while awake, cancel/join accepted scheduling calls on workspace change/quit, and shut down the shared generation coordinator. The native host polls every 30 seconds while awake and observes macOS sleep/wake notifications. There is no helper, login item or cloud service. <strong>Nothing promises execution while the app is closed, the Mac is asleep, or the user is logged out.</strong></li>
+</ul>
+<h2 id="pause-stop-and-deletion">Pause, Stop and deletion</h2>
+<ul>
+<li>Pause prevents new scheduled claims. An already claimed run may finish; Stop is a separate action.</li>
+<li>Stop atomically cancels a claim and its generation, including the credential-read race before a generation exists. The coordinator also prevents a cancelled claim from entering transport later.</li>
+<li>Deleting a routine requires no active run and deletes its run history, not its chat transcript. Native confirmation offers an explicit Stop-and-delete path when a run is active. The definition and exact run-ID set are checked before pausing future claims, then rechecked before final deletion. If the stop/delete sequence fails after pause, it remains paused and shows an error; new history requires a new confirmation.</li>
+<li>Bot deletion includes owned run-history counts and cancels claimed work before physical deletion. New run history changes the confirmation's destructive impact and requires a new review.</li>
+<li>Restart marks unfinished claims and generations interrupted. It does not replay those requests. A later scheduled occurrence is independent of the interrupted run.</li>
+</ul>
+<h2 id="persistence-and-export">Persistence and export</h2>
+<ul>
+<li>Schema v1 remains immutable. Schema v2 adds the separate <code>RoutineRun</code> entity and bounded, indexed latest-history queries; messages remain separately paginated.</li>
+<li>Migration recognizes the old model explicitly, migrates to a temporary store, validates it, retains a consistent recovery copy and uses Core Data's store replacement API. Unknown schemas fail closed instead of resetting user data. A failed recovery retains its backup for recovery.</li>
+<li>Current export format <strong>3</strong>, export source-schema marker <strong>3</strong>, includes every routine definition and run plus <code>summary.routineRunCount</code>, and exact referenced attachment bytes. These export markers are separate from the current Core Data v4 store model. Stored credentials remain excluded; see the <a href="WORKSPACE-EXPORT.html">export contract</a>. Routine prompts, context already in messages, and provider destinations are private content: export does not scrub secrets a user has pasted into them.</li>
+</ul>
+<h2 id="evidence-and-remaining-work">Evidence and remaining work</h2>
+<p>Synthetic temporary-store tests cover calendar edge cases, run claims, migration, transaction rollback, blocked providers, cancellation races, draft preservation, catch-up and restart. No development run opens or migrates the user's real workspace, calls a paid provider, or imports an authentication file. The live Z.ai/9router/Codex compatibility limits remain those documented in <a href="PROVIDER-SETUP.html">provider setup</a>.</p>
+<h2 id="native-controls-and-verification">Native controls and verification</h2>
+<ul>
+<li>Use the inspector's <strong>+</strong> or the always-accessible header <strong>Routines</strong> menu in a narrow window.</li>
+<li>The detached editor supports create/edit, numeric interval entry (5–525,600 minutes), daily hour/minute, named timezone, explicit owner and provider. Editing an existing routine cannot change its owner. Cancel/Escape/close/quit honor dirty and accepted-save state.</li>
+<li><strong>Run Now</strong> works while paused without moving the schedule. <strong>Pause</strong> does not implicitly Stop. <strong>Resume…</strong> opens the editor to review/authorize automatic sends and starts at a future occurrence.</li>
+<li>History shows the latest 100 records plus any active run (even after wall-clock rollback), typed errors, skipped ranges, Stop, and a link to the owner's chat. Export retains all records. Active-run discovery currently inspects that routine's ledger; very large history performance has not been benchmarked.</li>
+<li>The sample-only bundle cannot execute routines. Existing paused definitions are not enabled or bound to the composer provider automatically.</li>
+</ul>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> routine-smoke</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> routine-smoke <span class="at">--small</span></span></code></pre></div>
+<p>The smoke creates a daily routine through the native controller with an explicit group owner and provider, renders its editor, runs an offline reply into the owner's direct chat, verifies the group draft survives, resumes/pauses, closes/reopens, and renders restored history. These checks exercise real views/controllers/services, not physical mouse/keyboard automation. Additional tests cover consent drift, paused and blocked runs, catch-up/wake, Stop/partial text, exact deletion impact, shutdown joining, and active history beyond the chronological page limit. No real provider is called.</p>
+<p>R05's native functional path is delivered with this bounded evidence. Physical sleep/wake and VoiceOver/keyboard interaction on the minimum supported OS still need the broader manual matrix. The <a href="NATIVE-REWRITE-CONTRACT.html">native rewrite contract</a> retains its attachment, accessibility, minimum-OS and distribution gates; none are waived by this routine milestone.</p>
+<h2 id="primary-api-references">Primary API references</h2>
+<ul>
+<li>Apple documents <code>.nextTime</code> and the first repeated occurrence in its <a href="https://developer.apple.com/documentation/foundation/calendar/matchingpolicy/nexttime">matching policy</a> and <a href="https://developer.apple.com/documentation/foundation/calendar/repeatedtimepolicy">repeated-time policy</a>.</li>
+<li>The offset-gap fallback uses the documented <a href="https://developer.apple.com/documentation/foundation/timezone/nextdaylightsavingtimetransition(after:)">timezone transition API</a>. The Lord Howe workaround is supported by local regression evidence, not a claim Apple guarantees identical matching behavior on every OS release.</li>
+<li>Migration uses <a href="https://developer.apple.com/documentation/coredata/nsmappingmodel/inferredmappingmodel(forsourcemodel:destinationmodel:)">inferred mapping</a> and <a href="https://developer.apple.com/documentation/coredata/nspersistentstorecoordinator/replacepersistentstore(at:destinationoptions:withpersistentstorefrom:sourceoptions:type:)">persistent-store replacement</a>. Apple's <a href="https://developer.apple.com/library/archive/qa/qa1809/_index.html">WAL guidance</a> explains why copying only the main SQLite file is unsafe.</li>
+</ul>
+</main></body></html>

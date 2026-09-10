@@ -1,0 +1,1517 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workspace screens and interaction contract · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/SCREENS-WORKSPACE.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="workspace-screens-and-interaction-contract">Workspace screens and interaction contract</h1>
+<p>Status: <strong>implemented-source inventory with bounded verification references</strong> · 2026-09-10</p>
+<p>This document is the screen-by-screen contract for the main BotWorkspace window and the transient surfaces opened from it. It describes the current native SwiftUI/AppKit source, not an imagined Grok service and not a promise that every rendered fixture has passed a physical mouse, keyboard, IME or VoiceOver run.</p>
+<p>The stable IDs <code>W01</code>–<code>W19</code> are also screenshot-catalog slots. A catalog may associate a private reference image or a generated app capture with an ID, but this public document does not invent filenames for those images. The source remains authoritative when an old capture disagrees with it.</p>
+<h2 id="status-and-evidence-vocabulary">Status and evidence vocabulary</h2>
+<table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Implemented</strong></td>
+<td>The control, state or transition exists in current app source.</td>
+</tr>
+<tr>
+<td><strong>Fixture/sample-only</strong></td>
+<td>It exists only in the non-durable preview or a synthetic verifier. It must not be presented as live provider/computer behavior.</td>
+</tr>
+<tr>
+<td><strong>Planned/not implemented</strong></td>
+<td>The contract names the desired boundary, but no usable control/service exists yet.</td>
+</tr>
+<tr>
+<td><strong>Test-covered</strong></td>
+<td>A focused automated test exists for the stated logic. This does not prove physical interaction or visual correctness.</td>
+</tr>
+<tr>
+<td><strong>Rendered fixture</strong></td>
+<td>An isolated smoke can render the app-owned view. This does not prove real credentials, networking, OS permission prompts, window focus or assistive-technology behavior.</td>
+</tr>
+<tr>
+<td><strong>Live-validated</strong></td>
+<td>Requires explicit evidence from a real user/runtime path. This document does not infer it from unit tests or fixture screenshots.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="global-implementation-boundary">Global implementation boundary</h3>
+<ul>
+<li><strong>Implemented:</strong> native macOS window, local Core Data workspace, named bots, direct and group conversations, drafts, text attachments, reply references, provider selection, streamed text, ordered group rounds, profile editing and local templates.</li>
+<li><strong>Fixture/sample-only:</strong> the preview bundle's synthetic conversations, timestamps and local-only “send” behavior; offline provider and smoke responses.</li>
+<li><strong>Planned/not implemented:</strong> a connected computer/desktop/terminal inside the inspector. The current product contract explicitly excludes remote desktop, shell execution and private Grok/Cursor endpoints without a separate adapter and authority.</li>
+<li><strong>Not claimed here:</strong> XCUITest coverage, full physical keyboard/IME/VoiceOver coverage, macOS 14 runtime completion, broad provider compatibility, real file-picker sandbox grants, release signing/notarization or production Keychain success.</li>
+</ul>
+<p>Primary scope evidence:</p>
+<ul>
+<li><code>README.md:7-13,35-37,51-69</code></li>
+<li><code>DESIGN.md:3-7,18-22,34-41,43-71,87-93</code></li>
+<li><code>docs/NATIVE-REWRITE-CONTRACT.md:53-71,73-113,202-215</code></li>
+<li><code>docs/DURABLE-WORKSPACE.md:58-79,84-125</code></li>
+</ul>
+<h2 id="screen-index">Screen index</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Screen or state</th>
+<th>Current status</th>
+<th>Screenshot catalog intent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>W01</td>
+<td>Desktop three-pane workspace</td>
+<td>Implemented</td>
+<td>Wide canonical workspace</td>
+</tr>
+<tr>
+<td>W02</td>
+<td>Minimum-width workspace</td>
+<td>Implemented; inspector auto-collapses</td>
+<td>760×600 responsive boundary</td>
+</tr>
+<tr>
+<td>W03</td>
+<td>Sidebar, search, activity and hidden-chat recovery</td>
+<td>Implemented</td>
+<td>Search/unread/menu variants</td>
+</tr>
+<tr>
+<td>W04</td>
+<td>Direct conversation and message actions</td>
+<td>Implemented</td>
+<td>Direct chat baseline</td>
+</tr>
+<tr>
+<td>W05</td>
+<td>Group conversation with manual ordered recipients</td>
+<td>Implemented</td>
+<td>Group composer/manual order</td>
+</tr>
+<tr>
+<td>W06</td>
+<td>Typed and menu-inserted group mentions</td>
+<td>Implemented</td>
+<td>Valid, duplicate and invalid mention states</td>
+</tr>
+<tr>
+<td>W07</td>
+<td>New direct-chat recipient picker</td>
+<td>Implemented</td>
+<td>Single-recipient picker</td>
+</tr>
+<tr>
+<td>W08</td>
+<td>Group builder</td>
+<td>Implemented</td>
+<td>Chips, limits and create state</td>
+</tr>
+<tr>
+<td>W09</td>
+<td>Reply selection, composer preview and jump states</td>
+<td>Implemented</td>
+<td>Available/loading/unavailable references</td>
+</tr>
+<tr>
+<td>W10</td>
+<td>Draft text-attachment ingress and chips</td>
+<td>Implemented in durable app</td>
+<td>File-copy progress/chips/errors</td>
+</tr>
+<tr>
+<td>W11</td>
+<td>Transmission consent sheet</td>
+<td>Implemented</td>
+<td>Direct-file and group-round disclosure</td>
+</tr>
+<tr>
+<td>W12</td>
+<td>Streaming, failed, cancelled and retry status</td>
+<td>Implemented</td>
+<td>Generation lifecycle states</td>
+</tr>
+<tr>
+<td>W13</td>
+<td>Disconnected computer inspector</td>
+<td>Implemented honest placeholder</td>
+<td>Required disconnected capture</td>
+</tr>
+<tr>
+<td>W14</td>
+<td>Marketplace/local templates</td>
+<td>Implemented local catalog</td>
+<td>Template sheet</td>
+</tr>
+<tr>
+<td>W15</td>
+<td>Account/display-name sheet</td>
+<td>Implemented</td>
+<td>Profile sheet</td>
+</tr>
+<tr>
+<td>W16</td>
+<td>Edit Bot sheet</td>
+<td>Implemented</td>
+<td>Validation/save/conflict states</td>
+</tr>
+<tr>
+<td>W17</td>
+<td>Edit Group sheet</td>
+<td>Implemented</td>
+<td>Ordered membership editor</td>
+</tr>
+<tr>
+<td>W18</td>
+<td>Degraded group requiring membership repair</td>
+<td>Implemented</td>
+<td>Readable-but-unsendable group</td>
+</tr>
+<tr>
+<td>W19</td>
+<td>Global opening/saving/storage-error overlays</td>
+<td>Implemented</td>
+<td>Blocking and recovery states</td>
+</tr>
+</tbody>
+</table>
+<h2 id="global-shell-and-navigation-contract">Global shell and navigation contract</h2>
+<h3 id="navigation-hierarchy">Navigation hierarchy</h3>
+<pre class="text"><code>Application launch
+  |
+  +-- persistent BotWorkspace bundle / --workspace
+  |     `-- open local Core Data workspace
+  |
+  `-- sample preview bundle
+        `-- seed synthetic in-memory conversations
+
+Main workspace
+  |
+  +-- Sidebar --------------------------------------------------+
+  |     +-- conversation row --&gt; Direct/Group conversation      |
+  |     +-- + / Cmd+N -------&gt; Recipient picker                 |
+  |     +-- Marketplace -----&gt; W14 sheet                        |
+  |     `-- account ---------&gt; W15 sheet                        |
+  |                                                               |
+  +-- Conversation ---------------------------------------------+
+  |     +-- Edit -----------&gt; W16/W17 sheet                      |
+  |     +-- Routines -------&gt; separate routine sheets            |
+  |     +-- provider gear --&gt; separate Settings window           |
+  |     `-- details -------&gt; show/hide inspector                 |
+  |                                                               |
+  `-- Inspector -------------------------------------------------+
+        +-- Settings -------&gt; separate Settings window
+        +-- Edit -----------&gt; W16/W17 sheet
+        `-- Computer -------&gt; W13 disconnected state only</code></pre>
+<h3 id="app-wide-shortcuts-and-escape-order">App-wide shortcuts and escape order</h3>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Action</th>
+<th>Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Command-N</code></td>
+<td>Open new-chat picker</td>
+<td><code>NativeShellApp.swift:1306-1310,1346</code></td>
+</tr>
+<tr>
+<td><code>Command-F</code></td>
+<td>Force sidebar visible and focus conversation search</td>
+<td><code>NativeShellApp.swift:1312-1320,1452-1455</code>; <code>WorkspaceView.swift:148-176,239</code></td>
+</tr>
+<tr>
+<td><code>Command-,</code></td>
+<td>Open Settings</td>
+<td><code>NativeShellApp.swift:1297-1304,1347,1354-1379</code></td>
+</tr>
+<tr>
+<td><code>Command-Q</code></td>
+<td>Quit through save/dirty-state guards</td>
+<td><code>NativeShellApp.swift:1297-1304</code>; close flow at <code>162-205</code></td>
+</tr>
+<tr>
+<td><code>Command-W</code></td>
+<td>Close the key window</td>
+<td><code>NativeShellApp.swift:1306-1310</code></td>
+</tr>
+<tr>
+<td>Return in composer</td>
+<td>Submit only for unmodified Return with no marked text</td>
+<td><code>NativeComposer.swift:64-81</code>; <code>Models.swift:84-89</code></td>
+</tr>
+<tr>
+<td>Shift-Return</td>
+<td>Insert newline</td>
+<td><code>NativeComposer.swift:70-81</code>; tests <code>PreviewWorkspaceTests.swift:293-312</code></td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>Cancel the top transient surface in defined priority; profile/routine dirty handling remains owned by its editor</td>
+<td><code>WorkspaceView.swift:95-112</code></td>
+</tr>
+</tbody>
+</table>
+<p>Escape priority is:</p>
+<pre class="text"><code>attachment consent
+  &gt; routine editor/detail
+  &gt; bot-deletion confirmation
+  &gt; profile editor
+  &gt; simple panel (marketplace/account/sample forms)
+  &gt; recipient picker
+  &gt; dismiss workspace notice</code></pre>
+<p>The separate Settings window has its own dirty-close contract and is only referenced here as an exit destination. Its fields belong in the Settings screen contract, not this file.</p>
+<hr />
+<h2 id="w01--desktop-three-pane-workspace">W01 — Desktop three-pane workspace</h2>
+<p><strong>Status:</strong> Implemented. Wide synthetic rendering exists; a rendered fixture is not a physical interaction or live-service result.</p>
+<p><strong>Entry:</strong> Launch the durable app or close any transient picker/sheet while the workspace window remains open. A persistent launch opens the local store; a sample launch seeds synthetic data.</p>
+<p><strong>Exit:</strong> Select another conversation without leaving the screen; open picker, Settings or a sheet; close/quit the window.</p>
+<pre class="text"><code>+---------------------------+--------------------------------------+---------------------------+
+|                         + | [avatar] Conversation      [edit][◷][details] | [settings][hide] |
+| [ Search_____________ x ] |--------------------------------------|---------------------------|
+|                           |                                      | Edit Bot / Edit Group      |
+| [avatar] Conversation  9m |          transcript                   | profile/member summary     |
+|          preview       (2)|                                      |                           |
+| [group]  Team          Sep|    assistant message                  | +-----------------------+ |
+|          latest reply     |    [reply ref]                        | | desktop icon          | |
+|                           |    [bubble] [Reply] [Copy]             | | No computer connected | |
+|                           |                         user [bubble]  | | no service configured | |
+|                           |                                      | +-----------------------+ |
+|                           | [provider] [group targets if needed]  | Bot/Group&#39;s screen        |
+|                           | [reply / notice / attachment chips]   |                           |
+| [Marketplace]             | (+) [Message…________________] [send] | Routines                  |
+| [account name]            |                                      |                           |
+| saved/provider status     |                                      |                           |
++---------------------------+--------------------------------------+---------------------------+</code></pre>
+<h3 id="first-run--no-conversation-selected-substate">First-run / no conversation selected substate</h3>
+<p><strong>Status:</strong> Implemented; not separately captured in the published screenshot set.</p>
+<p><strong>Entry:</strong> Open a newly created workspace with no bots/conversations, or reach the workspace with no current conversation selected. This is different from an existing conversation that merely has no messages.</p>
+<pre class="text"><code>+--------------------------+--------------------------------------------+
+|                       +  |                                            |
+| Search conversations     |                                            |
+|                          |           Choose a conversation            |
+| [existing rows, if any]  | Or create your first bot with the + button. |
+|                          |                                            |
+| Marketplace              |        no transcript or composer           |
+| Account                  |                                            |
++--------------------------+--------------------------------------------+</code></pre>
+<p><strong>Actions/exit:</strong> Select an existing sidebar conversation to display it, or use the sidebar <strong>+</strong> / <code>Command-N</code> to open W07 and create or choose a bot. The center message is explanatory text, not a clickable creation button. Transcript and composer are omitted while <code>store.current</code> is absent; no send or remote connection is started. The ordinary local persistence and shell keyboard/accessibility rules still apply.</p>
+<p><strong>Evidence:</strong> <code>Prototypes/NativeShell/Sources/NativeShell/WorkspaceView.swift:340-349</code>; new-chat navigation follows W07. ASCII/source coverage only; do not use a populated fixture as visual evidence of a clean first launch.</p>
+<h3 id="layout-contract">Layout contract</h3>
+<ul>
+<li>The root view is an <code>HStack</code> containing conditional sidebar, flexible middle surface and conditional inspector. Draggable one-point dividers separate panes.</li>
+<li>The app window defaults to <code>1280×880</code>; content cannot resize below <code>760×600</code>.</li>
+<li>Default saved pane widths are sidebar <code>280pt</code> and inspector <code>320pt</code>.</li>
+<li>User-adjustable bounds are sidebar <code>240…400pt</code> and inspector <code>280…440pt</code>.</li>
+<li>The transcript retains a <code>424pt</code> minimum plus divider allowance. The inspector appears only when <code>container &gt;= displayedSidebar + inspector + 426</code> and no picker is open.</li>
+<li>Divider drag writes the preference immediately. Accessibility increment/decrement changes the active width by <code>20pt</code> within bounds and reports the displayed width.</li>
+<li>Appearance is Dark, Light or Follow System; Dark is the default. Widths/visibility live in versioned app preferences, separate from Core Data and workspace export.</li>
+</ul>
+<h3 id="persistent-and-service-boundaries">Persistent and service boundaries</h3>
+<ul>
+<li>Persistent startup opens <code>Application Support/BotWorkspace/workspace.sqlite</code>.</li>
+<li>Sample startup creates in-memory synthetic records and does not contact a provider.</li>
+<li>The root disables all content while opening or closing the workspace.</li>
+<li>Provider effects do not originate from the view; they route through the presentation store and generation coordinator.</li>
+<li>No incoming network server, shell executor or computer adapter exists in this screen.</li>
+</ul>
+<h3 id="accessibility">Accessibility</h3>
+<ul>
+<li>Icon-only controls use explicit labels through <code>ShellIconButton</code>.</li>
+<li>Pane dividers expose “Resize pane,” a point value and adjustable actions.</li>
+<li>This source-level accessibility contract is not a completed VoiceOver audit.</li>
+</ul>
+<h3 id="evidence">Evidence</h3>
+<ul>
+<li>Structure/minimum/sheets: <code>Prototypes/NativeShell/Sources/NativeShell/WorkspaceView.swift:5-70</code></li>
+<li>Dividers: <code>WorkspaceView.swift:117-145</code></li>
+<li>Window construction: <code>NativeShellApp.swift:44-110</code></li>
+<li>Layout calculation: <code>WorkspaceLayout.swift:3-19</code></li>
+<li>Preference defaults/bounds: <code>WorkspacePreferences.swift:20-60</code></li>
+<li>Tests: <code>AppearanceWorkspaceTests.swift</code>; <code>WorkspacePreferencesTests.swift</code>; <code>ThemeTests.swift</code>; <code>NativeComposerAppKitTests.swift</code></li>
+<li>Verification limits: <code>docs/APPEARANCE.md:48-74</code></li>
+</ul>
+<hr />
+<h2 id="w02--minimum-width-workspace">W02 — Minimum-width workspace</h2>
+<p><strong>Status:</strong> Implemented responsive state. A minimum-size render exists in isolated smoke paths; physical resizing and assistive technology remain manual gates.</p>
+<p><strong>Entry:</strong> Resize content to <code>760×600</code>, or launch the isolated verifier with its minimum fixture option.</p>
+<p><strong>Exit:</strong> Widen the window; open a picker; toggle sidebar/details preference.</p>
+<pre class="text"><code>+----------------------+----------------------------------------------+
+|                    + | [avatar] Conversation          [edit][◷][&gt;] |
+| [ Search________ x ] |----------------------------------------------|
+| [row]                 | transcript                                   |
+| [row]                 |                                              |
+| [row]                 |                                              |
+|                       | [provider / target controls]                 |
+| [Marketplace]         | (+) [Message…_______________________] [send] |
+| [account]             |                                              |
++----------------------+----------------------------------------------+
+                     inspector omitted, preference preserved</code></pre>
+<h3 id="exact-responsive-behavior">Exact responsive behavior</h3>
+<ul>
+<li>Minimum window content: <code>760×600</code>.</li>
+<li>If a saved sidebar width would squeeze the middle pane, the displayed sidebar becomes <code>min(savedWidth, max(240, containerWidth - 425))</code>. At 760 with a saved 400pt sidebar, this is 335pt. The stored 400pt value is not overwritten.</li>
+<li>Inspector auto-collapse is derived from current width and does not set <code>inspectorPreferred = false</code>; widening can restore it.</li>
+<li>Opening W07/W08 also hides the inspector regardless of available width.</li>
+<li>If the sidebar is hidden, the middle pane supplies a “Show sidebar” icon in its header.</li>
+</ul>
+<h3 id="accessibility-and-gaps">Accessibility and gaps</h3>
+<ul>
+<li>The hidden inspector is not presented as disconnected content that happens to be off-screen; it is absent from the hierarchy due to the layout decision.</li>
+<li>No mobile/reflowed navigation is promised. This is a desktop minimum, not a phone layout.</li>
+<li>Horizontal behavior for exceptionally wide code/text content is not separately proven.</li>
+<li>The current isolated visual run reports that the minimum composer fits within the supported viewport. Treat that as rendered-fixture evidence, not physical input proof.</li>
+</ul>
+<h3 id="evidence-1">Evidence</h3>
+<ul>
+<li><code>WorkspaceLayout.swift:3-19</code></li>
+<li><code>WorkspaceView.swift:9-39,353-393</code></li>
+<li><code>WorkspacePreferences.swift:20-60</code></li>
+<li><code>docs/APPEARANCE.md:16-24,57-74</code></li>
+<li>Tests: <code>AppearanceWorkspaceTests.swift</code>; <code>WorkspacePreferencesTests.swift</code></li>
+</ul>
+<hr />
+<h2 id="w03--sidebar-search-activity-and-hidden-chat-recovery">W03 — Sidebar, search, activity and hidden-chat recovery</h2>
+<p><strong>Status:</strong> Implemented. Unread/read-state logic is extensively test-covered; real window focus could not be inferred from the locked-host fixture and remains explicitly unverified.</p>
+<p><strong>Entry:</strong> Visible by saved preference at launch; reveal through the middle header or <code>Command-F</code>; use View → Toggle Sidebar.</p>
+<p><strong>Exit:</strong> Toggle sidebar off, open W07/W08, or select a conversation and continue in W04/W05.</p>
+<pre class="text"><code>+------------------------------+
+|                            [+]  New chat
+| [magnifier] Search_______ [x] |
+|                              |
+| [avatar] Research       9:06 |
+|          latest preview [99+]|
+| [group]  Team          Sep 9 |
+|          draft/reply        2|
+|                              |
+|         No conversations     |  empty result state
+|       Try another name…      |
+|                              |
+| [grid] Marketplace           |
+| [user] Display name          |
+| • Saved on this Mac · …      |
++------------------------------+
+
+Conversation row context menu:
+  Edit Bot… / Edit Group…
+  Hide from sidebar / Unhide conversation   (direct only)
+  Delete Bot…                               (durable direct only)
+  Copy conversation name</code></pre>
+<h3 id="controls-and-actions">Controls and actions</h3>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Action and result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>+</code></td>
+<td>Opens W07 and clears previous picker query/selection/highlight.</td>
+</tr>
+<tr>
+<td>Search field</td>
+<td>Filters by conversation title and message text. Durable search asks the repository; sample search uses loaded in-memory rows.</td>
+</tr>
+<tr>
+<td>Clear-search <code>x</code></td>
+<td>Sets query to empty.</td>
+</tr>
+<tr>
+<td>Conversation row</td>
+<td>Flushes durable drafts before changing selection, loads latest 100 messages, clears notices and returns focus to composer.</td>
+</tr>
+<tr>
+<td>Row context: Edit</td>
+<td>Opens W16 or W17, bound to stable identity.</td>
+</tr>
+<tr>
+<td>Row context: Hide</td>
+<td>Persists <code>hiddenAt</code> for direct bot; does not delete it or clear unread state.</td>
+</tr>
+<tr>
+<td>Row context: Unhide</td>
+<td>Available when hidden rows have been enabled in Settings.</td>
+</tr>
+<tr>
+<td>Row context: Delete Bot</td>
+<td>Opens the dedicated destructive confirmation; only durable direct rows expose it.</td>
+</tr>
+<tr>
+<td>Row context: Copy name</td>
+<td>Writes only the conversation title to the macOS pasteboard.</td>
+</tr>
+<tr>
+<td>Marketplace</td>
+<td>Opens W14.</td>
+</tr>
+<tr>
+<td>Account</td>
+<td>Opens W15.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="search-and-hidden-state-contract">Search and hidden-state contract</h3>
+<ul>
+<li>Durable search is case- and diacritic-insensitive across title/message content.</li>
+<li>Whitespace around a non-empty query is trimmed by presentation filtering; repository result identities decide visible durable rows.</li>
+<li>Hidden direct conversations are excluded by default. “Show hidden conversations” lives in Settings, not as an inline sidebar disclosure. When enabled, hidden rows can be found and their context menu changes to “Unhide conversation.”</li>
+<li>Groups are not hidden through this menu.</li>
+<li>Empty results show “No conversations found / Try another name or message.”</li>
+<li>Search failures surface as the global storage error overlay rather than silently showing authoritative empty results.</li>
+</ul>
+<h3 id="activity-and-read-acknowledgement">Activity and read acknowledgement</h3>
+<ul>
+<li>Each durable row displays persisted latest-message preview/date and exact unread <strong>assistant</strong> reply count. User/event rows do not increment it.</li>
+<li>Visual count caps at <code>99+</code>; the row's accessibility value includes the full count.</li>
+<li>Preview fallback is “Start a conversation.” Attachment-only latest messages use a generic text-attachment label from the repository projection.</li>
+<li>Selecting/loading a chat does not by itself mark it read.</li>
+<li>Automatic acknowledgement requires: durable repository; active app; visible/key, non-minimized main window; no obscuring picker/sheet/dialog/file operation; selected conversation; rendered bottom exactly visible; rendered latest identity/sequence/UTF-8 byte count equal to the current snapshot; no nonterminal generation.</li>
+<li>A failed read write/refresh preserves the badge and displays “Retry read status.”</li>
+</ul>
+<h3 id="accessibility-1">Accessibility</h3>
+<ul>
+<li>A row combines title, preview, full date/time where present and exact unread count into one accessibility element; selected rows add the selected trait.</li>
+<li>The visual badge is hidden from accessibility to avoid duplicate announcements.</li>
+<li>Search, new chat, Marketplace and account controls have identifiers.</li>
+</ul>
+<h3 id="evidence-2">Evidence</h3>
+<ul>
+<li>Sidebar UI: <code>WorkspaceView.swift:148-240</code></li>
+<li>Row UI/menu/a11y: <code>WorkspaceView.swift:243-321</code></li>
+<li>Projection/filter/select: <code>Models.swift:243-329</code></li>
+<li>Durable search/load/draft flush: <code>PersistentWorkspace.swift:119-156,173-225</code></li>
+<li>Hide persistence: <code>PersistentWorkspace.swift:256-268</code></li>
+<li>Activity/read gate: <code>ConversationActivityWorkspace.swift:22-123,140-156</code></li>
+<li>Repository query test: <code>WorkspaceCoreTests/RepositoryTests.swift:320-327</code></li>
+<li>Exact count test: <code>WorkspaceCoreTests/ConversationActivityTests.swift:99-121</code></li>
+<li>Native tests: <code>ConversationActivityWorkspaceTests.swift:8-272</code>; <code>PreviewWorkspaceTests.swift:229-264</code></li>
+<li>Live-focus limitation: <code>docs/UNREAD-CONVERSATIONS.md:68-80</code></li>
+</ul>
+<hr />
+<h2 id="w04--direct-conversation-and-message-actions">W04 — Direct conversation and message actions</h2>
+<p><strong>Status:</strong> Implemented. Durable sending requires a configured provider and usable credential. Preview sending is explicitly local/session-only.</p>
+<p><strong>Entry:</strong> Select a direct row in W03 or select a bot in W07.</p>
+<p><strong>Exit:</strong> Select another row, open a transient surface, or close the app.</p>
+<pre class="text"><code>+------------------------------------------------------------------+
+| [bot] Bot name                             [edit] [routines] [&gt;]  |
+|------------------------------------------------------------------|
+|                   [timestamp]                                    |
+|                                                                  |
+| Assistant name                                                   |
+| +--------------------------------------+                         |
+| | assistant text                      |                         |
+| +--------------------------------------+                         |
+| [Reply] [Copy]                                                   |
+|                                                                  |
+|                                  +-----------------------------+ |
+|                                  | user text                   | |
+|                                  +-----------------------------+ |
+|                                  [Reply] [Copy]                  |
+|                                                                  |
+| Provider: [Choose provider v] [gear]                              |
+| To: https://…/v1 · model-id                                      |
+| (+) [Message Bot name_______________________________] [↑]         |
++------------------------------------------------------------------+</code></pre>
+<h3 id="header">Header</h3>
+<ul>
+<li>Bot avatar and current conversation title.</li>
+<li>Edit button opens W16.</li>
+<li>Durable conversations expose a Routines menu. Routine details/editor are documented in <code>docs/ROUTINES.md</code> rather than expanded here.</li>
+<li>Details toggles inspector preference; the inspector may still auto-collapse at W02 width.</li>
+</ul>
+<h3 id="transcript">Transcript</h3>
+<ul>
+<li>Latest page loads 100 messages. “Load earlier messages” prepends another 100 when a cursor exists, preserving stable message IDs and the current visible set.</li>
+<li>Default scroll anchor is bottom. If the user is no longer near bottom, new/streamed text preserves position and shows “Jump to latest.”</li>
+<li>User messages align right; assistant messages align left; event messages are centered plain status text. Message text is selectable.</li>
+<li>Assistant messages can show immutable speaker-name snapshots. This matters after bot rename/deletion and for group attribution.</li>
+<li>Text attachments render read-only chips beneath text. Missing metadata renders an explicit unavailable chip.</li>
+<li>A timestamp is a separate centered row above the message.</li>
+</ul>
+<h3 id="message-actions">Message actions</h3>
+<ul>
+<li>The current implementation uses visible <strong>Reply</strong> and <strong>Copy</strong> buttons under every non-event message, not an ellipsis or message context menu.</li>
+<li>Reply is disabled for a message with neither text nor attachments.</li>
+<li>Copy writes only message text and is disabled for attachment-only messages.</li>
+<li>No reaction, edit-message, delete-message, forward or execute action is implemented.</li>
+</ul>
+<h3 id="composer-and-send-validation">Composer and send validation</h3>
+<ul>
+<li>Plain-text AppKit <code>NSTextView</code>, selectable/editable, undo enabled, graphics import off, vertical scroller automatic, height clamped to <code>36…130pt</code>.</li>
+<li>Return submits; Shift-Return inserts a newline; Control/Option/Command-Return do not use the submit path; marked-text Return never submits.</li>
+<li>Send is disabled when text trims empty and there are no attachments, or during submit, deletion, attachment import/confirmation, unresolved mention insertion, invalid group mention, or membership repair.</li>
+<li>Draft is conversation-scoped. Durable edits schedule a 300ms debounced save and flush on conversation switch/app deactivation/close.</li>
+<li>No provider: Send preserves/flushes the draft, creates no message and shows an explicit local notice. Provider choice is a session selection, not a persisted per-bot default.</li>
+<li>Selected provider displays exact API root and model. Disclosure says the request includes the draft, bot description, up to 100 recent messages, the older parent when replying, and any applicable text files.</li>
+<li>Direct text-only submit needs no extra consent sheet. A direct request that transmits text attachments opens W11.</li>
+</ul>
+<h3 id="empty-conversation-state">Empty conversation state</h3>
+<pre class="text"><code>                         [large bot avatar]
+                         A new conversation
+        Your drafts are saved on this Mac. Choose a provider below…</code></pre>
+<p>Sample mode instead states that messages remain in this session and no AI provider is contacted.</p>
+<h3 id="accessibility-2">Accessibility</h3>
+<ul>
+<li>Composer label: “Message composer.”</li>
+<li>Buttons identify edit, routines, details, provider, settings, attachment and send actions.</li>
+<li>Speaker attribution uses “Reply from <name>.”</li>
+<li>Message text remains selectable, but no claim of complete rotor order or live-region behavior is made.</li>
+</ul>
+<h3 id="evidence-3">Evidence</h3>
+<ul>
+<li>Header/transcript/autoscroll: <code>WorkspaceView.swift:324-513</code></li>
+<li>Composer/provider controls: <code>WorkspaceView.swift:515-771</code></li>
+<li>Message presentation/actions: <code>WorkspaceView.swift:840-919</code></li>
+<li>AppKit composer: <code>NativeComposer.swift:4-151</code></li>
+<li>Draft persistence: <code>Models.swift:251-258</code>; <code>PersistentWorkspace.swift:173-225</code></li>
+<li>No-provider behavior: <code>PersistentWorkspace.swift:285-309</code></li>
+<li>Tests: <code>NativeComposerAppKitTests.swift</code>; <code>PersistentWorkspaceTests.swift:45-66,92-121</code>; <code>ProviderWorkspaceTests.swift:212-274</code>; <code>PreviewWorkspaceTests.swift:166-227</code></li>
+</ul>
+<hr />
+<h2 id="w05--group-conversation-with-manual-ordered-recipients">W05 — Group conversation with manual ordered recipients</h2>
+<p><strong>Status:</strong> Implemented. Ordered-round orchestration is fixture-tested; broad live-provider behavior and physical control operation are not inferred.</p>
+<p><strong>Entry:</strong> Select a group row in W03 or create one in W08.</p>
+<p><strong>Exit:</strong> Navigate to another chat, edit group, or complete/cancel the send flow.</p>
+<pre class="text"><code>+------------------------------------------------------------------+
+| [group] Project team                       [edit] [routines] [&gt;]  |
+|------------------------------------------------------------------|
+| transcript with attributed replies                               |
+| Research Partner                                                 |
+| [first reply bubble]                                             |
+| Writing Partner                                                  |
+| [second reply bubble]                                            |
+|------------------------------------------------------------------|
+| Provider: [Provider v] [gear]                                    |
+| Reply as                         [Mention v] [2 selected v]        |
+|  1. Research Partner                         [↑][↓][x]            |
+|  2. Writing Partner                          [↑][↓][x]            |
+| One ordered request per bot. Review before sending.              |
+| (+) [Message Project team__________________________] [↑]          |
++------------------------------------------------------------------+</code></pre>
+<h3 id="manual-recipient-contract">Manual recipient contract</h3>
+<ul>
+<li>“Choose group reply bots” lists current group members only.</li>
+<li>Selecting appends identity to the ordered target list; deselecting removes it.</li>
+<li>The displayed numbered list is authoritative. Up/down swaps adjacent positions; remove deletes the target. List height caps at 82pt and scrolls.</li>
+<li>Selection order is session presentation state scoped by conversation. It is not persisted as a per-group default.</li>
+<li>Zero targets blocks sending with “Choose one or more bots…” at the service boundary.</li>
+<li>One manually selected target follows single-send behavior. Two or more targets create a bounded ordered round and always open W11, even with no files.</li>
+<li>One user message is persisted for the round. Each recipient receives a separate request and produces an attributed reply.</li>
+<li>Every recipient uses the same frozen pre-round context; later recipients do not see prior replies from that same round.</li>
+<li>Stop on any unfinished member becomes “Stop round,” cancels remaining siblings and keeps completed replies. Provider failures remain visible per member and do not silently retry or stop later approved recipients.</li>
+</ul>
+<h3 id="persistencenetwork-boundary">Persistence/network boundary</h3>
+<pre class="text"><code>draft + ordered target IDs + provider
+  -&gt; prepare aggregate plan (no credential/network)
+  -&gt; W11 review
+  -&gt; revalidate draft/provider/targets/context
+  -&gt; read credential
+  -&gt; atomically commit one user message + all queued generations
+  -&gt; send separate requests in displayed order</code></pre>
+<p>A changed draft, destination or target order invalidates prior review. An older send cannot clear a newer draft version.</p>
+<h3 id="accessibility-3">Accessibility</h3>
+<ul>
+<li>Target menu reports “None selected” or the count.</li>
+<li>Each numbered target includes full identity in help/accessibility text. Move/remove controls name the bot and direction/action.</li>
+<li>Duplicate display names receive a distinguishing identity prefix.</li>
+</ul>
+<h3 id="evidence-4">Evidence</h3>
+<ul>
+<li>Group provider controls: <code>WorkspaceView.swift:653-755</code></li>
+<li>Ordered selection store: <code>ProviderWorkspace.swift:29-68</code></li>
+<li>Command capture/round split: <code>ProviderWorkspace.swift:146-181</code></li>
+<li>Round submission: <code>ProviderWorkspace.swift:215-242</code></li>
+<li>Stop/retry: <code>ProviderWorkspace.swift:245-275</code></li>
+<li>Tests: <code>ProviderWorkspaceTests.swift:276-668</code>; core <code>WorkspaceCoreTests/GroupRoundCoordinatorTests.swift</code></li>
+<li>Detailed contract: <code>docs/GROUP-ROUNDS.md</code></li>
+</ul>
+<hr />
+<h2 id="w06--typed-and-menu-inserted-group-mentions">W06 — Typed and menu-inserted group mentions</h2>
+<p><strong>Status:</strong> Implemented. Parser and workspace routing are test-covered; physical IME/menu/ VoiceOver operation remains an open gate.</p>
+<p><strong>Entry:</strong> In W05, type a supported mention or choose a member from the Mention menu.</p>
+<p><strong>Exit:</strong> Remove all mentions to restore manual targets, correct an invalid mention, or send through W11.</p>
+<pre class="text"><code>Reply as                         [Mention v] [manual disabled]
+Recipients from mentions
+  1. Research Partner
+  2. Writing Partner
+Mention order replaces manual selection…
+
+(+) [Ask @Research then @&quot;Writing Partner&quot;_________] [↑]
+
+Invalid variant:
+  No current group member matches this mention…
+  [send disabled]</code></pre>
+<h3 id="supported-user-syntax">Supported user syntax</h3>
+<pre class="text"><code>@Research
+@&quot;Writing Partner&quot;
+\@literal-handle</code></pre>
+<ul>
+<li>Matching is case-sensitive after Unicode NFC normalization.</li>
+<li>A mention starts at text start, whitespace, or supported separator/opening punctuation.</li>
+<li>Bare names use Unicode letters/numbers, <code>_</code> or <code>-</code>. Spaces/punctuation require quoted JSON-string syntax.</li>
+<li>Emails, URL spans, inline code and fenced code are not routing instructions.</li>
+<li><code>\@</code> at a mention boundary produces literal <code>@</code> and retains manual recipient behavior.</li>
+<li>Duplicate unbound names fail as ambiguous. Menu insertion writes a quoted token with a local UUID binding so exact identity survives duplicate names and app restart.</li>
+<li>Repeated mentions deduplicate the recipient but preserve first-occurrence order.</li>
+<li>At most six unique targets are allowed.</li>
+</ul>
+<h3 id="menu-insertion-safety">Menu insertion safety</h3>
+<ul>
+<li>Mention menu contains current group members and exposes display name plus full UUID in help/accessibility text.</li>
+<li>Insertion occurs at current selection/caret and adds separators when needed.</li>
+<li>It is one-shot and bound to conversation ID, composer context generation and exact expected draft body.</li>
+<li>It rechecks that the editor is editable/selectable and has no marked text.</li>
+<li>Navigation, reconnect, draft change, a different insertion or IME marked text rejects the delayed command. Failure leaves content unchanged and asks the user to try again.</li>
+<li>While insertion is pending, Send is disabled.</li>
+</ul>
+<h3 id="routing-and-disclosure">Routing and disclosure</h3>
+<ul>
+<li>Any valid mention set replaces the manual target list; manual controls are disabled but their previous state remains for later mention-free drafts.</li>
+<li>Invalid/incomplete/unknown/ambiguous/stale/bad-binding mentions show the first issue inline and block Send. They never fall back silently to manual targets.</li>
+<li>Any mention send is represented as a round and opens W11, even for one recipient.</li>
+<li>Raw UUID binding syntax is local draft consent state only. The provider and stored transcript receive readable message text with binding suffixes removed.</li>
+<li>Confirmation explains that recipients came from mentions and local identity bindings are not sent.</li>
+</ul>
+<h3 id="evidence-5">Evidence</h3>
+<ul>
+<li>UI: <code>WorkspaceView.swift:653-755</code></li>
+<li>Routing/insertion store: <code>MentionWorkspace.swift:4-101</code></li>
+<li>One-shot AppKit insertion: <code>NativeComposer.swift:88-142</code>; <code>ComposerInsertion.swift:3-22</code></li>
+<li>Parser and errors: <code>Packages/WorkspaceCore/Sources/WorkspaceCore/GroupMentions.swift:3-180</code></li>
+<li>Native tests: <code>MentionWorkspaceTests.swift:19-335</code>; <code>NativeComposerAppKitTests.swift:79-210</code></li>
+<li>Parser tests: <code>WorkspaceCoreTests/GroupMentionTests.swift</code></li>
+<li>Detailed grammar/limits: <code>docs/GROUP-MENTIONS.md</code></li>
+<li>Screenshot-catalog caution: the current capture set contains generic mention-labelled records whose pixels duplicate the invalid Dark state. Do not map those records to W06's valid baseline merely from their record name; use the mention-specific valid, duplicate identity and invalid-state captures and verify pixels/provenance in the master catalog.</li>
+</ul>
+<hr />
+<h2 id="w07--new-direct-chat-recipient-picker">W07 — New direct-chat recipient picker</h2>
+<p><strong>Status:</strong> Implemented.</p>
+<p><strong>Entry:</strong> Sidebar <code>+</code> or <code>Command-N</code>.</p>
+<p><strong>Exit:</strong> Choose an existing bot, switch to W08, open Create Bot, press Escape or close <code>x</code>.</p>
+<pre class="text"><code>+------------------------------------------------------------------+
+| To: [Search or create Bots____________________________] [x]      |
+|------------------------------------------------------------------|
+| +--------------------------------------------------------------+ |
+| | (+) Create new Bot                                           | |
+| | (group) Create group chat                                    | |
+| | [bot] Research Partner                          New chat      | |
+| | [bot] Writing Partner                                        | |
+| +--------------------------------------------------------------+ |
+|                                                                  |
++------------------------------------------------------------------+</code></pre>
+<h3 id="behavior">Behavior</h3>
+<ul>
+<li>Picker replaces the entire middle conversation surface and forces inspector hidden.</li>
+<li>Query receives focus on appearance. Case-insensitive localized name filtering occurs over visible, unselected bots.</li>
+<li>Up/down commands move a highlighted existing bot; Return chooses it.</li>
+<li>Choosing an existing bot opens its already-created direct conversation. It does not create a duplicate direct chat.</li>
+<li>“Create new Bot” opens the simple creation panel with name, description, shape and color. Name must trim to 1…80 characters; creation makes distinct bot and conversation IDs.</li>
+<li>“Create group chat” reinitializes the picker in W08 mode.</li>
+<li>Hidden bots are not offered.</li>
+<li>“No matching bots” is shown when filtering produces no available recipients.</li>
+</ul>
+<h3 id="persistencenetworkpermission-boundary">Persistence/network/permission boundary</h3>
+<ul>
+<li>Durable Bot creation is one repository mutation followed by refresh and selection.</li>
+<li>Sample Bot creation mutates only preview memory.</li>
+<li>Creating/opening a chat does not read credentials or contact a provider.</li>
+<li>Cancel does not create a ghost Bot or conversation.</li>
+</ul>
+<h3 id="accessibility-4">Accessibility</h3>
+<ul>
+<li>Query and create actions are native controls. Existing rows say “Chat with <name>.”</li>
+<li>Cancel icon has “Cancel new chat.”</li>
+<li>Highlight visuals do not replace semantic button activation.</li>
+</ul>
+<h3 id="evidence-6">Evidence</h3>
+<ul>
+<li><code>RecipientPickerView.swift:3-76,108-137</code></li>
+<li>Picker state/selection: <code>Models.swift:278-345</code></li>
+<li>Durable creation: <code>PersistentWorkspace.swift:228-244</code></li>
+<li>Tests: <code>PreviewWorkspaceTests.swift:29-80</code>; <code>PersistentWorkspaceTests.swift:17-43,123-145</code></li>
+</ul>
+<hr />
+<h2 id="w08--group-builder">W08 — Group builder</h2>
+<p><strong>Status:</strong> Implemented.</p>
+<p><strong>Entry:</strong> W07 → “Create group chat,” or programmatically open group picker.</p>
+<p><strong>Exit:</strong> Create the group, cancel, or press Escape.</p>
+<pre class="text"><code>+------------------------------------------------------------------+
+| To: [Search or create Bots____________________________] [x]      |
+|------------------------------------------------------------------|
+| [bot A  x] [bot B  x] [bot C  x]       selected chips            |
+| +--------------------------------------------------------------+ |
+| | [bot] Another member                         Add to group chat | |
+| | [bot] Another member                                           | |
+| +--------------------------------------------------------------+ |
+|                                                                  |
+| [Group name____________________] [Create group]                   |
+| Choose two to six bots. This group is saved on your Mac.         |
++------------------------------------------------------------------+</code></pre>
+<h3 id="behavior-and-validation">Behavior and validation</h3>
+<ul>
+<li>Each selection appends an ordered UUID and becomes a removable chip.</li>
+<li>Selected bots disappear from candidates. Removing a chip returns a non-hidden bot to the candidates.</li>
+<li>Group size is 2…6 unique, available, non-hidden bots. Candidate controls disable at six; empty candidates show “Six bots selected” or “No matching bots.”</li>
+<li>Default name is “New group chat.” Name must trim to 1…80 characters.</li>
+<li>“Create group” is disabled below two recipients and uses <code>Command-Return</code> as its explicit shortcut.</li>
+<li>Service validation repeats all membership/name rules; an error is shown beneath the form and no partial group is committed.</li>
+<li>Successful creation selects the new group and returns to W05.</li>
+</ul>
+<h3 id="persistencenetwork-boundary-1">Persistence/network boundary</h3>
+<ul>
+<li>Durable create is one repository group mutation and preserves selected member order.</li>
+<li>No provider request, credential access or autonomous member conversation occurs.</li>
+<li>A group is a conversation identity, not a Bot identity or nested group.</li>
+</ul>
+<h3 id="accessibility-5">Accessibility</h3>
+<ul>
+<li>Candidate labels say “Add <name>.” Chip removal says “Remove <name>.”</li>
+<li>Group name and create button expose stable identifiers.</li>
+<li>Complete keyboard traversal/VoiceOver order remains a manual gate.</li>
+</ul>
+<h3 id="evidence-7">Evidence</h3>
+<ul>
+<li><code>RecipientPickerView.swift:21-40,42-105</code></li>
+<li>Selection/create validation: <code>Models.swift:318-361</code></li>
+<li>Durable creation: <code>PersistentWorkspace.swift:246-254</code></li>
+<li>Tests: <code>PreviewWorkspaceTests.swift:82-164</code>; <code>PersistentWorkspaceTests.swift:17-43</code></li>
+</ul>
+<hr />
+<h2 id="w09--reply-selection-composer-preview-and-jump-states">W09 — Reply selection, composer preview and jump states</h2>
+<p><strong>Status:</strong> Implemented.</p>
+<p><strong>Entry:</strong> Press Reply under a non-event message in W04/W05, or reopen a durable draft that already contains <code>replyToID</code>.</p>
+<p><strong>Exit:</strong> Cancel reply, send successfully, replace it by replying to another message, or navigate away while retaining its conversation-scoped draft.</p>
+<pre class="text"><code>Transcript child reply:
+  +-- [Original sender]
+  |   [two-line original excerpt]
+  +-- [reply bubble]
+
+Composer:
+  +----------------------------------------------------------+ [x]
+  | Original sender                                          |
+  | two-line excerpt…                                        |
+  +----------------------------------------------------------+
+  [existing draft text remains unchanged____________________]
+
+States:
+  Loading original message… [spinner]
+  Original message unavailable / It may have been removed…
+  Available -&gt; click to load/jump to original
+  Opening -&gt; spinner; repeated open disabled</code></pre>
+<h3 id="contract">Contract</h3>
+<ul>
+<li>Selecting a parent never sends, switches conversation or changes draft text.</li>
+<li>Parent must be a non-event message in the same conversation with text or attachments.</li>
+<li>Reply choice and text/attachment IDs persist together as one conversation draft.</li>
+<li>Preview sender uses recorded speaker name (<code>You</code>, assistant snapshot or fallback), not a bot's newly edited name. Excerpt collapses whitespace and caps at 180 characters.</li>
+<li>Attachment-only parents show “N stored text attachment(s).”</li>
+<li>Cancel removes only the parent reference and leaves text/attachments.</li>
+<li>Child messages show their reply reference above the bubble.</li>
+<li>Available reference cards are clickable. A jump loads contiguous older 100-message pages until the target is present, then centers it without changing conversation.</li>
+<li>Loading/unavailable references do not activate. Lookup failure is cached; an explicit conversation reload can retry unavailable references.</li>
+<li>Any stale navigation/context/request result is ignored. Jump failure keeps draft intact and shows an explicit notice.</li>
+<li>Provider context includes the explicit older parent exactly once when outside the normal recent window. It remains an ordinary role/content turn, never a system instruction.</li>
+</ul>
+<h3 id="accessibility-6">Accessibility</h3>
+<ul>
+<li>Available preview announces “Reply to <sender>: <excerpt>.” Loading and unavailable have explicit labels.</li>
+<li>Composer preview has a separate “Cancel reply” control.</li>
+<li>Opening progress announces “Opening original message.”</li>
+<li>Current visual QA reports that the top reply bubble is clipped in the captured viewport. That image may still prove the lower composer reference state, but it must not be used as evidence that the full referenced transcript row is visually complete.</li>
+</ul>
+<h3 id="evidence-8">Evidence</h3>
+<ul>
+<li>Presentation: <code>ReplyPreviewView.swift:3-100</code></li>
+<li>Workspace state and jump: <code>ReplyWorkspace.swift:4-219</code></li>
+<li>Transcript/composer integration: <code>WorkspaceView.swift:488-502,528-539,867-880</code></li>
+<li>Tests: <code>ReplyPresentationTests.swift:7-31</code>; <code>ReplyWorkspaceTests.swift:9-274</code></li>
+<li>Detailed contract/fixture limits: <code>docs/REPLY-WORKFLOW.md</code></li>
+</ul>
+<hr />
+<h2 id="w10--draft-text-attachment-ingress-and-chips">W10 — Draft text-attachment ingress and chips</h2>
+<p><strong>Status:</strong> Implemented only in durable BotWorkspace. Sample mode never reads files.</p>
+<p><strong>Entry:</strong> Press the composer <code>+</code> in W04/W05 and choose files in the native open panel.</p>
+<p><strong>Exit:</strong> Cancel selection, complete copy into the draft, remove chips, or proceed to W11.</p>
+<pre class="text"><code>Native open panel:
+  Copy text attachments into this workspace
+  Choose up to 32 local UTF-8 text files…
+  [Cancel] [Copy Attachments]
+
+Composer after copy:
+  [doc] notes.md
+        1842 bytes                                      [x]
+  [doc!] Unavailable attachment
+         Unavailable · &lt;UUID&gt;                           [x]
+  (+) [message text____________________________________] [↑]
+
+During copy:
+  [spinner] Copying selected text files…</code></pre>
+<h3 id="file-selection-and-copy-contract">File selection and copy contract</h3>
+<ul>
+<li>Native <code>NSOpenPanel</code>, multiple files, files only, UTType text filter, aliases not resolved. The app reads only explicit returned URLs; it never scans the home directory.</li>
+<li>Limits: 32 ordered unique files/references, 10 MiB each, 25 MiB total.</li>
+<li>Accepted content is strict UTF-8 plain text; tab/CR/LF are allowed, other control characters are rejected. Common text/code extensions and selected extensionless text names are accepted; known binary/image/archive/office extensions are rejected.</li>
+<li>Names must be safe, nonempty, no <code>/</code> or <code>\</code>, no control characters, at most 255 UTF-8 bytes at the file-ingress layer.</li>
+<li>File descriptor uses <code>O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC</code>; final object must be a regular file. Before/after device/inode/size/mtime/ctime must match.</li>
+<li>Security-scoped access is balanced for the duration of the read. Original absolute path or bookmark is not persisted.</li>
+<li>The selected conversation is frozen at chooser start; navigation does not retarget files.</li>
+<li>Exact bytes, metadata, draft reference and SHA-256 are committed to Core Data through the sole versioned draft writer. A failed batch creates no ghost references/content.</li>
+<li>Once selection is accepted, quit/reconnect waits for read/save completion. An unaccepted chooser is cancelled.</li>
+</ul>
+<h3 id="chip-behavior">Chip behavior</h3>
+<ul>
+<li>Draft chips show original name and exact byte count; remove control deletes the draft reference and schedules save.</li>
+<li>Chips and managed content survive original-file deletion and app restart.</li>
+<li>Transcript chips are read-only metadata. Rendering never fetches file bodies.</li>
+<li>Missing metadata becomes a per-file “Unavailable attachment” chip instead of hiding the reference or converting the message to empty.</li>
+<li>Removing a draft reference does not collect bytes still referenced by a message.</li>
+</ul>
+<h3 id="permission-and-privacy-boundary">Permission and privacy boundary</h3>
+<ul>
+<li>Durable app has user-selected read-write entitlement; this source contract does not prove a real signed sandbox grant on every host.</li>
+<li>No binary/images, upload preview, arbitrary directory, symlink target or credential-file discovery is supported by this attachment path.</li>
+<li>Sample mode pressing <code>+</code> shows a notice and reads nothing.</li>
+</ul>
+<h3 id="accessibility-7">Accessibility</h3>
+<ul>
+<li>Attach button says “Attach text files.”</li>
+<li>Chip announces name, bytes and stable ID; unavailable chip announces status and ID.</li>
+<li>Remove button names the attachment.</li>
+</ul>
+<h3 id="evidence-9">Evidence</h3>
+<ul>
+<li>Composer chips/progress: <code>WorkspaceView.swift:552-585</code></li>
+<li>Chip component: <code>AttachmentViews.swift:4-74,252-270</code></li>
+<li>Open panel and reader: <code>AttachmentFileImporter.swift:7-240</code></li>
+<li>App staging/removal: <code>AttachmentWorkspace.swift:36-177</code></li>
+<li>Limits/data validation: <code>Packages/WorkspaceCore/Sources/WorkspaceCore/Attachment.swift:4-38,63-131</code></li>
+<li>Tests: <code>AttachmentFileImporterTests.swift</code>; <code>AttachmentPresentationTests.swift:9-128</code>; <code>AttachmentWorkspaceTests.swift:9-520</code></li>
+<li>Detailed contract: <code>docs/ATTACHMENTS.md</code></li>
+</ul>
+<hr />
+<h2 id="w11--transmission-consent-sheet">W11 — Transmission consent sheet</h2>
+<p><strong>Status:</strong> Implemented. It is mandatory for any request carrying files, every multi-target round, and every mention-routed send including a single mentioned recipient.</p>
+<p><strong>Entry:</strong> Send a draft/retry whose prepared plan includes attachments, multiple group targets or mention routing.</p>
+<p><strong>Exit:</strong> Cancel with zero provider effect, or confirm Send and wait for success/error.</p>
+<pre class="text"><code>+--------------------------------------------------------------+
+| Send group round? / Send text attachments?                    |
+| Review ordered recipients and exact destination…              |
+|--------------------------------------------------------------|
+| Destination                                                  |
+|   Conversation     Project team                               |
+|   Ordered recipients · 2 separate requests                   |
+|     1. Research Partner                                      |
+|     2. Writing Partner                                       |
+|   API root         https://provider.example/v1               |
+|   Model            model-id                                   |
+|                                                              |
+| Context                                                      |
+|   Same frozen pre-round context of N messages…                |
+|                                                              |
+| Text attachments · N · M bytes                               |
+|   notes.md · 1842 bytes · ID · SHA-256                       |
+|                                                              |
+| Provider privacy terms and charges apply…                     |
+|--------------------------------------------------------------|
+| [error, if any]                                               |
+| [Cancel]                                   [spinner] [Send]   |
++--------------------------------------------------------------+</code></pre>
+<h3 id="disclosure-contract">Disclosure contract</h3>
+<ul>
+<li>Titles differ: “Send text attachments?” for a single send; “Send group round?” for a group round.</li>
+<li>Names exact conversation, target bot or ordered targets, number of separate requests, API root and model.</li>
+<li>Round context explains all requests share frozen context and later recipients do not see prior same-round replies. It states failure/Stop behavior.</li>
+<li>Mention rounds say recipients came from mentions and UUID bindings are not sent.</li>
+<li>If files are involved, every included file from draft, recent context or explicit older reply is listed with name, bytes, stable ID and SHA-256.</li>
+<li>Warns that attachment content is untrusted user content, sending shares it with the selected provider, terms/charges apply and a sent request cannot be unsent.</li>
+<li>Sheet is fixed <code>520×560</code>, scrolls its disclosure body, keeps action buttons outside the scroll area and disables interactive dismissal.</li>
+</ul>
+<h3 id="consent-integrity">Consent integrity</h3>
+<ul>
+<li>Plan preparation reads neither credential nor network and stores no file body in the presentation target.</li>
+<li>Cancel closes the sheet, restores composer focus and makes no credential/provider call.</li>
+<li>Send synchronously claims the operation to defeat double-clicks.</li>
+<li>Before credential access it revalidates workspace context, conversation, provider, target order/mention snapshot, draft version and transmission fingerprint.</li>
+<li>Drift keeps the sheet open with a sanitized error and requires a new review.</li>
+<li>Retry with files repeats this exact consent flow.</li>
+<li>Successful send clears the reviewed draft only if the local draft version still matches.</li>
+</ul>
+<h3 id="accessibility-8">Accessibility</h3>
+<ul>
+<li>Destination values are selectable and explicitly labelled.</li>
+<li>Every recipient is numbered and includes full identity in its accessibility label/help.</li>
+<li>File identity/hash are selectable; SHA-256 receives an explicit label.</li>
+<li>Cancel/Send/error have stable identifiers. Sending progress is visible.</li>
+</ul>
+<h3 id="evidence-10">Evidence</h3>
+<ul>
+<li>Sheet presentation: <code>AttachmentViews.swift:76-250</code></li>
+<li>Planning/routing: <code>AttachmentWorkspace.swift:232-321</code></li>
+<li>Cancel/confirm/drift: <code>AttachmentWorkspace.swift:324-380</code></li>
+<li>Tests: <code>AttachmentWorkspaceTests.swift:326-466</code>; <code>ProviderWorkspaceTests.swift:455-668</code>; <code>MentionWorkspaceTests.swift:19-221</code></li>
+<li>Contracts: <code>docs/ATTACHMENTS.md:81-120</code>; <code>docs/GROUP-ROUNDS.md</code>; <code>docs/GROUP-MENTIONS.md</code></li>
+</ul>
+<hr />
+<h2 id="w12--streaming-failed-cancelled-and-retry-status">W12 — Streaming, failed, cancelled and retry status</h2>
+<p><strong>Status:</strong> Implemented through the provider core; offline fixtures cover deterministic lifecycle logic. Broad live compatibility is not claimed.</p>
+<p><strong>Entry:</strong> Confirm or directly send a valid durable draft; reopen a conversation containing a non-completed generation; encounter provider failure/cancellation/interruption.</p>
+<p><strong>Exit:</strong> Completion removes the status row; Stop reaches terminal cancelled; Retry creates a new attempt linked to the same user message.</p>
+<pre class="text"><code>[user message]
+
+Research Partner · Queued / Connecting / Streaming         [Stop]
+[partial assistant bubble grows above or beside status]
+
+Failure:
+Research Partner · Failed                                  [Retry]
+&lt;sanitized error&gt;
+
+Round:
+Research Partner · Completed
+Writing Partner · Streaming                           [Stop round]
+Coordinator · Queued                                  [Stop round]</code></pre>
+<h3 id="state-and-action-contract">State and action contract</h3>
+<pre class="text"><code>draft -&gt; persisting -&gt; queued -&gt; connecting -&gt; streaming -&gt; completed
+                        |          |              |
+                        +----------+--------------+-&gt; failed
+                                   +----------------&gt; cancelled
+
+nonterminal at app restart -&gt; interrupted
+failed/cancelled/interrupted -&gt; explicit Retry -&gt; new attempt</code></pre>
+<ul>
+<li>Status rows render for generations whose state is not completed.</li>
+<li>Speaker label uses immutable target speaker snapshot, current matching bot, persisted assistant snapshot, then “Deleted bot.”</li>
+<li>Stop is available only while nonterminal. In a round it stops the whole remaining round.</li>
+<li>Terminal non-routine generations offer Retry. Routine generations state that retry is unavailable here.</li>
+<li>Retry uses the currently selected provider, preserves original user message and previous partial text, and creates a new attempt. Failed round member waits for siblings to finish before retry becomes valid.</li>
+<li>Retry with files returns to W11. HTTP/provider failures do not auto-retry.</li>
+<li>While an action is pending, affected status controls disable to avoid duplicates.</li>
+<li>Error rendering uses sanitized provider/storage messages; credentials must not appear.</li>
+</ul>
+<h3 id="network-boundary">Network boundary</h3>
+<ul>
+<li>User message plus queued generation(s) persist atomically before transport.</li>
+<li>Persistence failure keeps draft and makes zero transport calls.</li>
+<li>Per-conversation concurrency is one active generation; coordinator global maximum is three. Queued contexts are frozen and do not absorb replies completed later.</li>
+<li>Stop cannot retract bytes already received by a provider. Late events for cancelled/stale attempts are rejected.</li>
+</ul>
+<h3 id="evidence-11">Evidence</h3>
+<ul>
+<li>UI: <code>WorkspaceView.swift:503-512,774-821</code></li>
+<li>Coordinator presentation: <code>ProviderWorkspace.swift:84-130,184-275</code></li>
+<li>No-provider/send orchestration: <code>PersistentWorkspace.swift:285-309</code></li>
+<li>Tests: <code>ProviderWorkspaceTests.swift:212-274,306-420,455-668</code>; core <code>Packages/WorkspaceCore/Tests/WorkspaceCoreTests/GenerationTests.swift</code>, <code>GroupRoundCoordinatorTests.swift</code></li>
+<li>Provider limits: <code>docs/PROVIDER-CORE.md:61-106,108-155</code></li>
+</ul>
+<hr />
+<h2 id="w13--disconnected-computer-inspector">W13 — Disconnected computer inspector</h2>
+<p><strong>Status:</strong> The disconnected presentation is implemented. A live computer, graphical desktop, terminal viewer or remote-control adapter is <strong>planned/not implemented</strong> in this app.</p>
+<p><strong>Entry:</strong> Show conversation details on a window wide enough for the inspector.</p>
+<p><strong>Exit:</strong> Inspector hide button, conversation-header details toggle, narrow window or picker.</p>
+<pre class="text"><code>+-------------------------------+
+|                    [gear] [&gt;&gt;]|
+| [pencil] Edit Bot profile     |
+| Bot description / group names |
+|                               |
+| +---------------------------+ |
+| |      [desktop icon]       | |
+| |   No computer connected   | |
+| | No live computer service  | |
+| | configured for workspace. | |
+| +---------------------------+ |
+|        Bot&#39;s screen           |
+|                               |
+| Routines                  [+] |
+| …                             |
++-------------------------------+</code></pre>
+<h3 id="exact-current-behavior">Exact current behavior</h3>
+<ul>
+<li>Top controls open Settings and hide details.</li>
+<li>Edit profile/member control opens W16/W17.</li>
+<li>Direct inspector may show Bot description; group inspector lists current member names.</li>
+<li>Computer panel is a static, explicit disconnected state with no wallpaper, frame, URL, WebSocket, reconnect button, keyboard capture or pointer capture.</li>
+<li>The caption uses <code>&lt;Bot name&gt;'s screen</code> or <code>Group's screen</code>; it does <strong>not</strong> assert that a screen exists or is streaming.</li>
+<li>Routines list appears below the computer panel; routine functionality belongs to its own contract.</li>
+</ul>
+<h3 id="permissionnetwork-boundary">Permission/network boundary</h3>
+<ul>
+<li>Rendering W13 makes no request to a remote computer or terminal service.</li>
+<li>No private infrastructure configuration or deployment details are included here.</li>
+<li>Adding a terminal or desktop requires a separate adapter contract covering endpoint ownership, authentication, view-vs-control permission, transport security, lifecycle, accessibility and disconnect behavior. It must not be smuggled in as an iframe or static screenshot labelled live.</li>
+</ul>
+<h3 id="accessibility-9">Accessibility</h3>
+<ul>
+<li>Settings/hide/edit icon controls have labels and identifiers.</li>
+<li>Disconnected panel has <code>computer-disconnected</code> identifier and readable text.</li>
+</ul>
+<h3 id="evidence-12">Evidence</h3>
+<ul>
+<li><code>WorkspaceView.swift:927-982</code></li>
+<li>Visibility/layout: <code>WorkspaceLayout.swift:9-19</code></li>
+<li>Required honest state: <code>docs/NATIVE-REWRITE-CONTRACT.md:65,69-71,107-112,202-215</code></li>
+<li>Product boundary: <code>README.md:7-13</code></li>
+<li>Acceptance target: <code>docs/NATIVE-REWRITE-CONTRACT.md:245-246</code></li>
+</ul>
+<hr />
+<h2 id="w14--marketplacelocal-templates">W14 — Marketplace/local templates</h2>
+<p><strong>Status:</strong> Implemented local catalog. It is not an online marketplace, plugin installer, credential grant or live automation registry.</p>
+<p><strong>Entry:</strong> Sidebar → Marketplace.</p>
+<p><strong>Exit:</strong> Close <code>x</code>, Escape, or add a template (which creates/selects a Bot and closes sheet).</p>
+<pre class="text"><code>+----------------------------------------------+
+| Marketplace                              [x] |
+| Start with a focused teammate                |
+| Local templates. Installing one creates…     |
+|                                              |
+| [avatar] Research Partner              [Add] |
+|          Find sources, compare options…      |
+| -------------------------------------------- |
+| [avatar] Writing Partner               [Add] |
+|          Turn rough notes into clear drafts… |
+| -------------------------------------------- |
+| [avatar] Project Coordinator           [Add] |
+|          Organize next steps…                 |
++----------------------------------------------+</code></pre>
+<h3 id="contract-1">Contract</h3>
+<ul>
+<li>Fixed local entries: Research Partner, Writing Partner, Project Coordinator.</li>
+<li>Each contains a name, description, original avatar color and shape.</li>
+<li>Add reuses normal create-Bot validation/persistence, creates an independent Bot/direct conversation and selects it.</li>
+<li>It does not attach provider credentials, routines, messages or computer access.</li>
+<li>The sheet truthfully states that the result is a separate Bot, not live automation.</li>
+<li>UI is implemented, but the full acceptance test “install the same template twice and prove independent IDs/conversations and no inherited credentials/jobs” is not named as a dedicated Marketplace UI test. Generic Bot creation does generate fresh identities.</li>
+</ul>
+<h3 id="accessibility-10">Accessibility</h3>
+<ul>
+<li>Close button names the sheet.</li>
+<li>Each Add button announces “Add <template name>.”</li>
+<li>Avatar is decorative alongside visible name/description.</li>
+</ul>
+<h3 id="evidence-13">Evidence</h3>
+<ul>
+<li>Sidebar entry: <code>WorkspaceView.swift:204-226</code></li>
+<li>Panel dispatch: <code>PrototypePanel.swift:14-44</code></li>
+<li>Catalog/actions: <code>PrototypePanel.swift:119-157</code></li>
+<li>Create identity: <code>Models.swift:331-345</code>; <code>PersistentWorkspace.swift:228-244</code></li>
+<li>Generic identity tests: <code>PreviewWorkspaceTests.swift:66-80</code></li>
+<li>Planned acceptance: <code>docs/NATIVE-REWRITE-CONTRACT.md:66-67,245</code></li>
+</ul>
+<hr />
+<h2 id="w15--accountdisplay-name-sheet">W15 — Account/display-name sheet</h2>
+<p><strong>Status:</strong> Implemented. This is a local display-name editor, not account authentication, cloud profile, billing or provider identity.</p>
+<p><strong>Entry:</strong> Bottom sidebar account row.</p>
+<p><strong>Exit:</strong> Cancel, close <code>x</code>, Escape, or Save.</p>
+<pre class="text"><code>+------------------------------------------+
+| Your profile                         [x] |
+| [Display name__________________________] |
+| Your display name is saved on this Mac. |
+|                                          |
+|                         [Cancel] [Save]  |
++------------------------------------------+</code></pre>
+<h3 id="contract-2">Contract</h3>
+<ul>
+<li>Field initializes from the current workspace display name when the sheet appears.</li>
+<li>Save trims whitespace and requires 1…80 characters. Invalid input shows the shared name validation error and leaves sheet open.</li>
+<li>Durable mode writes to app UserDefaults key <code>workspace.displayName</code>; it is separate from provider credentials and Core Data workspace export.</li>
+<li>Sample mode changes only the preview session value.</li>
+<li>Cancel/close performs no write.</li>
+<li>No avatar upload, email, sign-in, subscription, logout or remote sync exists here.</li>
+</ul>
+<h3 id="accessibility-11">Accessibility</h3>
+<ul>
+<li>Visible field label is currently its placeholder; Cancel/Save are native labelled controls. The sidebar account control has identifier <code>profile</code>.</li>
+<li>A fuller form-label/VoiceOver pass remains part of the global accessibility gap.</li>
+</ul>
+<h3 id="evidence-14">Evidence</h3>
+<ul>
+<li>Sidebar entry: <code>WorkspaceView.swift:217-236</code></li>
+<li>Sheet: <code>PrototypePanel.swift:14-44,193-216</code></li>
+<li>Save: <code>PersistentWorkspace.swift:311-314</code></li>
+<li>Load/fallback: <code>PersistentWorkspace.swift:62-64</code></li>
+</ul>
+<hr />
+<h2 id="w16--edit-bot-sheet">W16 — Edit Bot sheet</h2>
+<p><strong>Status:</strong> Implemented with detached buffer, conflict handling and durable persistence.</p>
+<p><strong>Entry:</strong> Header edit, inspector edit, or direct-row context menu.</p>
+<p><strong>Exit:</strong> Save success, clean Cancel/close/Escape, or confirmed dirty discard.</p>
+<pre class="text"><code>+----------------------------------------------------+
+| Edit Bot                                       [x] |
+| [large avatar]  Avatar preview                      |
+|                 Choose an original shape/color…     |
+| Name                                               |
+| [Name____________________________________________] |
+| Description                                        |
+| [multi-line editor_______________________________] |
+| 42 / 8,000 characters                              |
+| Color  [o][o][o][o][o]                             |
+| Shape  [Circle v]                                  |
+| [validation / save error] [Reload latest]          |
+| Existing messages keep recorded speaker names…    |
+|----------------------------------------------------|
+|                                  [Cancel] [Save]   |
++----------------------------------------------------+</code></pre>
+<h3 id="editable-fields-and-validation">Editable fields and validation</h3>
+<ul>
+<li>Name: trimmed 1…80 characters.</li>
+<li>Description: at most 8,000 characters; live count displayed.</li>
+<li>Color: fixed original palette with selected trait/checkmark.</li>
+<li>Shape: circle, square, drop or capsule.</li>
+<li>Save enables only after load, when dirty, not saving/loading, and validation succeeds.</li>
+</ul>
+<h3 id="detached-editconcurrency-contract">Detached edit/concurrency contract</h3>
+<ul>
+<li>Sheet target is stable Bot UUID, independent of current sidebar selection. Navigation cannot redirect Save.</li>
+<li>Only editable profile fields participate in conflict comparison/write. Hidden state, provider association, routine ownership, creation identity, drafts and messages are not overwritten by the long-lived form.</li>
+<li>Durable save uses expected snapshot vs replacement. Stale edit fails visibly and offers “Reload latest”; dirty reload asks before discarding form edits.</li>
+<li>Save claims ownership synchronously. Quit/close waits for an accepted save.</li>
+<li>If the user edits again while Save is in flight, the accepted version becomes baseline, newer fields remain open and message says “Saved. Newer edits remain in this form.”</li>
+<li>Dirty Cancel/close/Escape opens “Discard unsaved profile changes?” with Keep Editing and destructive Discard Changes.</li>
+<li>Successful dismissal returns focus to composer.</li>
+<li>Existing messages retain immutable recorded speaker names after rename.</li>
+</ul>
+<h3 id="networkpermission-boundary">Network/permission boundary</h3>
+<ul>
+<li>Profile save is repository-only and makes no provider request or credential read.</li>
+<li>No image/file picker is used for avatars; shapes/colors are app-drawn.</li>
+</ul>
+<h3 id="accessibility-12">Accessibility</h3>
+<ul>
+<li>Title is a header; close/save/cancel/reload/validation have labels and identifiers.</li>
+<li>Colors announce name and selected trait; shape picker is labelled.</li>
+<li>The sheet disables interactive swipe/dismiss and lets explicit dirty-state logic decide.</li>
+</ul>
+<h3 id="evidence-15">Evidence</h3>
+<ul>
+<li>Controller/validation/concurrency: <code>ProfileEditorView.swift:18-339</code></li>
+<li>View: <code>ProfileEditorView.swift:350-508</code></li>
+<li>Repository mutation: <code>EditingWorkspace.swift:23-135</code></li>
+<li>Tests: <code>ProfileEditorTests.swift:9-192</code>; <code>ProfileWorkspaceTests.swift:28-267</code></li>
+</ul>
+<hr />
+<h2 id="w17--edit-group-sheet">W17 — Edit Group sheet</h2>
+<p><strong>Status:</strong> Implemented with ordered membership and stable identity.</p>
+<p><strong>Entry:</strong> Header edit, inspector edit, or group-row context menu.</p>
+<p><strong>Exit:</strong> Same Save/Cancel/dirty-discard rules as W16.</p>
+<pre class="text"><code>+----------------------------------------------------+
+| Edit Group                                     [x] |
+| Group name                                         |
+| [Project team___________________________________] |
+| Members                              [Add member v] |
+| [avatar] Research Partner              [↑][↓] [x]  |
+| [avatar] Hidden member [Hidden]         [↑][↓] [x]  |
+| [avatar] Writing Partner               [↑][↓] [x]  |
+| Keep 2–6 different bots…                            |
+| [validation / conflict] [Reload latest]             |
+| Existing history/queued attribution is unchanged…  |
+|----------------------------------------------------|
+|                                  [Cancel] [Save]   |
++----------------------------------------------------+</code></pre>
+<h3 id="membership-contract">Membership contract</h3>
+<ul>
+<li>Group name trims to 1…80 characters.</li>
+<li>Ordered list must contain 2…6 unique existing Bot UUIDs.</li>
+<li>Add menu offers non-hidden bots not already in group and disables at six/no candidates.</li>
+<li>Up/down preserves explicit future reply order. Remove does not delete the Bot.</li>
+<li>A hidden Bot already in the group may remain and is visibly tagged Hidden. If removed, it cannot be re-added while hidden.</li>
+<li>Missing members cause explicit validation asking to reload.</li>
+<li>Save affects future replies only. Existing speaker snapshots, transcript and queued/in- flight replies are not rewritten.</li>
+<li>Manually selected future reply targets removed from membership are cleared/filtered.</li>
+<li>Conflict/reload/in-flight Save/dirty-dismiss behavior matches W16.</li>
+</ul>
+<h3 id="persistencenetwork-boundary-2">Persistence/network boundary</h3>
+<ul>
+<li>Durable edit is one optimistic repository mutation against the expected group profile.</li>
+<li>It performs no provider request. A group membership edit does not start bot-to-bot work.</li>
+<li>Removing members does not delete their direct conversations or identities.</li>
+</ul>
+<h3 id="accessibility-13">Accessibility</h3>
+<ul>
+<li>Every move/remove action names the member and direction/action.</li>
+<li>Hidden status is visible text.</li>
+<li>Group name/member container/add menu/save errors expose identifiers.</li>
+</ul>
+<h3 id="evidence-16">Evidence</h3>
+<ul>
+<li>Controller member rules: <code>ProfileEditorView.swift:95-117,185-205,321-337</code></li>
+<li>Group UI: <code>ProfileEditorView.swift:510-576</code></li>
+<li>Save and selected-target repair: <code>EditingWorkspace.swift:83-135</code></li>
+<li>Tests: <code>ProfileEditorTests.swift:149-191</code>; <code>ProfileWorkspaceTests.swift:78-128,152-174</code></li>
+</ul>
+<hr />
+<h2 id="w18--degraded-group-requiring-membership-repair">W18 — Degraded group requiring membership repair</h2>
+<p><strong>Status:</strong> Implemented. This state can result from confirmed Bot deletion or stale/missing membership. History and drafts remain readable.</p>
+<p><strong>Entry:</strong> Open a group with fewer than two currently available members.</p>
+<p><strong>Exit:</strong> Edit Group and save at least two valid members, or navigate away.</p>
+<pre class="text"><code>+------------------------------------------------------------------+
+| [group] Team                                  [edit] [routines]  |
+|------------------------------------------------------------------|
+| preserved transcript and draft                                     |
+|------------------------------------------------------------------|
+| Group needs repair                                                |
+| History and drafts are kept. Choose at least two available…       |
+| [Edit Group…]                                                     |
+|                                                                  |
+| provider/target/composer remains visible, Send disabled           |
++------------------------------------------------------------------+</code></pre>
+<h3 id="contract-3">Contract</h3>
+<ul>
+<li>Repair warning appears above provider controls and composer.</li>
+<li>“Edit Group…” opens W17. Send button disables and the service repeats the guard, keeping draft intact with explicit notice.</li>
+<li>Existing group history, draft and recorded speaker names are retained.</li>
+<li>This state does not fabricate a replacement member or silently collapse group semantics into direct chat.</li>
+<li>The inspector may list zero/one current member name; computer remains W13 disconnected.</li>
+</ul>
+<h3 id="evidence-17">Evidence</h3>
+<ul>
+<li>UI/send gate: <code>WorkspaceView.swift:515-527,613-620</code></li>
+<li>Service gate: <code>PersistentWorkspace.swift:285-299</code></li>
+<li>Repair predicate: <code>BotDeletionWorkspace.swift:18-24</code></li>
+<li>Edit recovery: W17 evidence above</li>
+<li>Tests: <code>BotDeletionWorkspaceTests.swift</code>; deletion smoke limits in <code>docs/BOT-DELETION.md</code></li>
+</ul>
+<hr />
+<h2 id="w19--global-openingsavingstorage-error-overlays">W19 — Global opening/saving/storage-error overlays</h2>
+<p><strong>Status:</strong> Implemented.</p>
+<p><strong>Entry:</strong> Durable open/close in progress, or repository/draft/search/provider-refresh storage error.</p>
+<p><strong>Exit:</strong> Operation completes, retry succeeds, or the user closes/quits through guarded flow.</p>
+<pre class="text"><code>                  +--------------------------------+
+                  | Opening local workspace…       |
+                  |              or                |
+                  | Saving workspace…              |
+                  +--------------------------------+
+
+                  +--------------------------------+
+                  | &lt;sanitized storage error&gt;      |
+                  | Your data has not been reset.  |
+                  | Unsaved drafts remain…         |
+                  | [Retry saving drafts]           |
+                  |        or                       |
+                  | [Retry opening workspace]       |
+                  +--------------------------------+</code></pre>
+<h3 id="contract-4">Contract</h3>
+<ul>
+<li>Root content disables during open/close.</li>
+<li>Loading/saving overlay appears at top with progress indication.</li>
+<li>Error text is warning-colored and states that data was not reset and in-window drafts remain.</li>
+<li>If repository exists, action is “Retry saving drafts.” If opening failed before repository attachment, action is “Retry opening workspace.”</li>
+<li>Retry failure updates the same visible error; it does not seed demo content or announce success.</li>
+<li>Close failure reactivates the app/store, preserves visible error and does not silently replay queued provider work.</li>
+<li>Read-status failure is separate and appears within conversation header area as described in W03.</li>
+</ul>
+<h3 id="accessibility-and-gaps-1">Accessibility and gaps</h3>
+<ul>
+<li>Progress/error text is visible but this document does not claim tested live-region announcements or focus movement into overlays.</li>
+<li>Error content must remain sanitized; provider credentials/file bodies must not appear.</li>
+</ul>
+<h3 id="evidence-18">Evidence</h3>
+<ul>
+<li>Root overlays: <code>WorkspaceView.swift:65-94</code></li>
+<li>Open and close flows: <code>NativeShellApp.swift:90-95,162-228</code></li>
+<li>Draft writer/recovery: <code>PersistentWorkspace.swift:173-225</code></li>
+<li>Tests: <code>PersistentWorkspaceTests.swift</code>; <code>ProviderWorkspaceTests.swift:693-736</code>; <code>ConversationActivityWorkspaceTests.swift:135-193</code></li>
+</ul>
+<hr />
+<h2 id="cross-screen-state-flows">Cross-screen state flows</h2>
+<h3 id="conversation-selection-and-draft-safety">Conversation selection and draft safety</h3>
+<pre class="text"><code>row activation
+  -&gt; validate row still exists
+  -&gt; flush all accepted dirty drafts
+       `-- failure -&gt; keep current selection + W19 error
+  -&gt; invalidate stale selection/read viewport
+  -&gt; set selected conversation; close picker; clear notice
+  -&gt; load latest 100 messages + reply/attachment metadata
+  -&gt; focus composer</code></pre>
+<p>Evidence: <code>Models.swift:285-308</code>; <code>PersistentWorkspace.swift:119-133,173-225</code>.</p>
+<h3 id="direct-send">Direct send</h3>
+<pre class="text"><code>Return / Send
+  -&gt; block empty text+files, busy, missing provider or damaged group
+  -&gt; capture exact conversation, provider, target, draft version, reply, files
+  -&gt; flush draft
+  -&gt; if any files/context files: W11
+     else: submit
+  -&gt; atomically persist user message + queued generation + matching-draft clear
+  -&gt; queue/connect/stream
+  -&gt; completed OR visible failed/cancelled</code></pre>
+<h3 id="manual-group-round">Manual group round</h3>
+<pre class="text"><code>choose ordered targets
+  -&gt; 1 target + no files: direct submission path
+  -&gt; 2...6 targets: prepare aggregate consent
+       -&gt; W11 ordered review
+       -&gt; revalidate exact order/destination/draft/context
+       -&gt; one user message + N queued generations
+       -&gt; N separate ordered requests, frozen common context
+       -&gt; attributed member replies/statuses</code></pre>
+<h3 id="mention-routed-group-send">Mention-routed group send</h3>
+<pre class="text"><code>typed or picker-inserted @members
+  -&gt; parse local draft
+  -&gt; any issue: inline error + Send disabled
+  -&gt; valid: deduplicate in first-occurrence order
+  -&gt; replace manual targets in read-only preview
+  -&gt; always W11 (even 1 recipient)
+  -&gt; remove local UUID binding suffixes for transcript/provider
+  -&gt; send bounded round</code></pre>
+<h3 id="reply-lifecycle">Reply lifecycle</h3>
+<pre class="text"><code>Reply under message
+  -&gt; validate same-conversation non-event parent
+  -&gt; save replyToID beside existing draft
+  -&gt; preview: loading -&gt; available | unavailable
+  -&gt; click available -&gt; load older pages until original exists -&gt; center original
+  -&gt; send -&gt; validate parent and include once in context
+  -&gt; matching draft/reference clears; newer edits remain</code></pre>
+<h3 id="attachment-lifecycle">Attachment lifecycle</h3>
+<pre class="text"><code>Attach +
+  -&gt; native user-selected files only
+  -&gt; bounded validation/read with scoped permission
+  -&gt; atomic managed copy + draft references
+  -&gt; removable persistent chips
+  -&gt; Send -&gt; content/destination plan without credential
+  -&gt; W11
+  -&gt; revalidate exact bytes/hash/context/destination
+  -&gt; credential read + provider request</code></pre>
+<h3 id="unread-acknowledgement">Unread acknowledgement</h3>
+<pre class="text"><code>incoming assistant message -&gt; persisted activity + unread count
+  -&gt; row badge (visual &lt;=99+, a11y exact)
+  -&gt; selection alone: no acknowledgement
+  -&gt; main window active/key/visible + no transient surface
+     + transcript exact latest rendered at strict bottom
+     + no active generation
+  -&gt; write captured sequence
+  -&gt; refresh snapshot
+  -&gt; only then clear badge
+  -&gt; failure keeps badge + Retry read status</code></pre>
+<h2 id="persistence-network-and-permission-matrix">Persistence, network and permission matrix</h2>
+<table>
+<thead>
+<tr>
+<th>UI datum/action</th>
+<th>Persistence</th>
+<th>Network</th>
+<th>OS permission/security boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pane width/visibility/appearance</td>
+<td>Versioned app UserDefaults</td>
+<td>None</td>
+<td>No workspace/export coupling</td>
+</tr>
+<tr>
+<td>Account display name</td>
+<td>App UserDefaults in durable mode</td>
+<td>None</td>
+<td>Not provider/account auth</td>
+</tr>
+<tr>
+<td>Bots/groups/messages/drafts/replies</td>
+<td>Core Data workspace</td>
+<td>None until explicit send</td>
+<td>App sandbox Application Support</td>
+</tr>
+<tr>
+<td>Search/activity/unread marker</td>
+<td>Core Data query/mutation</td>
+<td>None</td>
+<td>Main-window visibility gates read acknowledgement</td>
+</tr>
+<tr>
+<td>Provider selection</td>
+<td>Session presentation state</td>
+<td>None by selection alone</td>
+<td>Credentials remain separate</td>
+</tr>
+<tr>
+<td>Provider send</td>
+<td>Atomic message/generation state, streamed text</td>
+<td>Explicit configured outbound request</td>
+<td>Keychain or explicit process-memory credential; no plaintext fallback</td>
+</tr>
+<tr>
+<td>Group round</td>
+<td>One message + N generation records</td>
+<td>N separately disclosed requests</td>
+<td>Aggregate consent before credential access</td>
+</tr>
+<tr>
+<td>Mention UUID binding</td>
+<td>Raw token persists only in local draft until send</td>
+<td>UUID suffix never sent</td>
+<td>Exact identity binding; readable text only crosses provider boundary</td>
+</tr>
+<tr>
+<td>Text attachments</td>
+<td>Exact managed bytes + metadata in Core Data</td>
+<td>Only after W11</td>
+<td>Explicit native file selection and scoped read; no home scan/path retention</td>
+</tr>
+<tr>
+<td>Marketplace Add</td>
+<td>Independent Bot + direct conversation</td>
+<td>None</td>
+<td>Local fixed templates only</td>
+</tr>
+<tr>
+<td>Inspector computer panel</td>
+<td>Nothing</td>
+<td><strong>None</strong></td>
+<td>No terminal/desktop/control permission exists</td>
+</tr>
+</tbody>
+</table>
+<h2 id="screenshot-capture-contract-for-the-master-catalog">Screenshot capture contract for the master catalog</h2>
+<p>The master screenshot catalog may map captures to <code>W01</code>–<code>W19</code>. For every mapped capture it should record:</p>
+<ol type="1">
+<li><strong>Provenance:</strong> private reference, current app render, isolated smoke render or real manual run.</li>
+<li><strong>Mode:</strong> durable, sample or isolated fixture.</li>
+<li><strong>Appearance and geometry:</strong> Dark/Light/System and content size.</li>
+<li><strong>State injection:</strong> synthetic data, fixture foreground, intercepted provider or real endpoint.</li>
+<li><strong>What the image cannot prove:</strong> persistence restart, physical input, VoiceOver, OS permission, network authenticity or computer connectivity unless independently observed.</li>
+</ol>
+<p>The catalog should content-hash captures as well as naming them. Multiple capture records can resolve to identical pixels; a distinct scenario label is not evidence of a distinct UI state. This is especially important for W06 mention variants.</p>
+<p>Do not use a screenshot alone to claim:</p>
+<ul>
+<li>a provider request completed;</li>
+<li>a credential was stored securely;</li>
+<li>unread state was acknowledged through real window focus;</li>
+<li>an attachment received a real sandbox grant;</li>
+<li>a group round issued multiple independent requests;</li>
+<li>the computer panel is live;</li>
+<li>a keyboard/IME/VoiceOver path works.</li>
+</ul>
+<h2 id="known-workspace-coverage-gaps">Known workspace coverage gaps</h2>
+<ul>
+<li><strong>Live computer/terminal:</strong> W13 is disconnected by design. No remote-computer adapter exists in the app.</li>
+<li><strong>Physical input/a11y:</strong> semantic labels and hosted AppKit tests exist, but full native mouse/keyboard/IME/VoiceOver/XCUITest flows remain open.</li>
+<li><strong>Real focus:</strong> unread fixture injection does not replace the strict main-window focus gate.</li>
+<li><strong>Real file grants:</strong> importer and fixture copy are tested; physical <code>NSOpenPanel</code> sandbox grant behavior remains manual.</li>
+<li><strong>Broad providers/signing:</strong> offline transport fixtures and one bounded Codex diagnostic do not prove all providers, local routers, Keychain entitlement or distribution signing.</li>
+<li><strong>Marketplace-specific acceptance:</strong> the local Add UI exists; a dedicated twice-install UI scenario is not identified in the current shell suite.</li>
+<li><strong>Account semantics:</strong> W15 is only local display name. Any cloud account screen is absent.</li>
+<li><strong>Message menu scope:</strong> current message rows expose Reply/Copy only. Reactions, edit, delete, forwarding and tool execution are absent.</li>
+<li><strong>Settings and routines:</strong> navigation is documented here, but detailed screens are owned by their existing contracts (<code>PROVIDER-SETUP.md</code>, <code>PROVIDER-CORE.md</code>, <code>APPEARANCE.md</code>, <code>WORKSPACE-EXPORT.md</code>, <code>ROUTINES.md</code>).</li>
+</ul>
+<h2 id="authoritative-related-contracts">Authoritative related contracts</h2>
+<ul>
+<li><a href="NATIVE-REWRITE-CONTRACT.html">Native rewrite and acceptance</a></li>
+<li><a href="DURABLE-WORKSPACE.html">Durable workspace evidence</a></li>
+<li><a href="UNREAD-CONVERSATIONS.html">Unread conversations</a></li>
+<li><a href="GROUP-ROUNDS.html">Group rounds</a></li>
+<li><a href="GROUP-MENTIONS.html">Group mentions</a></li>
+<li><a href="REPLY-WORKFLOW.html">Replies</a></li>
+<li><a href="ATTACHMENTS.html">Attachments</a></li>
+<li><a href="PROVIDER-CORE.html">Provider core</a></li>
+<li><a href="APPEARANCE.html">Appearance/layout</a></li>
+<li><a href="ROUTINES.html">Routines</a></li>
+<li><a href="BOT-DELETION.html">Bot deletion and group repair</a></li>
+</ul>
+</main></body></html>

@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BotWorkspace — complete feature and screen contract atlas · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/FEATURE-ATLAS.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="botworkspace--complete-feature-and-screen-contract-atlas">BotWorkspace — complete feature and screen contract atlas</h1>
+<p><strong>Audit date:</strong> 2026-09-10. <strong>Source baseline:</strong> <code>ab2c2f3</code> (native group mentions). <strong>Product:</strong> independent, experimental native macOS app; SwiftUI + AppKit + Core Data. This is the consolidated screen-by-screen public product documentation. It preserves the earlier ASCII/layout work, adds a detailed screen inventory, and connects every screen to implementation, state, and visual evidence. It does <strong>not</strong> turn reference screenshots, old plans, or passing fixtures into shipped features.</p>
+<h2 id="start-here">Start here</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it contains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="SCREENS-WORKSPACE.html">Workspace screen catalog</a></td>
+<td>W-series screen IDs; shell/sidebar/search/chat/composer/groups/mentions/replies/attachments/inspector/catalog/profile; ASCII and control contracts</td>
+</tr>
+<tr>
+<td><a href="SCREENS-MANAGEMENT.html">Management screen catalog</a></td>
+<td>M-series screen IDs; creation/editing, Settings, provider configuration, routine workflows, export/deletion, native dialogs; ASCII and failure behavior</td>
+</tr>
+<tr>
+<td><a href="SCREENSHOT-CATALOG.html">Screenshot catalog</a></td>
+<td>Native BotWorkspace synthetic fixture renders, scenario commands, screen mapping, capture limitations, and uncaptured-state register</td>
+</tr>
+<tr>
+<td><a href="REFERENCE-SCREENS.html">Reference screen archive</a></td>
+<td>R-series original-reference observations; neutral ASCII redraws; differences from the implemented app; private-image handling</td>
+</tr>
+<tr>
+<td><a href="COMPUTER-TERMINAL-CONTRACT.html">Computer/terminal contract</a></td>
+<td>Disconnected current app vs proposed terminal/desktop surfaces; permission/verification gates without private deployment information</td>
+</tr>
+<tr>
+<td><a href="screenshots/manifest.json">Machine-readable screenshot manifest</a></td>
+<td>Capture source commit, scenario commands, image dimensions, SHA-256 hashes; no private screenshot inputs</td>
+</tr>
+<tr>
+<td><a href="NATIVE-REWRITE-CONTRACT.html">Original native rewrite acceptance contract</a></td>
+<td>R01–R09 and T01–T18 product/release requirements; proposals must be read with later implementation evidence</td>
+</tr>
+</tbody>
+</table>
+<p>The Markdown files and bundled <strong>synthetic native screenshots</strong> are the portable dump. Private reference paths and hashes remain in an ignored local-only index. Original reference images are not copied into <code>docs/screenshots</code>, embedded in the app, or published by this task.</p>
+<h2 id="1-reading-the-status-labels">1. Reading the status labels</h2>
+<ul>
+<li><strong>Implemented:</strong> reachable native source and state/service behavior exist. This is not automatically a claim of real-account compatibility, complete accessibility, or release readiness.</li>
+<li><strong>Fixture verified:</strong> a named automated test/smoke exercises the behavior with isolated data. A screenshot proves a rendered state, not that a person clicked through the workflow.</li>
+<li><strong>Sample only:</strong> available in <code>NativeShellPrototype.app</code> using synthetic session-local data; never a seeded production workspace or a real provider/computer response.</li>
+<li><strong>OS-owned:</strong> the app invokes an AppKit panel/alert; a hosted-view image does not prove that panel's real sandbox grant, keyboard behavior, or accessibility.</li>
+<li><strong>Reference observed:</strong> visible in supplied images, not necessarily implemented here.</li>
+<li><strong>Proposed / not integrated:</strong> describes a future contract or external service; not an app capability and not permission to deploy/control a machine.</li>
+<li><strong>Unverified / gap:</strong> the relevant test or screenshot was not produced. Preserve the gap explicitly instead of borrowing proof from another screen or historical milestone.</li>
+</ul>
+<p><strong>Evidence precedence:</strong> current source and fresh scoped results → feature-specific contracts → older architecture/prototype notes → reference observations. The original rewrite document mixes normative requirements, proposed ownership, and checkpoints; its proposed <code>App/...xcodeproj</code> layout is not the current SwiftPM source tree. A <code>.app</code> named <code>BotWorkspace</code> does not make its screenshot a production-account capture: our durable smoke app uses an isolated temporary repository and offline fixtures.</p>
+<h2 id="2-information-architecture-and-navigation">2. Information architecture and navigation</h2>
+<pre class="text"><code>Native workspace window
+├── Sidebar
+│   ├── Search / activity / unread count / hidden conversations
+│   ├── Existing direct or group conversation
+│   ├── New chat → existing Bot / Create Bot / Create group
+│   ├── Marketplace → local templates (not a remote store)
+│   └── Local profile menu → profile / Settings / hidden chats
+├── Conversation pane
+│   ├── Header / bot or group profile / export action
+│   ├── Paginated transcript / reply reference / message actions
+│   ├── Provider + explicit recipients / mentions / round status
+│   └── Reply draft / file chips / native composer / Send or Stop
+└── Optional inspector
+    ├── Profile summary/edit
+    ├── Computer: explicitly disconnected
+    └── Routines → edit / run / pause / history / delete
+
+Separate native Settings window
+├── Appearance and pane preferences (detached Save/Cancel)
+├── Provider configuration and credential handling
+├── Experimental Codex login import (separate provider kind)
+└── Workspace JSON export</code></pre>
+<pre class="text"><code>DESKTOP — content request 1280 × 880 pt (system titlebar is additional)
++---------------------+----------------------------------+----------------------+
+| native controls  +  | Avatar · Conversation      [...] | settings / collapse  |
+| Search              |----------------------------------|----------------------|
+| selected row        | transcript, reply references     | profile summary      |
+| other bot/group     | events and generation status     | computer disconnected|
+| unread badges       |                                  | routines             |
+|                     |                                  |                      |
+|                     | provider + ordered recipients    |                      |
+| Marketplace         | reply/file chips                 |                      |
+| Local profile       | [+] native text editor   [Send]  |                      |
++---------------------+----------------------------------+----------------------+
+
+MINIMUM — content request 760 × 600 pt
++--------------------+----------------------------------------------+
+| Sidebar (clamped)  | Conversation, transcript, status              |
+|                    |                                              |
+|                    | provider / recipient controls                |
+|                    | reply + attachment area / composer           |
++--------------------+----------------------------------------------+
+Inspector auto-collapses; preferred visibility is retained for later widening.</code></pre>
+<h3 id="layout-appearance-and-interaction-constants">Layout, appearance, and interaction constants</h3>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Current contract / source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Minimum window content</td>
+<td>760×600 pt; fresh minimum smokes use <code>--minimum</code></td>
+</tr>
+<tr>
+<td>Desktop fixture content</td>
+<td>1280×880 pt; small preview 800×650 pt is NOT the minimum gate</td>
+</tr>
+<tr>
+<td>Sidebar</td>
+<td>default 280 pt, saved range 240–400; temporarily constrained when necessary</td>
+</tr>
+<tr>
+<td>Chat</td>
+<td>minimum 424 pt; preserve usable composer before retaining all columns</td>
+</tr>
+<tr>
+<td>Inspector</td>
+<td>default 320 pt, saved range 280–440; auto-collapse does not overwrite preference</td>
+</tr>
+<tr>
+<td>Palette</td>
+<td>Dark default; Light; Follow System; semantic surfaces, native system font</td>
+</tr>
+<tr>
+<td>Persistence</td>
+<td>appearance, two widths and preferred visibility in app-owned UserDefaults; not workspace JSON</td>
+</tr>
+<tr>
+<td>Window controls</td>
+<td>real AppKit titlebar/traffic lights; not painted imitation buttons</td>
+</tr>
+<tr>
+<td>Text input</td>
+<td>AppKit <code>NSTextView</code>; native selection, undo, plain-text insertion and marked-text guards</td>
+</tr>
+<tr>
+<td>Accessibility</td>
+<td>named controls and explicit IDs; physical VoiceOver/IME/focus remain independent gates</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="APPEARANCE.html">appearance</a>, <code>WorkspaceLayout.swift</code>, <code>WorkspacePreferences.swift</code>, <code>Theme.swift</code>, and <code>NativeShellApp.swift</code> under <code>Prototypes/NativeShell/Sources/NativeShell</code>. Screen catalogs specify each reachable shortcut; an original requirement for keyboard navigation is not evidence that every requested shortcut is currently implemented.</p>
+<h2 id="3-feature-inventory-by-user-job">3. Feature inventory by user job</h2>
+<table>
+<thead>
+<tr>
+<th>Feature ID</th>
+<th>Job / feature</th>
+<th>Surface</th>
+<th>Status and important boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F01</td>
+<td>Open a local workspace</td>
+<td>W shell/loading/error</td>
+<td>Implemented Core Data load/retry; no cloud account required</td>
+</tr>
+<tr>
+<td>F02</td>
+<td>Find/switch conversations</td>
+<td>W sidebar/search</td>
+<td>Implemented; catalog distinguishes actual search scope from broader historical requirements</td>
+</tr>
+<tr>
+<td>F03</td>
+<td>See latest activity and unread replies</td>
+<td>W sidebar/transcript</td>
+<td>Persisted counts/previews; only displayed foreground bottom-of-chat acknowledges read</td>
+</tr>
+<tr>
+<td>F04</td>
+<td>Create a named Bot</td>
+<td>M creation; W picker</td>
+<td>Stable ID + direct conversation; original avatar geometry; no VM allocation</td>
+</tr>
+<tr>
+<td>F05</td>
+<td>Edit Bot identity/profile</td>
+<td>M profile editor</td>
+<td>Detached, identity-bound edits and conflicts; not a provider credential editor</td>
+</tr>
+<tr>
+<td>F06</td>
+<td>Hide/unhide a Bot</td>
+<td>W sidebar/menu</td>
+<td>Reversible visibility change, not deletion or routine cancellation</td>
+</tr>
+<tr>
+<td>F07</td>
+<td>Permanently delete a Bot</td>
+<td>M deletion</td>
+<td>Reviewed impact plan, destructive confirmation, group repair; no undo promise</td>
+</tr>
+<tr>
+<td>F08</td>
+<td>Create/edit a group</td>
+<td>M picker/editor</td>
+<td>2–6 distinct Bots for valid sendable groups; histories of degraded groups retained</td>
+</tr>
+<tr>
+<td>F09</td>
+<td>Write and preserve drafts</td>
+<td>W composer</td>
+<td>Per-conversation text/reply/file identity; flush/restart behavior; no silent discarded draft</td>
+</tr>
+<tr>
+<td>F10</td>
+<td>Send streamed text</td>
+<td>W chat; M provider setup</td>
+<td>User-supplied compatible provider, durable transaction before network; no fake AI reply</td>
+</tr>
+<tr>
+<td>F11</td>
+<td>Stop and retry generation</td>
+<td>W status/actions</td>
+<td>Partial text retained; attempt binding rejects stale events; no automatic HTTP retry</td>
+</tr>
+<tr>
+<td>F12</td>
+<td>Choose ordered group recipients</td>
+<td>W recipient controls</td>
+<td>Explicit order; independent attributed replies, not an autonomous bot conversation</td>
+</tr>
+<tr>
+<td>F13</td>
+<td>Review multi-recipient sends</td>
+<td>W round consent</td>
+<td>Frozen shared context, provider/model/file disclosure and request count</td>
+</tr>
+<tr>
+<td>F14</td>
+<td>Mention group members</td>
+<td>W draft/mention menu/consent</td>
+<td>Identity-safe binding; malformed/stale/ambiguous mentions block the whole send</td>
+</tr>
+<tr>
+<td>F15</td>
+<td>Reply to an existing message</td>
+<td>W transcript/composer</td>
+<td>Conversation-bound reference; persistent draft and jump-to-original handling</td>
+</tr>
+<tr>
+<td>F16</td>
+<td>Attach text files</td>
+<td>W chips; M OS picker</td>
+<td>Selected regular UTF-8 files; managed copies; no binary/image/whole-home ingestion</td>
+</tr>
+<tr>
+<td>F17</td>
+<td>Confirm attached content transmission</td>
+<td>W send consent</td>
+<td>File identity/content/destination checked before credential/network side effects</td>
+</tr>
+<tr>
+<td>F18</td>
+<td>Configure compatible providers</td>
+<td>M Settings</td>
+<td>OpenAI Platform, Z.ai, custom, local 9router templates are suggestions, not account entitlements</td>
+</tr>
+<tr>
+<td>F19</td>
+<td>Discover local router models</td>
+<td>M Settings</td>
+<td>Explicit loopback-only, credential-free GET; result is not proof chat will work</td>
+</tr>
+<tr>
+<td>F20</td>
+<td>Choose credential storage</td>
+<td>M Settings</td>
+<td>Protected Keychain or explicit session memory; no automatic plaintext fallback</td>
+</tr>
+<tr>
+<td>F21</td>
+<td>Import experimental Codex login</td>
+<td>M Settings/import</td>
+<td>Explicit file, memory-only, fixed origin; no refresh owner or generic OAuth login</td>
+</tr>
+<tr>
+<td>F22</td>
+<td>Change appearance/panes</td>
+<td>M Settings, W dividers</td>
+<td>Detached Save/Cancel and independent persistent pane adjustments</td>
+</tr>
+<tr>
+<td>F23</td>
+<td>Create/edit a routine</td>
+<td>M routine editor, W inspector</td>
+<td>Interval/daily with timezone, owner and provider binding; explicit execution consent</td>
+</tr>
+<tr>
+<td>F24</td>
+<td>Run/pause/stop a routine</td>
+<td>W inspector, M run review</td>
+<td>Scheduler only while app runs and Mac is awake; no unattended 24/7 service claim</td>
+</tr>
+<tr>
+<td>F25</td>
+<td>Inspect/delete routine history</td>
+<td>M history/confirmation</td>
+<td>Durable typed outcomes and cancellation/deletion boundaries</td>
+</tr>
+<tr>
+<td>F26</td>
+<td>Export workspace</td>
+<td>M export review/save/result</td>
+<td>Versioned JSON including hidden data and exact referenced text-file bytes; no import/restore</td>
+</tr>
+<tr>
+<td>F27</td>
+<td>Use a template</td>
+<td>W marketplace/M create</td>
+<td>Local synthetic catalog creating independent Bots; not plugin download/subscription</td>
+</tr>
+<tr>
+<td>F28</td>
+<td>Edit local display profile</td>
+<td>W account/profile</td>
+<td>Local display metadata; no reference-app account or authentication migration</td>
+</tr>
+<tr>
+<td>F29</td>
+<td>Inspect a computer</td>
+<td>W inspector</td>
+<td>Disconnected only; no terminal, desktop video or automation currently embedded</td>
+</tr>
+<tr>
+<td>F30</td>
+<td>Remote terminal viewer</td>
+<td>Future computer contract</td>
+<td>Proposed only; no configured service or private deployment information is included</td>
+</tr>
+<tr>
+<td>F31</td>
+<td>Voice, reactions, teach-a-task</td>
+<td>R observed controls</td>
+<td>Reference observations or deferred requirements; do not infer functional parity</td>
+</tr>
+<tr>
+<td>F32</td>
+<td>Distribute to other users/platforms</td>
+<td>Build/release gates</td>
+<td>Local ad-hoc macOS build; no notarized release, Windows or Linux build claim</td>
+</tr>
+</tbody>
+</table>
+<p>Every W/M catalog entry adds entry/exit points, ASCII, exact actions, empty/error states, persistence and consent boundaries, and code/test evidence. The screenshot catalog maps those IDs to renders or explicitly documents why a state has no captured image.</p>
+<h2 id="4-end-to-end-flow-contracts">4. End-to-end flow contracts</h2>
+<h3 id="a-first-use-and-provider-setup">A. First use and provider setup</h3>
+<pre class="text"><code>Launch → open local store
+  ├─ opening → loading state (no sends)
+  ├─ failure → actionable storage error / Retry (no destructive reset)
+  └─ success → empty or existing workspace
+       → create/select Bot → draft
+       → no usable provider/credential? retain draft + setup guidance
+       → Settings: choose kind/template, destination/model, credential policy
+       → explicit Save → select provider in composer → Send</code></pre>
+<p>The production bundle is not preloaded with private screenshot conversations. The sample prototype and durable smoke fixtures are separate from normal storage.</p>
+<h3 id="b-ordinary-streaming-send">B. Ordinary streaming send</h3>
+<pre class="text"><code>Draft + conversation + provider + target
+  → validate/capture context and any required consent
+  → acquire permitted credential / reject missing or expired credential
+  → atomic user-message + queued-generation commit / matching draft clear
+    ├─ save failure → retain draft; ZERO provider dispatch
+    └─ success → coordinator queue → connect → stream attributed deltas
+                                     ├─ completed
+                                     ├─ failed (typed/sanitized error)
+                                     ├─ cancelled (partial retained)
+                                     └─ interrupted after restart
+Retry → explicit new attempt, original user message, preserved previous partial text</code></pre>
+<p>Up to one active request per conversation and three globally. Context is captured when queued (up to 100 prior messages), not silently expanded with later replies. Each delta currently persists individually; write coalescing and performance-budget success must not be inferred. Visible-text timeouts are 30s first text, 60s idle, 300s total; these are source-configured limits, not timing guarantees for all providers.</p>
+<h3 id="c-ordered-groups-and-mention-targeting">C. Ordered groups and mention targeting</h3>
+<pre class="text"><code>manual ordered recipients OR mentions in current group draft
+  → resolve identities (mentions replace, not merge with manual selection)
+  → any invalid/stale/ambiguous mention? block ALL send, retain draft
+  → capture full round plan: N names/IDs, order, context, files, destination
+  → review (all mentions, even 1 recipient; multi-member manual rounds)
+  → confirm + re-resolve + compare captured plan BEFORE credentials
+  → atomic one user message + N queued attributed generations
+  → run member 1 → member 2 → ... → member N
+  → Stop round keeps completed output and stops remaining members</code></pre>
+<p>A later member does not automatically consume an earlier member's answer in the same round. Typed mentions in assistant output, attachments, previous messages, or direct-chat text are not instructions. UUID suffixes bind local draft mentions; valid binding suffixes are removed from the outgoing/stored readable user message.</p>
+<h3 id="d-files-and-reply-context">D. Files and reply context</h3>
+<pre class="text"><code>Select files → native open panel → bounded regular UTF-8 read
+  → atomic managed content + draft identities → removable chips
+  → Send → disclose files + provider/model + recipients
+  → confirm + stale-plan check → provider text input
+
+Reply on message → draft reply card → cancel OR submit
+  → message stores replyToID → later preview resolves original in same conversation
+  → loading/unavailable/jump states cannot retarget a newer conversation</code></pre>
+<p>A file chip is not proof that a provider supports binary attachments. Stored bytes are exact, but this client only transmits its supported text representation.</p>
+<h3 id="e-routine-lifecycle">E. Routine lifecycle</h3>
+<pre class="text"><code>Inspector [+] → detached editor → validate name/prompt/schedule/timezone/provider
+  → explicit owner + destination consent → save
+  → enabled schedule: launch / wake / awake 30-second checks
+  → claim occurrence in durable ledger → coordinator → attributed result/history
+  → Pause prevents future claims; Stop cancels active work as documented
+  → missed occurrences are reconciled without an unbounded catch-up burst</code></pre>
+<p>Run Now is separately reviewed and does not silently move the recurring schedule. Daily wall-clock schedules use named timezones and explicit DST policy. Closing/sleep is not a promise that requests continue remotely; see <a href="ROUTINES.html">routines</a>.</p>
+<h3 id="f-editing-deletion-and-export">F. Editing, deletion, and export</h3>
+<pre class="text"><code>Edit → detached buffer tied to stable identity
+  ├─ Cancel/dirty close → explicit discard policy
+  ├─ concurrent editable-field change → conflict / reload
+  └─ valid Save → repository transaction → refreshed UI
+
+Delete Bot → calculate impact → review names/counts/groups → confirm
+  → revalidate plan → cancel affected work → transactional deletion/group repair
+  → retained degraded group history; repair membership before sending
+
+Export → disclosure → native JSON Save Panel
+  ├─ Cancel → no export-driven write
+  └─ selected destination → flush drafts → single revision snapshot
+       → bounded JSON encode → atomic file replacement → counts or sanitized error</code></pre>
+<p>The export is not an import/restore mechanism. Existing regular files may be replaced only through the explicit native destination flow. No credentials are read to export.</p>
+<h2 id="5-domain-persistence-and-field-contract">5. Domain, persistence, and field contract</h2>
+<p>Actual definitions live in <a href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/Packages/WorkspaceCore/Sources/WorkspaceCore/Domain.swift">Domain.swift</a>, <a href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/Packages/WorkspaceCore/Sources/WorkspaceCore/WorkspaceRepository.swift">WorkspaceRepository.swift</a>, and the linked feature files. Values cross service boundaries as UUID-backed DTOs, not Core Data managed objects.</p>
+<table>
+<thead>
+<tr>
+<th>Entity</th>
+<th>Important fields</th>
+<th>User-visible consequence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bot</td>
+<td>id, name, description, color, shape, createdAt, hiddenAt, providerConfigID</td>
+<td>identity does not depend on name; hide differs from delete</td>
+</tr>
+<tr>
+<td>Conversation</td>
+<td>id, kind, title, ordered memberBotIDs, lastReadSequence, nextSequence</td>
+<td>direct/group scopes and monotonic message order/read boundary</td>
+</tr>
+<tr>
+<td>Message</td>
+<td>id, conversationID, sequence, role, speakerBotID/name snapshot, text, createdAt, replyToID, attachmentIDs, generationID</td>
+<td>historical attribution survives edits and referenced-message navigation</td>
+</tr>
+<tr>
+<td>Draft</td>
+<td>conversationID, text, attachmentIDs, replyToID, updatedAt</td>
+<td>switching chats/restarting retains separate drafts</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>userMessageID, attemptID, targetBotID, state, event sequence, assistantMessageID, routineRunID, roundIndex</td>
+<td>retry/stale-event defense and per-member/routine attribution</td>
+</tr>
+<tr>
+<td>Routine</td>
+<td>ownerBotID, prompt, trigger, timezoneID, enabled, nextRunAt, providerBinding, scheduleID</td>
+<td>explicit owner/provider and recurrence identity</td>
+</tr>
+<tr>
+<td>RoutineRun</td>
+<td>occurrence/run identity, provider binding and typed lifecycle/outcome</td>
+<td>durable scheduling history and deduplication</td>
+</tr>
+<tr>
+<td>ProviderConfig</td>
+<td>kind, name, apiRoot, modelID, credentialReference, allowsLoopbackHTTP</td>
+<td>metadata persists; credential value stays outside repository</td>
+</tr>
+<tr>
+<td>Attachment</td>
+<td>ID + metadata/hash + managed exact bytes</td>
+<td>identity-safe chips/transmission/export; no original source path in export</td>
+</tr>
+<tr>
+<td>UI preferences</td>
+<td>appearance, widths, visibility</td>
+<td>separate storage and Save/Cancel ownership from content/credentials</td>
+</tr>
+</tbody>
+</table>
+<h3 id="validation-and-serialization-facts">Validation and serialization facts</h3>
+<ul>
+<li>Trimmed names: 1–80 characters; Bot description at most 8,000 characters.</li>
+<li>Avatar shapes: circle/square/drop/capsule; palette green/magenta/gray/violet/blue/orange.</li>
+<li>Valid editable groups: 2–6 distinct members. A group degraded by deletion can retain history with fewer members but cannot be treated as a normal sendable group.</li>
+<li>Routine interval: 5–525,600 minutes; daily hour 0–23, minute 0–59, valid timezone.</li>
+<li>Attachments: regular UTF-8 text; maximum 10 MiB each, 25 MiB per draft, 32 files.</li>
+<li>Core Data: code-defined versioned models through v4, with migration tests for earlier versions.</li>
+<li>JSON export: <code>formatVersion=3</code>, <code>sourceSchemaVersion=3</code>. The latter is the export DTO marker, not proof the Core Data store is still v3; do not substitute one version for another.</li>
+<li>Export arrays: bots, conversations, messages, drafts, generations, routines, routineRuns, providers, attachments; summary counts include raw attachment bytes.</li>
+<li>Export dates: Foundation seconds since 2001-01-01 UTC, NOT Unix seconds. Export cap: 100 MiB encoded output, not a hard peak-memory limit.</li>
+<li>Export includes hidden data and user-authored content. Credential references/values are excluded by allowlist, but secrets pasted into user text are not automatically scrubbed.</li>
+</ul>
+<h2 id="6-service-and-endpoint-inventory">6. Service and endpoint inventory</h2>
+<p>These are <strong>source-level integration contracts</strong>, not calls executed by this documentation job and not current entitlement promises from any vendor. Native views call Swift services; there is no app-owned REST API, Node sidecar, or localhost UI server.</p>
+<table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Request / mechanism</th>
+<th>Policy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UI → workspace</td>
+<td>typed <code>WorkspaceRepository</code> read/mutation calls</td>
+<td>serialize writes; validate identities and expected revision/state</td>
+</tr>
+<tr>
+<td>Chat-compatible provider</td>
+<td><code>POST</code> configured root plus <code>/chat/completions</code>; JSON + SSE</td>
+<td>explicit destination/model/key; redirect refusal; text-only parser</td>
+</tr>
+<tr>
+<td>OpenAI Platform preset</td>
+<td>source default <code>https://api.openai.com/v1</code></td>
+<td>API key/provider billing, not imported ChatGPT login</td>
+</tr>
+<tr>
+<td>Z.ai preset</td>
+<td>source default <code>https://api.z.ai/api/paas/v4</code></td>
+<td>general API template; suggested model remains editable and unverified for account access</td>
+</tr>
+<tr>
+<td>9router preset</td>
+<td>source default <code>http://127.0.0.1:20128/v1</code></td>
+<td>separately managed local gateway; explicitly permitted loopback HTTP</td>
+</tr>
+<tr>
+<td>Custom preset</td>
+<td><code>https://api.example.com/v1</code> placeholder</td>
+<td>not a deployed endpoint; replace with a documented compatible service</td>
+</tr>
+<tr>
+<td>Model discovery</td>
+<td><code>GET</code> normalized loopback root <code>/models</code></td>
+<td>explicit action; no credentials/cookies; redirects refused; 1 MiB/2,048-model bounds</td>
+</tr>
+<tr>
+<td>Experimental Codex</td>
+<td>fixed <code>https://chatgpt.com/backend-api/codex/responses</code></td>
+<td>imported session-only credential, no refresh, tools disabled, no arbitrary origin override; compatibility experiment, not a supported-public-API promise</td>
+</tr>
+<tr>
+<td>Credential service</td>
+<td>protected Keychain OR explicit process memory</td>
+<td>never silent plaintext fallback; source auth file unchanged</td>
+</tr>
+<tr>
+<td>Export/import selected files</td>
+<td>AppKit security-scoped OS panels + managed copies</td>
+<td>no home-directory scan; export isn't restore; never copy auth file into workspace</td>
+</tr>
+<tr>
+<td>Computer/terminal</td>
+<td><strong>no adapter in this app</strong></td>
+<td>remote terminal and graphical display adapters require separate future contracts</td>
+</tr>
+<tr>
+<td>Original Grok/Cursor endpoints</td>
+<td>research identifiers in older contract only</td>
+<td>not authorized or implemented app integration; no copied credentials</td>
+</tr>
+</tbody>
+</table>
+<p>The Codex row documents <strong>this repository's existing code</strong>, not advice to integrate an undocumented service. See <a href="CODEX-ADAPTER-CONTRACT.html">its explicit limitations</a>. No API keys, imported tokens, real account IDs, private network addresses, or executable credential-bearing request examples are needed to reproduce the offline screen gallery.</p>
+<h2 id="7-security-accessibility-and-recovery-invariants">7. Security, accessibility, and recovery invariants</h2>
+<ol type="1">
+<li>A visible screenshot/terminal is not proof of provider success or permission to control a machine.</li>
+<li>Reject stale identities/revisions at effect boundaries, not just when a dialog opens.</li>
+<li>Persist send state before network dispatch; a failed save cannot result in a ghost remote request.</li>
+<li>Keep source/account secrets outside workspace DTOs, fixture images, logs, and public docs.</li>
+<li>Multi-recipient/mention/attachment/routine disclosure cannot be bypassed by changing the draft while a review is open. Consent grants the named operation, not general execution authority.</li>
+<li>Cancelling can stop local work and preserve partial text; it cannot undo bytes already delivered to a remote provider or commands already executed by an external shell.</li>
+<li>Escape/Cancel/close policies must name the affected detached form; navigation must not redirect an in-progress edit or overwrite another conversation's draft.</li>
+<li>Expose errors honestly: loading, empty, offline, invalid credential, permission denial, dropped stream, conflict, corruption, export write failure, interrupted generation.</li>
+<li>Native screenshots are not physical keyboard, screen-reader, sandbox-panel, performance, minimum-OS or notarization tests. These remain separate acceptance criteria.</li>
+</ol>
+<h2 id="8-acceptance-and-coverage-map">8. Acceptance and coverage map</h2>
+<table>
+<thead>
+<tr>
+<th>Original requirement</th>
+<th>Where the detailed behavior lives</th>
+<th>What remains a separate gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R01 native shell</td>
+<td>W screens; screenshot catalog</td>
+<td>complete reference-position comparison and physical resizing</td>
+</tr>
+<tr>
+<td>R02 Bots/groups/search</td>
+<td>W sidebar/picker + M editors/deletion</td>
+<td>full keyboard/accessibility event paths</td>
+</tr>
+<tr>
+<td>R03 messaging</td>
+<td>W transcript/composer + provider/group/mention contracts</td>
+<td>broad live-provider behavior, large-workspace timing</td>
+</tr>
+<tr>
+<td>R04 files/replies/export</td>
+<td>W file/reply surfaces + M export</td>
+<td>real OS file selection/grants and unsupported-format expectations</td>
+</tr>
+<tr>
+<td>R05 routines</td>
+<td>M editor/run/history + routines contract</td>
+<td>physical sleep/wake and unattended-runtime boundary</td>
+</tr>
+<tr>
+<td>R06 Settings</td>
+<td>M provider/appearance/export screens</td>
+<td>real Keychain signing and real account breadth</td>
+</tr>
+<tr>
+<td>R07 honest computer</td>
+<td>W disconnected + terminal proposal + R reference</td>
+<td>actual terminal/desktop integration not implemented</td>
+</tr>
+<tr>
+<td>R08 templates</td>
+<td>W/M local catalog surfaces</td>
+<td>no live marketplace/plugin claims</td>
+</tr>
+<tr>
+<td>R09 native quality/release</td>
+<td>all screens</td>
+<td>physical IME/VoiceOver, macOS 14 execution, Developer ID/notarization</td>
+</tr>
+</tbody>
+</table>
+<p>T01–T18 retain their full definitions in the <a href="NATIVE-REWRITE-CONTRACT.html#8-verification-contract">rewrite contract</a>. This documentation task produces a detailed inventory and reproducible visuals; it does not declare the entire experimental app release-ready or close every original T gate.</p>
+<h3 id="historical-documentation-notes">Historical documentation notes</h3>
+<ul>
+<li><code>NATIVE-PROTOTYPE.md</code> describes the sample bundle and preserves its early test counts; it is not the latest durable-app feature inventory.</li>
+<li>Earlier feature pages contain milestone test counts. Use the fresh atlas verification record for this run, not the sum of historical counts.</li>
+<li>The old <code>IMPLEMENTATION.md</code> and <code>PROPOSAL.md</code> describe earlier ideas/prototypes. They are retained history, not the current source-of-truth stack or acceptance result.</li>
+<li>Some original requirements (for example broad text search, full keyboard picker navigation, or real desktop control) exceed current behavior. The per-screen entries identify those gaps rather than documenting proposals as accomplished facts.</li>
+<li>A current Settings disclosure still literally says "Attachments are not sent." This is stale UI copy: the confirmed text-attachment path is implemented. M12 records the contradiction; this documentation task does not silently alter application source or use that sentence as the authoritative transmission contract.</li>
+</ul>
+<h2 id="9-reproduce-and-validate-this-dump">9. Reproduce and validate this dump</h2>
+<p>From the repository root, with macOS and the existing Swift toolchain plus Python 3:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> scripts/capture-screen-atlas.py <span class="at">--list</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> scripts/capture-screen-atlas.py</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> test</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> scripts/verify-screen-atlas.py</span></code></pre></div>
+<p>Capture runs only fixed sample/offline-fixture scenarios. It never runs <code>codex-smoke-stdin</code>, opens the normal persisted workspace, fetches provider models from a real router, or captures another application. Default outputs and logs stay in a fresh ignored local-only capture directory. The committed-ready gallery contains only reviewed copies of original synthetic native renders; no git staging/upload is automatic. See the <a href="SCREENSHOT-CATALOG.html">screenshot catalog</a> for this run's measured results, content-coordinate versus PNG-pixel distinction, and explicitly missing captures.</p>
+</main></body></html>

@@ -1,0 +1,1424 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Management screens and feature contract · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/SCREENS-MANAGEMENT.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="management-screens-and-feature-contract">Management screens and feature contract</h1>
+<p>This document specifies the native macOS management surfaces for creating and editing bots/groups, deleting bots, configuring providers and appearance, managing routines, and exporting the workspace. It describes the current SwiftUI/AppKit implementation, not a speculative redesign.</p>
+<p>Use the stable IDs <code>M01</code>–<code>M20</code> when linking screenshots, QA evidence, issues, or future screen-atlas entries. Screenshot coverage is tracked by those IDs; this file does not invent screenshot filenames.</p>
+<p>Evidence paths are abbreviated consistently: native source/test filenames resolve under <code>Prototypes/NativeShell/Sources/NativeShell/</code> and <code>Prototypes/NativeShell/Tests/NativeShellTests/</code>; core source/test filenames resolve under <code>Packages/WorkspaceCore/Sources/WorkspaceCore/</code> and <code>Packages/WorkspaceCore/Tests/WorkspaceCoreTests/</code>. Every <code>file:line-range</code> citation is an implementation or automated-test location, not screenshot proof.</p>
+<h2 id="status-vocabulary">Status vocabulary</h2>
+<table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Implemented</strong></td>
+<td>The durable native app has the described UI and backing behavior.</td>
+</tr>
+<tr>
+<td><strong>Sample-only</strong></td>
+<td>The in-memory preview has a reduced behavior; it does not prove durable storage or network execution.</td>
+</tr>
+<tr>
+<td><strong>OS-owned</strong></td>
+<td>macOS presents the surface (<code>NSOpenPanel</code>, <code>NSSavePanel</code>, or overwrite confirmation). App layout and wording outside the configured panel properties may vary by OS release.</td>
+</tr>
+<tr>
+<td><strong>Offline verified</strong></td>
+<td>Automated tests or synthetic smoke fixtures exercise the behavior without a real provider or user workspace.</td>
+</tr>
+<tr>
+<td><strong>Live unverified</strong></td>
+<td>The path is implemented, but this repository does not prove a real account, endpoint, paid request, Keychain signing environment, or physical assistive-technology flow.</td>
+</tr>
+<tr>
+<td><strong>Not implemented</strong></td>
+<td>The UI may disclose the boundary, but the capability is absent.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="management-navigation-map">Management navigation map</h2>
+<pre class="text"><code>Workspace
+├─ File → New Chat (⌘N) ──────────────── M01
+│  ├─ choose existing bot → direct chat
+│  ├─ Create new Bot ─────────────────── M03
+│  └─ Create group chat ──────────────── M02
+├─ Edit Bot… / Edit Group… ───────────── M04 / M05
+│  ├─ dirty Cancel/Escape ────────────── M06
+│  └─ stale/save error → Reload latest ─ M07
+├─ Delete Bot… ───────────────────────── M08
+│  └─ degraded group repair banner ───── M09 → M05
+├─ Settings… (⌘,) ────────────────────── M10
+│  ├─ provider template replacement ──── M11
+│  ├─ API-key configuration ──────────── M12
+│  ├─ local model discovery ──────────── M13
+│  ├─ Codex login configuration ──────── M14
+│  │  └─ auth.json file picker ───────── M15 (OS-owned)
+│  ├─ appearance/layout ──────────────── M16
+│  └─ workspace export ───────────────── M17
+│     ├─ JSON Save Panel ─────────────── M18 (OS-owned)
+│     └─ exporting/result state ───────── M19
+└─ Routines menu / inspector +
+   ├─ new or edit routine ────────────── M20A
+   ├─ routine detail/history ─────────── M20B
+   ├─ Run Now consent ────────────────── M20C
+   └─ delete routine consent ─────────── M20D</code></pre>
+<p><code>M20A</code>–<code>M20D</code> are sub-surfaces of the stable routine family <code>M20</code>, not new top-level IDs. This keeps the requested management catalog at <code>M01</code>–<code>M20</code> while allowing QA to name each routine state precisely.</p>
+<h2 id="global-management-invariants">Global management invariants</h2>
+<ol type="1">
+<li>The durable app persists workspace records in its local repository. The preview path uses in-memory fixtures and must be labeled as such.</li>
+<li>A detached profile/routine form is bound to a stable identity. Navigating to another conversation cannot retarget an accepted save.</li>
+<li>Accepted profile, routine, deletion, and export operations are joined by close/quit where required; close must not silently cancel a committed operation.</li>
+<li>Entered provider credentials are replacement-only. A saved secret is never loaded back into SwiftUI form state.</li>
+<li>Network transmission is explicit. Saving provider metadata is not a connection test. Saving a paused routine sends nothing. Run Now and automatic routines require their own disclosed consent.</li>
+<li>Management failures show sanitized descriptions. Filesystem paths, raw provider responses, keys, OAuth tokens, and private infrastructure values must not be copied into screenshots or diagnostics.</li>
+<li>Settings is a separate resizable native window in durable mode. In sample mode, the older compact prototype panel is used instead.</li>
+</ol>
+<p>Primary implementation evidence: <code>Prototypes/NativeShell/Sources/NativeShell/WorkspaceView.swift:22-64</code>, <code>Prototypes/NativeShell/Sources/NativeShell/NativeShellApp.swift:1297-1379</code>, and <code>Prototypes/NativeShell/Sources/NativeShell/NativeShellApp.swift:1386-1450</code>.</p>
+<hr />
+<h2 id="m01--new-chat-recipient-picker">M01 — New Chat recipient picker</h2>
+<p><strong>Status:</strong> Implemented; durable and sample presentation share this SwiftUI surface. Creation/persistence behavior differs after selection. Offline fixture coverage exists; physical keyboard/VoiceOver navigation is not automated.</p>
+<h3 id="entry-and-exit">Entry and exit</h3>
+<ul>
+<li>Enter from <strong>File → New Chat</strong> (<code>⌘N</code>) or the workspace new-chat control.</li>
+<li>Entry clears the query, selected group recipients, highlight index, and notice.</li>
+<li>Exit by selecting an existing direct-chat bot, opening M02/M03, clicking the close button, or pressing Escape.</li>
+<li>Selecting a bot only opens an already existing direct conversation; it does not create duplicate direct conversations.</li>
+</ul>
+<pre class="text"><code>┌──────────────────────────────────────────────────────────────┐
+│ To: [ Search or create Bots________________________ ]   (×)  │
+├──────────────────────────────────────────────────────────────┤
+│ ┌──────────────────────────────────────────────────────────┐ │
+│ │ (+)  Create new Bot                                     │ │
+│ │ (👥) Create group chat                                  │ │
+│ │ ●    Bot Alpha                              New chat     │ │
+│ │ ■    Bot Beta                                            │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="fields-and-actions">Fields and actions</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>To:</code> query</td>
+<td>Case-insensitive localized name filtering; changing it resets highlight to the first result.</td>
+</tr>
+<tr>
+<td><strong>Create new Bot</strong></td>
+<td>Opens M03.</td>
+</tr>
+<tr>
+<td><strong>Create group chat</strong></td>
+<td>Switches in place to M02.</td>
+</tr>
+<tr>
+<td>Bot result</td>
+<td>Opens that bot's existing direct conversation.</td>
+</tr>
+<tr>
+<td>Close icon</td>
+<td>Closes picker without changing workspace content.</td>
+</tr>
+<tr>
+<td>Empty result</td>
+<td>Shows <strong>No matching bots</strong>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="keyboard-and-accessibility">Keyboard and accessibility</h3>
+<ul>
+<li>Query receives focus on appearance.</li>
+<li>Up/Down changes the highlighted result without wrapping.</li>
+<li>Return commits the highlighted bot only when a result exists.</li>
+<li>Escape closes the picker at workspace level.</li>
+<li>Query identifier: <code>recipient-query</code>.</li>
+<li>Close accessibility label: <strong>Cancel new chat</strong>.</li>
+<li>Each result announces <strong>Chat with <em>bot name</em></strong>.</li>
+</ul>
+<h3 id="persistence-network-and-failure-behavior">Persistence, network, and failure behavior</h3>
+<ul>
+<li>Opening/filtering performs no network request and no write.</li>
+<li>Durable conversation selection flushes pending drafts before loading the selected conversation; a storage error leaves the error visible rather than resetting data.</li>
+<li>There is no picker-specific retry UI; workspace storage recovery remains global.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>RecipientPickerView.swift:9-19,42-76,108-137</code>; <code>Models.swift:278-329</code>; <code>NativeShellApp.swift:1306-1320,1346-1347</code>. Core selection/create persistence is covered indirectly by <code>PersistentWorkspaceTests.swift:17-43</code>. No dedicated UI automation test asserts the Up/Down/Return route.</p>
+<hr />
+<h2 id="m02--create-group-picker">M02 — Create Group picker</h2>
+<p><strong>Status:</strong> Implemented; durable creation is persisted, sample creation is in memory. Offline validation and reopen coverage exist.</p>
+<h3 id="entry-and-exit-1">Entry and exit</h3>
+<ul>
+<li>Enter from M01 → <strong>Create group chat</strong>.</li>
+<li>Successful creation selects the new group conversation and closes the picker.</li>
+<li>Close icon or Escape exits without creating a group.</li>
+</ul>
+<pre class="text"><code>┌──────────────────────────────────────────────────────────────┐
+│ To: [ Search or create Bots________________________ ]   (×)  │
+├──────────────────────────────────────────────────────────────┤
+│ [● Alpha ×] [■ Beta ×]                       selected chips  │
+│ ┌──────────────────────────────────────────────────────────┐ │
+│ │ ◆ Gamma                              Add to group chat   │ │
+│ │ ● Delta                                                  │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+│ [ Group name: New group chat________________ ] [Create group]│
+│ Choose two to six bots. This group is saved on your Mac.     │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="fields-actions-and-validation">Fields, actions, and validation</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Selected chips</td>
+<td>Preserve user selection order; each chip has a named Remove action.</td>
+</tr>
+<tr>
+<td>Result row</td>
+<td>Adds the bot, clears the query, and resets highlight. Already selected and hidden bots are excluded.</td>
+</tr>
+<tr>
+<td>Maximum</td>
+<td>Six bots. Remaining rows disable at six and empty text becomes <strong>Six bots selected</strong>.</td>
+</tr>
+<tr>
+<td>Minimum</td>
+<td><strong>Create group</strong> remains disabled until two bots are selected.</td>
+</tr>
+<tr>
+<td>Group name</td>
+<td>Default <strong>New group chat</strong>; after trimming must be 1–80 characters.</td>
+</tr>
+<tr>
+<td>Membership</td>
+<td>Must contain 2–6 distinct, currently available, non-hidden bot IDs.</td>
+</tr>
+<tr>
+<td>Create</td>
+<td>Asynchronous single save; all controls disable through shared <code>isSaving</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="failure-and-persistence-behavior">Failure and persistence behavior</h3>
+<ul>
+<li>A validation/repository error appears under the form in warning color; the current name and selection remain available for correction.</li>
+<li>Durable mode writes the group, refreshes the projection, and selects it.</li>
+<li>Sample mode adds an in-memory group only and labels it <strong>local previews</strong>.</li>
+<li>Group creation performs no provider call and requires no credential or consent.</li>
+</ul>
+<h3 id="keyboard-and-accessibility-1">Keyboard and accessibility</h3>
+<ul>
+<li>Up/Down/Return work as in M01.</li>
+<li><code>⌘Return</code> activates <strong>Create group</strong> when enabled.</li>
+<li>IDs: <code>group-name</code>, <code>create-group</code>; result labels say <strong>Add <em>name</em></strong>; chip remove actions say <strong>Remove <em>name</em></strong>.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>RecipientPickerView.swift:21-40,47-105</code>; <code>Models.swift:318-362</code>; <code>PersistentWorkspace.swift:246-253</code>. Validation tests: <code>PreviewWorkspaceTests.swift:82-163</code>. Durable reopen test: <code>PersistentWorkspaceTests.swift:17-43</code>.</p>
+<hr />
+<h2 id="m03--create-a-bot">M03 — Create a Bot</h2>
+<p><strong>Status:</strong> Implemented. Durable mode saves locally; sample mode creates an in-memory preview bot. The surface is a SwiftUI sheet (<code>PrototypePanel</code>).</p>
+<h3 id="entry-and-exit-2">Entry and exit</h3>
+<ul>
+<li>Enter from M01 → <strong>Create new Bot</strong>, or a workspace first-bot action.</li>
+<li><strong>Create Bot</strong> creates a bot plus its one-member direct conversation, selects that conversation, and closes the sheet.</li>
+<li><strong>Cancel</strong>, Escape, or the close icon closes without saving.</li>
+<li><strong>Current limitation:</strong> this form does not track dirty state and does not ask before discarding unsaved fields. This differs from M04/M05/M20A and is an implementation gap, not an implied feature.</li>
+</ul>
+<pre class="text"><code>┌──────────────────────── Create a Bot ────────────────────────┐
+│                                                    (×)       │
+│                         [avatar]                             │
+│ [ Bot name_______________________________________________ ]  │
+│ [ What should this Bot help with?________________________ ]  │
+│ [________________________________________________________ ]  │
+│ Shape: [ Circle ▾ ]                                         │
+│ Color: ●  ●  ●  ●  ●  ●                                    │
+│ This bot is saved on this Mac. Choose a provider before…     │
+│                                  [Cancel] [Create Bot]       │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="fields-actions-and-validation-1">Fields, actions, and validation</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Avatar preview</td>
+<td>Updates from selected shape/color.</td>
+</tr>
+<tr>
+<td>Bot name</td>
+<td>Required in the UI; trimmed persisted value must be 1–80 characters.</td>
+</tr>
+<tr>
+<td>Description</td>
+<td>Multi-line visual field; core validation caps it at 8,000 characters. The create sheet has no live counter.</td>
+</tr>
+<tr>
+<td>Shape</td>
+<td>Current <code>AvatarKind.allCases</code>; presentation names are capitalized.</td>
+</tr>
+<tr>
+<td>Color</td>
+<td>Supported palette: green, magenta, gray, violet, blue, orange. Selected choice is announced.</td>
+</tr>
+<tr>
+<td>Create Bot</td>
+<td>Default action; disabled only for a whitespace-empty name, while core validation handles other invalid input.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="persistence-network-and-failure-behavior-1">Persistence, network, and failure behavior</h3>
+<ul>
+<li>Durable mode first commits to the repository, then refreshes/selects; a failed write must not create a ghost bot in the projection.</li>
+<li>No provider is assigned automatically. No computer/desktop or provider request is started.</li>
+<li>Failure text remains in the sheet and the form remains editable after <code>isSaving</code> clears.</li>
+</ul>
+<h3 id="keyboard-and-accessibility-2">Keyboard and accessibility</h3>
+<ul>
+<li>Cancel is the cancel action; Create Bot is the default action.</li>
+<li>IDs: <code>bot-name</code>, <code>create-bot</code>.</li>
+<li>Color buttons expose <code>_color_ avatar</code> and selected traits.</li>
+<li>There is no explicit focus-state contract in this sheet.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>PrototypePanel.swift:3-44,46-88,218-227</code>; <code>Models.swift:331-345</code>; <code>PersistentWorkspace.swift:228-244</code>; <code>Domain.swift:306-331</code>. Tests: <code>PreviewWorkspaceTests.swift:29-80</code> and <code>PersistentWorkspaceTests.swift:123-145</code>.</p>
+<hr />
+<h2 id="m04--edit-bot">M04 — Edit Bot</h2>
+<p><strong>Status:</strong> Implemented detached editor; durable CAS save and in-memory preview save. Offline tests cover validation, concurrency, reopen, and draft preservation.</p>
+<h3 id="entry-and-exit-3">Entry and exit</h3>
+<ul>
+<li>Enter from the conversation header pencil, inspector <strong>Edit Bot profile</strong>, or direct conversation context menu <strong>Edit Bot…</strong>.</li>
+<li>The captured bot ID, not the later current selection, owns load/save.</li>
+<li>Clean Cancel/Escape/close exits immediately. Dirty exit routes to M06.</li>
+<li>Successful save dismisses only when no newer edits appeared during the accepted save.</li>
+</ul>
+<pre class="text"><code>┌────────────────────────── Edit Bot ──────────────────────────┐
+│                                                       (×)    │
+│ [avatar]  Avatar preview                                    │
+│           Choose an original shape and color…               │
+│ Name                                                        │
+│ [ Bot name_______________________________________________ ]  │
+│ Description                                                 │
+│ [________________________________________________________ ]  │
+│ [________________________________________________________ ]  │
+│                                           123 / 8,000 chars │
+│ Color  ● ● ● ● ● ●                                         │
+│ Shape  [ Circle ▾ ]                                         │
+│ ⚠ validation/save error                     [Reload latest] │
+│ Existing messages keep recorded speaker names…              │
+├──────────────────────────────────────────────────────────────┤
+│                               [Cancel] [Save]                │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="fields-and-validation">Fields and validation</h3>
+<ul>
+<li><strong>Name:</strong> trimmed 1–80 characters.</li>
+<li><strong>Description:</strong> up to 8,000 characters, with live count.</li>
+<li><strong>Color:</strong> supported palette only.</li>
+<li><strong>Shape:</strong> supported avatar shapes only.</li>
+<li>Save enables only after load, when dirty, valid, not loading, and not saving.</li>
+</ul>
+<h3 id="state-and-conflict-behavior">State and conflict behavior</h3>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>UI/behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initial load</td>
+<td><strong>Loading profile…</strong>; form unavailable.</td>
+</tr>
+<tr>
+<td>Validation failure</td>
+<td>Inline warning with <code>profile-validation-error</code>; Save disabled.</td>
+</tr>
+<tr>
+<td>Save in progress</td>
+<td>Spinner; close/Cancel disabled; app close joins accepted save.</td>
+</tr>
+<tr>
+<td>Save error/stale CAS</td>
+<td>Sanitized error plus <strong>Reload latest</strong>; edits remain.</td>
+</tr>
+<tr>
+<td>Edit made during save</td>
+<td>Accepted snapshot becomes baseline; message <strong>Saved. Newer edits remain in this form.</strong>; sheet stays open and dirty.</td>
+</tr>
+<tr>
+<td>Successful unchanged save</td>
+<td>Projection refreshes; editor dismisses and composer focus is requested.</td>
+</tr>
+</tbody>
+</table>
+<p>Only editable profile fields participate in conflict comparison. Provider assignment, visibility, identity, drafts, routine ownership, and streamed deltas are not overwritten. Existing messages keep immutable speaker-name snapshots.</p>
+<h3 id="keyboard-and-accessibility-3">Keyboard and accessibility</h3>
+<ul>
+<li>First field receives focus after load.</li>
+<li>Escape and Cancel call the same dirty-aware path; Save is default action.</li>
+<li>Header has header trait.</li>
+<li>IDs: <code>profile-close</code>, <code>profile-bot-name</code>, <code>profile-bot-description</code>, <code>profile-bot-shape</code>, <code>profile-color-*</code>, <code>profile-cancel</code>, <code>profile-save</code>, <code>profile-save-error</code>, <code>profile-reload-latest</code>.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProfileEditorView.swift:49-93,119-163,207-277,350-508</code>; <code>EditingWorkspace.swift:5-21,23-135</code>; <code>WorkspaceView.swift:302-314,353-387,927-950</code>. Tests: <code>ProfileEditorTests.swift:21-147</code> and <code>ProfileWorkspaceTests.swift:28-76,130-150,197-267</code>.</p>
+<hr />
+<h2 id="m05--edit-group--repair-membership">M05 — Edit Group / repair membership</h2>
+<p><strong>Status:</strong> Implemented detached editor using the same identity/concurrency shell as M04. It also repairs zero/one-member groups left by confirmed deletion.</p>
+<h3 id="entry-and-exit-4">Entry and exit</h3>
+<ul>
+<li>Enter from header, inspector, context menu, or M09 <strong>Edit Group…</strong>.</li>
+<li>Exit and save semantics match M04/M06/M07.</li>
+</ul>
+<pre class="text"><code>┌───────────────────────── Edit Group ─────────────────────────┐
+│                                                       (×)    │
+│ Group name                                                  │
+│ [ Project crew___________________________________________ ]  │
+│ Members                                      [Add member ▾] │
+│ ┌──────────────────────────────────────────────────────────┐ │
+│ │ ● Alpha                         [↑][↓] [remove]          │ │
+│ │ ■ Legacy Bot  [Hidden]          [↑][↓] [remove]          │ │
+│ │ ◆ Beta                          [↑][↓] [remove]          │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│ Keep 2–6 different bots. Hidden existing bots may remain…    │
+│ ⚠ validation/save error                     [Reload latest] │
+├──────────────────────────────────────────────────────────────┤
+│                               [Cancel] [Save]                │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="fields-actions-and-validation-2">Fields, actions, and validation</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Group name</td>
+<td>Trimmed 1–80 characters.</td>
+</tr>
+<tr>
+<td>Member order</td>
+<td>Explicit and persisted; Up/Down buttons reorder future reply membership.</td>
+</tr>
+<tr>
+<td>Add member</td>
+<td>Lists visible, not-already-selected bots; disables at six or when none remain.</td>
+</tr>
+<tr>
+<td>Remove</td>
+<td>Removes selected member. A hidden member removed in this editing session cannot be re-added.</td>
+</tr>
+<tr>
+<td>Membership save</td>
+<td>Requires 2–6 distinct available bots. Exact degraded 0/1-member persisted groups may load, but Save stays invalid until repaired.</td>
+</tr>
+<tr>
+<td>Hidden legacy member</td>
+<td>May remain and is labeled <strong>Hidden</strong>. It cannot be newly added.</td>
+</tr>
+<tr>
+<td>Unavailable member</td>
+<td>Displays <strong>Unavailable bot</strong> and blocks save with <strong>Reload the latest group</strong> guidance.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="effects-and-concurrency">Effects and concurrency</h3>
+<ul>
+<li>Membership changes affect future replies only. Existing group messages, immutable speaker names, drafts, and in-flight reply attribution remain.</li>
+<li>Removed bots are cleared from future explicit composer targets.</li>
+<li>A stale baseline cannot overwrite a newer group edit.</li>
+<li>Navigation cannot redirect the save to another group.</li>
+</ul>
+<h3 id="keyboard-and-accessibility-4">Keyboard and accessibility</h3>
+<ul>
+<li>Group name receives focus after load; Escape/Cancel/default Save match M04.</li>
+<li>Member container and every move/remove action have stable accessibility identifiers and descriptive labels.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProfileEditorView.swift:95-117,185-205,278-337,510-576</code>; <code>EditingWorkspace.swift:115-134</code>; <code>Domain.swift:333-341</code>. Tests: <code>ProfileEditorTests.swift:149-179</code>; <code>ProfileWorkspaceTests.swift:78-128,152-174</code>; degraded repair persistence: <code>BotDeletionWorkspaceTests.swift:138-187,246-262</code>.</p>
+<hr />
+<h2 id="m06--unsaved-profile-discard-confirmation">M06 — Unsaved profile discard confirmation</h2>
+<p><strong>Status:</strong> Implemented SwiftUI alert inside M04/M05, plus an AppKit close/quit alert.</p>
+<pre class="text"><code>┌──────────── Discard unsaved profile changes? ────────────────┐
+│ Your unsaved profile changes will be lost.                   │
+│                         [Keep Editing] [Discard Changes]     │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<ul>
+<li>Triggered by Cancel, Escape, or editor close while dirty.</li>
+<li><strong>Keep Editing</strong> is cancel role and preserves all fields.</li>
+<li><strong>Discard Changes</strong> invalidates a pending load and dismisses without mutation.</li>
+<li>Save in progress blocks the sheet's close controls.</li>
+<li>Closing/quitting the main window uses the equivalent AppKit warning: conversation messages and drafts are kept. Dirty state is not cleared until closure really occurs, because a later storage/quit guard may keep the app alive.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProfileEditorView.swift:257-277,420-455</code>; <code>NativeShellApp.swift:1386-1400,1441-1450</code>. Tests: <code>ProfileEditorTests.swift:50-67,131-147</code>; <code>ProfileWorkspaceTests.swift:197-267</code>.</p>
+<hr />
+<h2 id="m07--profile-reload--edit-conflict-state">M07 — Profile reload / edit conflict state</h2>
+<p><strong>Status:</strong> Implemented inline error plus destructive reload confirmation.</p>
+<pre class="text"><code>┌────────────────────────── Edit Bot ──────────────────────────┐
+│ …current unsaved fields…                                     │
+│ ⚠ This profile changed. Review the latest values…           │
+│ [Reload latest]                                              │
+└──────────────────────────────────────────────────────────────┘
+
+            ↓ when dirty
+
+┌──────────────── Reload the latest profile? ─────────────────┐
+│ Reloading discards the edits in this form.                   │
+│                              [Keep Editing] [Reload]         │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<ul>
+<li>A stale compare-and-swap save fails without overwriting the latest record.</li>
+<li><strong>Reload latest</strong> reloads immediately when clean; when dirty it opens the second confirmation above.</li>
+<li>Load requests carry a generation. A late older response cannot replace a newer load.</li>
+<li>Failed load/save never silently closes the sheet or mutates the current form.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProfileEditorView.swift:124-163,207-254,393-455</code>; <code>EditingWorkspace.swift:83-100</code>. Tests: <code>ProfileEditorTests.swift:68-129</code> and <code>ProfileWorkspaceTests.swift:130-150</code>.</p>
+<hr />
+<h2 id="m08--confirmed-bot-deletion">M08 — Confirmed bot deletion</h2>
+<p><strong>Status:</strong> Implemented only for durable workspaces. Offline repository, coordinator, native-controller, and rendered smoke evidence exist. Destructive physical UI clicking, disk-full/power-loss, and live-provider cancellation are unverified.</p>
+<h3 id="entry-and-exit-5">Entry and exit</h3>
+<ul>
+<li>Enter from a direct conversation context menu → <strong>Delete Bot…</strong>.</li>
+<li>Availability requires a persistent repository/coordinator and no conflicting save, send, attachment, export, profile, routine, or deletion operation.</li>
+<li>Pending drafts are flushed before the impact plan is calculated.</li>
+<li>Cancel or Escape closes only before deletion is accepted.</li>
+<li><strong>Delete Bot</strong> has no Return/default shortcut.</li>
+</ul>
+<pre class="text"><code>┌──────────────────── Permanently delete bot? ─────────────────┐
+│ Bot Alpha                                                     │
+│ Delete 1 direct conversation, 42 messages, 1 draft, …        │
+│ Delete 2 stored text attachments (918 bytes)…                 │
+│ Stop 1 active or queued reply…                                │
+│ Stop 1 active routine run…                                    │
+│ Remove from 2 groups:                                         │
+│ • Project crew — 2 members remain                             │
+│ • Pair — 1 member remains; repair before sending              │
+│                                                               │
+│ Providers and stored credentials are kept. Cannot be undone.  │
+│ [Cancel]                                          [Delete Bot]│
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="impact-contract">Impact contract</h3>
+<p>The current plan names and counts:</p>
+<ul>
+<li>direct conversations, all their messages and drafts;</li>
+<li>generation records plus active/queued affected replies;</li>
+<li>routines owned by the bot, complete run history, and active routine runs;</li>
+<li>exact unshared stored attachment count and raw bytes;</li>
+<li>every affected group, title, ordered remaining member IDs, and repair warning.</li>
+</ul>
+<p>Deletion removes the bot, its direct conversations/history/drafts/generation records, owned routines/run history, and attachment payloads with no surviving reference. It retains group conversations, group history/drafts/generations, immutable historical speaker names, shared attachments, providers, and credentials.</p>
+<h3 id="state-and-failure-behavior">State and failure behavior</h3>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>UI/behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Planning</td>
+<td><strong>Checking affected records…</strong>; destructive action disabled.</td>
+</tr>
+<tr>
+<td>Ready</td>
+<td>Exact captured impact shown; <strong>Delete Bot</strong> enabled.</td>
+</tr>
+<tr>
+<td>Accepted</td>
+<td>Spinner; Cancel disabled; quit/reconnect joins operation.</td>
+</tr>
+<tr>
+<td>Impact changed / failure</td>
+<td>Plan cleared, sanitized error shown, <strong>Review Current Impact</strong> required before another delete attempt. Affected replies may already be stopped.</td>
+</tr>
+<tr>
+<td>Commit succeeded, refresh failed</td>
+<td>Reports deletion succeeded but workspace needs reopen; never offers a destructive retry.</td>
+</tr>
+<tr>
+<td>Success</td>
+<td>Sheet closes; selected deleted conversation falls back safely; notice says group history/shared providers were kept.</td>
+</tr>
+</tbody>
+</table>
+<p>The core rechecks impact before cancellation and again in the repository transaction. Forged caller cancellation scope does not widen the deletion. A failed database save rolls back stored deletion effects, though remote/provider cancellation cannot be undone.</p>
+<h3 id="accessibility">Accessibility</h3>
+<ul>
+<li>IDs: <code>bot-delete-sheet</code>, <code>bot-delete-confirm</code>, <code>bot-delete-reload</code>.</li>
+<li>Bot name is selectable; impact is normal readable text.</li>
+<li>VoiceOver focus restoration and physical context-menu activation remain manual gaps.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>BotDeletionView.swift:9-83</code>; <code>BotDeletionWorkspace.swift:8-184</code>; <code>BotDeletion.swift:3-103</code>. Tests: <code>BotDeletionWorkspaceTests.swift:8-318</code>, <code>BotDeletionTests.swift:58-277</code>, and <code>BotDeletionCoordinatorTests.swift:39-304</code>.</p>
+<hr />
+<h2 id="m09--group-needs-repair">M09 — Group needs repair</h2>
+<p><strong>Status:</strong> Implemented inline composer block state after deletion leaves fewer than two available members.</p>
+<pre class="text"><code>┌──────────────────── current group conversation ──────────────┐
+│ …history remains readable…                                   │
+├──────────────────────────────────────────────────────────────┤
+│ Group needs repair                                            │
+│ History and drafts are kept. Choose at least two available…  │
+│ [Edit Group…]                                                 │
+│ [composer/send disabled by validation boundary]               │
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<ul>
+<li>The group and its transcript remain readable with zero or one valid member.</li>
+<li><strong>Edit Group…</strong> enters M05.</li>
+<li>New sends and retries reject before credential reads or network transport.</li>
+<li>Repair requires 2–6 distinct available members; history/draft remains unchanged.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>WorkspaceView.swift:515-526</code>; <code>BotDeletionWorkspace.swift:18-33</code>; <code>EditingWorkspace.swift:115-134</code>. Tests: <code>BotDeletionWorkspaceTests.swift:138-187,246-262</code> and <code>BotDeletionCoordinatorTests.swift:273-304</code>.</p>
+<hr />
+<h2 id="m10--settings-window-shell">M10 — Settings window shell</h2>
+<p><strong>Status:</strong> Implemented as one separate scrollable native window in durable mode. It is not a tabbed settings UI. Sample mode uses the reduced <code>PrototypePanel.settings</code> surface and does not expose the full provider/export contract.</p>
+<h3 id="entry-and-exit-6">Entry and exit</h3>
+<ul>
+<li>Enter from app menu <strong>Settings…</strong> (<code>⌘,</code>) or inspector gear.</li>
+<li><strong>File → Export Workspace…</strong> opens Settings if necessary, then immediately enters the M18 export chooser.</li>
+<li>Reopening while present brings the single existing Settings window forward.</li>
+<li>Window is resizable, default <code>580×740</code>, minimum <code>520×620</code>, and inherits effective app appearance.</li>
+<li>Closing while provider or appearance edits are dirty presents the AppKit alert below. Closing is blocked during provider save.</li>
+</ul>
+<pre class="text"><code>┌──────────────────── Bot Workspace Settings ──────────────────┐
+│ Model Provider                                                │
+│ Add an OpenAI-compatible endpoint or explicitly imported…    │
+│                                                               │
+│ Workspace export                                      M17     │
+│ Appearance and layout                                 M16     │
+│ [ ] Show hidden conversations in this session                 │
+│ Configuration                                         M12/14  │
+│ Setup template (new only)                             M11     │
+│ Connection / disclosure / credential protection              │
+│                                                               │
+│                                           [Save … and use]     │
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<p>Dirty close alert:</p>
+<pre class="text"><code>┌────────────── Discard unsaved Settings changes? ──────────────┐
+│ Unsaved appearance and provider edits, including any entered │
+│ credential, will be discarded.                               │
+│                         [Keep Editing] [Discard Changes]      │
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="cross-section-state">Cross-section state</h3>
+<ul>
+<li><strong>Show hidden conversations in this session</strong> applies immediately to the current session, independently of the saved appearance edit buffer.</li>
+<li>Provider and appearance dirty flags jointly guard window close/quit.</li>
+<li>Closing resets model discovery and clears entered API/Codex credentials from form state.</li>
+<li>Saving one section does not implicitly save the other.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProviderSettingsView.swift:89-163</code>; <code>NativeShellApp.swift:1297-1309,1346-1379,1401-1429</code>. Rendered Settings fixture selection is visible in <code>NativeShellApp.swift:1474-1516</code>; this is offline screenshot/smoke infrastructure, not physical UI automation.</p>
+<hr />
+<h2 id="m11--provider-setup-template-and-replacement-confirmation">M11 — Provider setup template and replacement confirmation</h2>
+<p><strong>Status:</strong> Implemented for <strong>New configuration</strong> only. Templates prefill editable metadata; they do not connect or import credentials.</p>
+<pre class="text"><code>Setup template: [ Choose a template (optional) ▾ ]
+                • Custom compatible endpoint
+                • OpenAI Platform
+                • Z.ai general API
+                • 9router local gateway
+
+when current form is dirty:
+┌──────── Replace this form with a setup template? ────────────┐
+│ Name, endpoint, model and HTTP choice will be replaced.      │
+│ Any entered credential is cleared; no connection is made.   │
+│                         [Keep Editing] [Replace Form]        │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="template-behavior">Template behavior</h3>
+<table>
+<thead>
+<tr>
+<th>Template</th>
+<th>Prefill behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Custom compatible endpoint</td>
+<td>Example HTTPS compatible root; blank name/model.</td>
+</tr>
+<tr>
+<td>OpenAI Platform</td>
+<td>Platform root; blank model; explicitly requires Platform API key/billing rather than ChatGPT login.</td>
+</tr>
+<tr>
+<td>Z.ai general API</td>
+<td>General API root; suggested editable model; does not claim account access or Coding Plan quota.</td>
+</tr>
+<tr>
+<td>9router local gateway</td>
+<td>Loopback root; blank exact model; still requires explicit loopback-HTTP opt-in and router key.</td>
+</tr>
+</tbody>
+</table>
+<p>Applying any template:</p>
+<ul>
+<li>sets provider type to OpenAI-compatible API;</li>
+<li>replaces name/root/model;</li>
+<li>clears API-key and imported Codex credential form state;</li>
+<li>resets/cancels model discovery;</li>
+<li>turns loopback HTTP permission off, including for the local template;</li>
+<li>performs no network request.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProviderSettingsView.swift:178-208,616-628</code>; <code>ProviderPreset.swift:3-36</code>. Provider template behavior is covered by core preset and provider validation suites; the alert itself has no dedicated XCUITest.</p>
+<hr />
+<h2 id="m12--openai-compatible-provider-configuration">M12 — OpenAI-compatible provider configuration</h2>
+<p><strong>Status:</strong> Implemented metadata + credential workflow. Transport is text-only compatible chat/SSE. Offline tests cover credential/persistence boundaries. Real providers, account entitlements, billing, and production signing/Keychain are live unverified.</p>
+<h3 id="configuration-selection-and-dirty-switching">Configuration selection and dirty switching</h3>
+<ul>
+<li>Picker lists <strong>New configuration</strong> plus saved provider names.</li>
+<li>Existing selected configuration is preferred on initial open; otherwise the first saved provider is loaded.</li>
+<li>Switching configuration while dirty asks <strong>Discard unsaved provider changes?</strong>. <strong>Discard Changes</strong> clears edits and any entered credential, then loads the requested configuration. <strong>Keep Editing</strong> retains the current form.</li>
+</ul>
+<pre class="text"><code>Configuration: [ New configuration / Saved provider ▾ ]
+Setup template: [ optional, new only ▾ ]
+
+┌──────────────────────── Connection ──────────────────────────┐
+│ Provider type: [ OpenAI-compatible API ▾ ]                   │
+│ Name:          [ Work account___________________________ ]   │
+│ API base URL:  [ https://provider.example/v1___________ ]   │
+│ Model:         [ exact-model-id_________________________ ]   │
+│ [Discover local models]                              M13     │
+│ Credential storage: [Protected Keychain / This session only]│
+│ Credential:    [••••••••••••••••••••••••••••••••••••• ]   │
+│ [ ] Allow HTTP for loopback development servers             │
+└──────────────────────────────────────────────────────────────┘
+┌──────────────────────── What is sent ────────────────────────┐
+│ Destination host + model                                     │
+│ Up to 100 prior messages, current draft, bot description     │
+│ Attachments are not sent  ← currently rendered, but stale    │
+└──────────────────────────────────────────────────────────────┘
+Credential protection: …                                       │
+                                      [Save and use]            │</code></pre>
+<blockquote>
+<p><strong>Known UI contradiction:</strong> Settings currently renders <strong>Attachments are not sent</strong> (<code>ProviderSettingsView.swift:475-480</code>). That sentence predates the implemented confirmed text-attachment workflow. Stored text attachments can be transmitted only after the separate per-send review described in <code>docs/ATTACHMENTS.md</code>; images and unsupported binary files cannot. Treat the Settings sentence as a UI defect to fix, not as the current transport contract. Routine authorization remains text-only and correctly blocks attachment-bearing context.</p>
+</blockquote>
+<h3 id="exact-fields-and-validation">Exact fields and validation</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Provider type</td>
+<td>OpenAI-compatible API or Codex login. Changing kind clears entered credentials/discovery and requires fresh kind-matching credential.</td>
+</tr>
+<tr>
+<td>Name</td>
+<td>Trimmed 1–80 characters.</td>
+</tr>
+<tr>
+<td>API base URL</td>
+<td>Valid compatible HTTPS root. HTTP is accepted only for explicit loopback development configuration.</td>
+</tr>
+<tr>
+<td>Model</td>
+<td>Non-empty exact provider identifier; saved trimmed.</td>
+</tr>
+<tr>
+<td>Credential storage</td>
+<td><strong>Protected Keychain</strong> (default) or <strong>This session only</strong>.</td>
+</tr>
+<tr>
+<td>Credential</td>
+<td>Required for new config, destination change, storage-mode change, or provider-kind change. Max 16,384 UTF-8 bytes; nonblank; no newline/NUL.</td>
+</tr>
+<tr>
+<td>Loopback HTTP</td>
+<td>Explicit checkbox; never relaxes HTTPS for remote providers.</td>
+</tr>
+</tbody>
+</table>
+<p>For an existing provider, the secure field is <strong>Replacement credential</strong>. Leaving it blank retains the current secret only when API root, credential lifetime, and provider kind remain compatible. The app never reads the saved value back into the form.</p>
+<h3 id="credential-lifetime-contract">Credential lifetime contract</h3>
+<ul>
+<li><strong>Protected Keychain:</strong> writes to macOS Keychain. A write failure is surfaced and never falls back silently to memory.</li>
+<li><strong>This session only:</strong> retains secret only in the current app process. Provider metadata and an opaque reference persist, but relaunch requires re-entry.</li>
+<li>Switching storage modes requires a replacement key; secrets are not copied.</li>
+<li>Metadata save failure removes the new unused replacement where possible and preserves the old saved configuration/credential.</li>
+</ul>
+<h3 id="save-and-network-behavior">Save and network behavior</h3>
+<ul>
+<li><strong>Save and use</strong> / <strong>Save changes and use</strong> is default action and selects the saved provider for new replies.</li>
+<li>Saving validates and persists configuration/credential; it does <strong>not</strong> send chat, call a models endpoint, or verify account access.</li>
+<li>Destination disclosure derives a host from the entered URL; it must not show private credentials.</li>
+<li>Generic provider errors are sanitized before display.</li>
+</ul>
+<h3 id="accessibility-1">Accessibility</h3>
+<p>IDs: <code>provider-configuration-picker</code>, <code>provider-kind</code>, <code>provider-name</code>, <code>provider-api-root</code>, <code>provider-model-id</code>, <code>provider-credential-storage</code>, <code>provider-secret</code>, <code>provider-loopback-http</code>, <code>provider-destination-disclosure</code>, <code>provider-context-disclosure</code>, <code>provider-settings-error</code>, <code>provider-save</code>.</p>
+<p><strong>Evidence:</strong> <code>ProviderSettingsView.swift:48-78,210-343,470-549,551-675</code>; <code>ProviderWorkspace.swift:4-21,277-389</code>; <code>SessionAwareCredentialStore.swift:3-63</code>. Tests: <code>ProviderWorkspaceTests.swift:9-210,669-720</code> and <code>CodexProviderSettingsTests.swift:216-325</code>.</p>
+<hr />
+<h2 id="m13--local-model-discovery">M13 — Local model discovery</h2>
+<p><strong>Status:</strong> Implemented only for validated local 9router-style model catalogs. URLProtocol and synthetic catalog tests are offline verified. A real router/account chat is live unverified.</p>
+<pre class="text"><code>[Discover local models]  (spinner) [Cancel]
+Local 9router only. Sends GET /models with no key or chat content.
+
+[ Filter discovered model IDs______________________________ ]
+[ Choose discovered model ▾ ]
+23 of 120 IDs match; menu shows at most 80…</code></pre>
+<h3 id="entry-actions-and-states">Entry, actions, and states</h3>
+<ul>
+<li>Available only for OpenAI-compatible type when the root passes the local-endpoint policy and loopback HTTP is explicitly allowed where needed.</li>
+<li><strong>Discover local models</strong> becomes <strong>Refresh local models</strong> after a successful load.</li>
+<li>Loading shows a progress indicator and <strong>Cancel</strong>.</li>
+<li>Filtering is case-insensitive; menu displays at most 80 matching IDs.</li>
+<li>Choosing a result writes its exact identifier into Model. Discovery never replaces typed model text automatically.</li>
+<li>Empty success says the router advertised no models; manual entry remains possible.</li>
+<li>Errors are sanitized and do not echo raw server body/root secrets.</li>
+</ul>
+<h3 id="network-and-privacy-contract">Network and privacy contract</h3>
+<ul>
+<li>Explicit click sends credential-free <code>GET /models</code> only.</li>
+<li>It sends no saved key, cookies, chat content, draft, or bot description.</li>
+<li>Remote/nonapproved HTTP roots do not start a catalog task.</li>
+<li>Changing root, loopback permission, template, configuration, provider type, or closing Settings cancels/invalidates the prior lookup. Late results cannot overwrite newer form state.</li>
+<li>A model list proves neither key validity nor upstream/account/model access.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>ProviderSettingsView.swift:401-468</code>; <code>ModelDiscoveryController.swift:5-58</code>; <code>LocalRouterModelCatalog.swift:7-170</code> (endpoint and response limits). Tests: <code>ModelDiscoveryTests.swift:8-96</code> and <code>ModelCatalogTests.swift:8-246</code>.</p>
+<hr />
+<h2 id="m14--codex-login-provider-configuration">M14 — Codex login provider configuration</h2>
+<p><strong>Status:</strong> Implemented experimental, text-only, fixed-destination adapter. Offline auth fixtures and provider state-machine tests exist. Real account/model availability and long-term private API compatibility are live unverified and not guaranteed.</p>
+<pre class="text"><code>┌──────────────────────── Connection ──────────────────────────┐
+│ Provider type: [ Codex login (experimental) ▾ ]              │
+│ Name:          [ Personal Codex_________________________ ]   │
+│ Fixed destination: [fixed adapter origin, read-only]         │
+│ Model:         [ exact account-supported model__________ ]   │
+│ [Import Codex auth.json…]                     M15            │
+│ ✓ Imported for this session                                   │
+└──────────────────────────────────────────────────────────────┘
+┌──────────────────────── What is sent ────────────────────────┐
+│ Text-only reply request to the fixed origin using the model  │
+│ Tools disabled; no fallback endpoint                          │
+└──────────────────────────────────────────────────────────────┘
+Credential protection: process memory only; re-import on quit. │
+                                      [Save and use]            │</code></pre>
+<h3 id="differences-from-api-key-provider">Differences from API-key provider</h3>
+<ul>
+<li>Fixed, noneditable destination; loopback HTTP is forbidden.</li>
+<li>No API-key secure field and no storage picker.</li>
+<li>Credential comes only from explicit M15 file import.</li>
+<li>Imported access token and optional account ID live in process memory only.</li>
+<li>Provider metadata persists, but the login never persists to workspace or Keychain.</li>
+<li>Relaunch, expiration, or rejection requires explicit re-import.</li>
+<li>The app never refreshes or logs out the Codex account and never falls back to another endpoint.</li>
+</ul>
+<h3 id="save-rules-and-drift">Save rules and drift</h3>
+<ul>
+<li>New configuration or a change from API-key type requires a fresh imported credential.</li>
+<li>API and Codex credentials cannot be supplied to the wrong type or together.</li>
+<li>Fixed-root or HTTP mutation is rejected before credential persistence.</li>
+<li>The suggested initial model is only a convenience and is not discovery or an availability promise.</li>
+<li>Saving is not a connection test. A missing session login keeps a later draft and starts no transport.</li>
+</ul>
+<h3 id="accessibility-2">Accessibility</h3>
+<p>IDs: <code>provider-codex-fixed-root</code>, <code>provider-import-codex-login</code>, <code>provider-codex-imported-status</code>, plus shared M12 name/model/save/disclosure IDs.</p>
+<p><strong>Evidence:</strong> <code>ProviderSettingsView.swift:257-261,308-399,493-510,539-548</code>; <code>ProviderWorkspace.swift:303-367</code>; <code>CodexResponsesProvider.swift:1-127</code>. Tests: <code>CodexProviderSettingsTests.swift:39-325</code> and <code>CodexProviderTests.swift:8-211</code>.</p>
+<hr />
+<h2 id="m15--import-codex-authjson">M15 — Import Codex auth.json</h2>
+<p><strong>Status:</strong> OS-owned <code>NSOpenPanel</code> plus implemented bounded importer. Offline file tests verify parsing/redaction. The repository does not automate the physical macOS picker.</p>
+<pre class="text"><code>macOS Open Panel (layout owned by macOS)
+┌──────────── Import Codex login for this session ─────────────┐
+│ Choose the auth.json maintained by Codex. BotWorkspace       │
+│ reads it once and does not modify or copy it.                │
+│                                                               │
+│ [filesystem browser / filename field — OS-owned]              │
+│                                          [Cancel] [Import]     │
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="selection-and-parsing-contract">Selection and parsing contract</h3>
+<ul>
+<li>JSON files only, one file, no directories; aliases resolve.</li>
+<li>User explicitly selects the file; there is no home-directory scan or startup import.</li>
+<li>Security-scoped access is balanced.</li>
+<li>File must be regular and at most 1 MiB; read is bounded to limit + 1 byte and occurs once.</li>
+<li>Parser accepts the required ChatGPT-mode envelope and retains only access token plus optional account ID in a redacted session envelope.</li>
+<li>Raw file, path, refresh token, ID token, account details, and original JSON are not copied, modified, displayed, or persisted.</li>
+</ul>
+<h3 id="cancelfailure-behavior">Cancel/failure behavior</h3>
+<ul>
+<li>Cancel returns to M14 unchanged and starts no save/network request.</li>
+<li>While the panel is active, Settings shows a small waiting indicator and disables another import.</li>
+<li>Invalid/oversized/unreadable data clears the candidate imported credential and shows a sanitized provider error.</li>
+<li>If the form switches kind or starts another import, a late result is ignored by its generation guard.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>CodexAuthFileImporter.swift:6-52</code>; <code>ProviderSettingsView.swift:345-399,635-640</code>; <code>CodexSessionCredential.swift:3-64</code>. Tests: <code>CodexProviderSettingsTests.swift:9-37</code>. <strong>Gap:</strong> no XCUITest of Open Panel keyboard navigation, sandbox prompt, or VoiceOver wording.</p>
+<hr />
+<h2 id="m16--appearance-and-layout-settings">M16 — Appearance and layout settings</h2>
+<p><strong>Status:</strong> Implemented detached edit buffer in durable Settings. Preference storage and semantic light/dark palettes are offline verified. Physical Follow-System transitions, IME variation, VoiceOver, and every supported macOS release remain manual gates.</p>
+<pre class="text"><code>┌────────────────── Appearance and layout ─────────────────────┐
+│ Appearance: [Dark / Light / Follow System ▾]                 │
+│ [x] Show sidebar                                             │
+│ [x] Show conversation details when space permits             │
+│ Saved on this Mac; divider widths persist separately…        │
+│ [Cancel Changes]                         [Save Appearance]    │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="fields-and-actions-1">Fields and actions</h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Appearance</td>
+<td><strong>Dark</strong>, <strong>Light</strong>, or <strong>Follow System</strong>. Default is Dark.</td>
+</tr>
+<tr>
+<td>Show sidebar</td>
+<td>Saved workspace-window preference.</td>
+</tr>
+<tr>
+<td>Show conversation details when space permits</td>
+<td>Preference, not a promise the inspector fits at narrow widths.</td>
+</tr>
+<tr>
+<td>Cancel Changes</td>
+<td>Restores draft from current saved preferences.</td>
+</tr>
+<tr>
+<td>Save Appearance</td>
+<td>Applies only appearance/sidebar/inspector flags and persists them.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="state-and-persistence">State and persistence</h3>
+<ul>
+<li>Draft is detached: changing controls does not live-apply.</li>
+<li>Save/Cancel enable only when dirty.</li>
+<li>Divider widths are not part of the form draft. Adjustments made while Settings is open survive a later appearance save.</li>
+<li>Widths clamp to sidebar <code>240...400</code> and inspector <code>280...440</code>; invalid stored values recover per field.</li>
+<li>Inspector automatically hides when the picker is open or width is insufficient, without erasing the user's preference. It returns when space permits.</li>
+<li>Preferences use local <code>UserDefaults</code> and are excluded from workspace export.</li>
+</ul>
+<h3 id="accessibility-and-input">Accessibility and input</h3>
+<p>IDs: <code>appearance-settings</code>, <code>workspace-appearance</code>, <code>preference-sidebar</code>, <code>preference-inspector</code>, <code>cancel-appearance-settings</code>, <code>save-appearance-settings</code>. Pane dividers expose <strong>Resize pane</strong>, point values, and adjustable increment/decrement. AppKit composer identity/text/selection are preserved across tested appearance changes; marked-text retention itself may follow OS behavior.</p>
+<p><strong>Evidence:</strong> <code>AppearanceSettingsSection.swift:3-53</code>; <code>WorkspaceLayout.swift:3-40</code>; <code>WorkspacePreferences.swift:4-131</code>; <code>WorkspaceView.swift:9-39,117-145</code>. Tests: <code>AppearanceWorkspaceTests.swift:8-127</code>, <code>WorkspacePreferencesTests.swift:11-121</code>, and <code>ThemeTests.swift:9-109</code>.</p>
+<hr />
+<h2 id="m17--workspace-export-section">M17 — Workspace export section</h2>
+<p><strong>Status:</strong> Implemented in durable Settings; disabled in preview/nonpersistent mode or during conflicting destructive/file operations. Export is JSON only; import/restore is not implemented.</p>
+<pre class="text"><code>Workspace export
+Save a JSON snapshot of all saved conversations, prompts, drafts,
+exact stored text-attachment bytes, routine history, provider endpoints…
+JSON with base64 attachment payloads · No import/restore yet ·
+Unsaved profile/provider edits are not included
+
+[Export Workspace…]  (spinner) Exporting…
+✓ Exported N conversations, M messages, … Stored credentials excluded.
+or
+⚠ Export did not complete. Check the destination…</code></pre>
+<h3 id="included">Included</h3>
+<ul>
+<li>all bots, including hidden;</li>
+<li>direct/group conversations with member order;</li>
+<li>all messages, attribution, replies, drafts, generations/partial state;</li>
+<li>routines and complete run history;</li>
+<li>allowlisted provider metadata: ID, name, kind, API root, model, loopback flag;</li>
+<li>exact referenced stored attachment metadata and bytes (base64 in JSON).</li>
+</ul>
+<h3 id="excluded-or-not-scrubbed">Excluded or not scrubbed</h3>
+<ul>
+<li>Credential references and values, auth files/tokens, Keychain content, and headers are excluded.</li>
+<li>Unsaved profile/provider edits, appearance preferences, and display name are excluded.</li>
+<li>Secrets the user typed into messages, prompts, names, endpoint paths, or attachments are ordinary content and are <strong>not</strong> scrubbed. UI warns to review before sharing.</li>
+<li>No import/restore exists; this is not a database backup.</li>
+</ul>
+<h3 id="availability">Availability</h3>
+<p><code>Export Workspace…</code> requires a persistent, opened repository and no loading, closing, exporting, bot deletion, attachment import/confirmation, or active deletion sheet. One export is claimed synchronously.</p>
+<p><strong>Evidence:</strong> <code>WorkspaceExportSection.swift:3-35</code>; <code>WorkspaceExportFlow.swift:16-41</code>; <code>WorkspaceExport.swift:3-21,92-180</code>. Tests: <code>WorkspaceExportFlowTests.swift:29-42,80-106</code> and <code>WorkspaceExportTests.swift:22-180</code>.</p>
+<hr />
+<h2 id="m18--export-destination--overwrite-confirmation">M18 — Export destination / overwrite confirmation</h2>
+<p><strong>Status:</strong> OS-owned asynchronous <code>NSSavePanel</code>. The app configures semantics, not exact pixel layout. Synthetic destination tests exist; physical external-folder selection, sandbox grant, overwrite UI, disk-full, and VoiceOver are unverified.</p>
+<pre class="text"><code>macOS Save Panel (layout and overwrite dialog owned by macOS)
+┌────────────────────── Export Workspace ──────────────────────┐
+│ Includes saved conversations, prompts, drafts and provider   │
+│ endpoints. Stored credentials are excluded. Review content…  │
+│                                                               │
+│ Save As: [BotWorkspace-export.json_______________________]    │
+│ Where:   [user-selected folder ▾]                             │
+│                                           [Cancel] [Save]      │
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<h3 id="contract">Contract</h3>
+<ul>
+<li>Allowed content type is JSON only; default filename is <code>BotWorkspace-export.json</code>; directories may be created.</li>
+<li>The panel attaches as a sheet when a key window without another sheet is available; otherwise it is app-modal.</li>
+<li>macOS owns existing-file overwrite confirmation.</li>
+<li>Cancel means no export-driven draft flush, snapshot, encoding, or write.</li>
+<li>Pending choice is cancelled by quit. Once a destination is accepted and writing has begun, close/reconnect waits for completion.</li>
+<li>Only a file URL with <code>.json</code> is accepted. Existing destination must be a regular file with one hard link; symlinks, hard-linked aliases, directories, and non-file URLs fail.</li>
+<li>Write uses Foundation atomic replacement, not an fsync/crash-durability guarantee. A private trusted folder is required; preflight is not a descriptor-based defense against malicious concurrent path replacement.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>WorkspaceExportDestination.swift:5-81</code>; <code>WorkspaceExportFlow.swift:42-78</code>. Tests: <code>WorkspaceExportFlowTests.swift:9-78,198-278</code> and <code>WorkspaceExportFileWriterTests.swift:7-130</code>.</p>
+<hr />
+<h2 id="m19--export-progress-success-and-failure">M19 — Export progress, success, and failure</h2>
+<p><strong>Status:</strong> Implemented inline in M17. Offline end-to-end snapshot/encode/temp-file write is verified; large real workspaces are not benchmarked.</p>
+<h3 id="flow">Flow</h3>
+<pre class="text"><code>M17 Export button
+   ↓ claim single flight
+M18 destination chooser
+   ├─ Cancel → idle, no status/error, no export-driven flush/write
+   └─ Accept
+       ↓ flush latest drafts
+       ↓ capture one repository revision
+       ↓ encode deterministic JSON (100 MiB default limit)
+       ↓ validate destination + atomic write
+       ├─ success → counts shown, credentials-excluded reminder
+       └─ failure → sanitized actionable error, no success claim</code></pre>
+<h3 id="status-contract">Status contract</h3>
+<ul>
+<li>During the entire chooser/export operation the button is disabled and shows spinner plus <strong>Exporting…</strong>.</li>
+<li>Success reports conversation, message, routine-history, attachment count/bytes, and <strong>Stored credentials excluded</strong>. It never reports the chosen path.</li>
+<li>Known size errors retain their exact safe count/limit wording. Arbitrary filesystem errors become the generic destination/space/save-status message and do not leak paths.</li>
+<li>Workspace change before write invalidates the export. A late callback cannot write the old snapshot into a newly connected workspace's state.</li>
+<li>Draft flush failure writes nothing, keeps the draft dirty for retry, and reports no success.</li>
+<li>Format version/source schema are currently 3. Default final encoded-size limit is 100 MiB and fails without truncation.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>WorkspaceExportFlow.swift:4-97</code>; <code>WorkspaceExportSection.swift:19-33</code>; <code>WorkspaceExport.swift:72-97</code>. Tests: <code>WorkspaceExportFlowTests.swift:9-278</code> and <code>WorkspaceExportFileWriterTests.swift:7-130</code>.</p>
+<hr />
+<h2 id="m20--routine-management-family">M20 — Routine management family</h2>
+<p><strong>Status:</strong> Implemented only in persistent workspaces. Scheduling and provider activity run only while the app is open and the Mac is awake. Offline scheduler/provider fixtures cover the execution state machine. Physical sleep/wake, live provider billing/account behavior, VoiceOver, and full keyboard traversal remain unverified.</p>
+<h3 id="m20-entry-map">M20 entry map</h3>
+<ul>
+<li>Enter the routine list from the inspector <strong>Routines</strong> section.</li>
+<li>Inspector <strong>+</strong> or header <strong>Routines → Add Routine…</strong> opens M20A.</li>
+<li>Selecting a routine in either list opens M20B.</li>
+<li>A direct chat preselects its bot as the new owner. A group requires an explicit member owner. Output always belongs to that owner's direct chat, never the group.</li>
+</ul>
+<pre class="text"><code>Inspector
+┌──────────────────────── Routines ────────────────────────────┐
+│ Routines                                                 (+) │
+│ ◷ Daily review                                               │
+│   Daily 09:00 · Asia/Bangkok                                 │
+│   Owner: Alpha · direct chat       (shown for group context) │
+│   Enabled · while app is awake                                │
+│   Next: Sep 11, 9:00 AM                                       │
+│                                                               │
+│ No runs while app is closed, Mac asleep, or logged out.      │
+└───────────────────────────────────────────────────────────────┘</code></pre>
+<p><strong>Evidence:</strong> <code>RoutineViews.swift:4-65</code>; <code>RoutineWorkspace.swift:21-56</code>.</p>
+<h3 id="m20a--newedit-routine">M20A — New/Edit Routine</h3>
+<pre class="text"><code>┌──────────────────────── New Routine ─────────────────────────┐
+│                                                       (×)    │
+│ Name      [ Daily review_______________________________ ]    │
+│ Prompt    [____________________________________________ ]    │
+│           [____________________________________________ ]    │
+│                                             120 / 32,000     │
+│ Owner     [ Alpha ▾ ]       (locked for existing routine)    │
+│ Schedule  [ Interval | Daily ]                                │
+│ Interval: [60] minutes [stepper]    OR Hour [09] Minute [00] │
+│ Time zone [ Asia/Bangkok ▾ ]                                 │
+│ Provider  [ Work — model-id ▾ ]                              │
+│ [ ] Enable automatic runs                                    │
+│ ┌──────── Paused destination approval / Auto disclosure ──┐ │
+│ │ prompt + up to 100 recent owner-chat messages → root/model│ │
+│ └───────────────────────────────────────────────────────────┘ │
+│ [ ] I approve/authorize this prompt and destination binding  │
+│ ⚠ validation/save error                     [Reload latest] │
+├──────────────────────────────────────────────────────────────┤
+│                               [Cancel] [Save]                │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h4 id="fields-and-validation-1">Fields and validation</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name</td>
+<td>Trimmed 1–80 characters.</td>
+</tr>
+<tr>
+<td>Prompt</td>
+<td>Nonempty after trimming; original prompt length at most 32,000 characters.</td>
+</tr>
+<tr>
+<td>Owner</td>
+<td>New routine: visible member explicitly chosen (direct chat may preselect). Existing routine: immutable and picker disabled.</td>
+</tr>
+<tr>
+<td>Interval</td>
+<td>5–525,600 minutes. Interval uses elapsed time across DST.</td>
+</tr>
+<tr>
+<td>Daily</td>
+<td>Hour 0–23 and minute 0–59 in selected named IANA timezone.</td>
+</tr>
+<tr>
+<td>Time zone</td>
+<td><code>UTC</code> or a known named IANA zone; no silent local/fixed-offset substitution.</td>
+</tr>
+<tr>
+<td>Provider</td>
+<td>Optional only while paused. Lists saved providers sorted by name with model.</td>
+</tr>
+<tr>
+<td>Enable automatic runs</td>
+<td>Requires provider and current disclosure authorization.</td>
+</tr>
+</tbody>
+</table>
+<h4 id="consent-and-detached-state-contract">Consent and detached-state contract</h4>
+<ul>
+<li>New form defaults: interval 60 minutes, current named timezone, paused, no provider.</li>
+<li>Saving a paused routine with no provider sends nothing and needs no authorization.</li>
+<li>A paused routine with a new/changed prompt, owner, or provider binding requires <strong>I approve this prompt and destination binding</strong>. This consent still sends nothing.</li>
+<li>Enabled save always requires <strong>I authorize these automatic transmissions</strong>.</li>
+<li>Disclosure states: exact prompt, up to 100 recent messages from owner's direct chat, destination, model, possible charges, and awake/open-only limit.</li>
+<li>Any relevant form change clears consent. Provider metadata drift also clears consent, even if the selected provider ID is unchanged.</li>
+<li>A changed provider binding during/after accepted save keeps the form open for review.</li>
+</ul>
+<h4 id="dirty-save-and-conflict-states">Dirty, save, and conflict states</h4>
+<ul>
+<li>Loading existing routine shows <strong>Loading routine…</strong>.</li>
+<li>Invalid form shows inline warning and disables Save.</li>
+<li>Cancel/Escape/close while dirty opens <strong>Discard unsaved routine changes?</strong>.</li>
+<li>Reload on dirty error asks <strong>Reload the latest routine?</strong> and clearly says edits are discarded.</li>
+<li>Accepted save is synchronously owned; quit waits. Newer edits made during save remain dirty with <strong>Saved. Newer edits remain in this form.</strong></li>
+<li>Existing stale routine/profile/binding conflicts do not overwrite newer state.</li>
+</ul>
+<h4 id="keyboard-and-accessibility-5">Keyboard and accessibility</h4>
+<ul>
+<li>Name focuses after load. Cancel/Escape share dirty-aware behavior; Save is default.</li>
+<li>IDs: <code>routine-close</code>, <code>routine-name</code>, <code>routine-prompt</code>, <code>routine-owner</code>, <code>routine-trigger</code>, <code>routine-interval-minutes</code>, <code>routine-interval-stepper</code>, <code>routine-daily-time</code>, <code>routine-timezone</code>, <code>routine-provider</code>, <code>routine-enabled</code>, <code>routine-transmission-disclosure</code>, <code>routine-authorize-transmission</code>, <code>routine-validation-error</code>, <code>routine-save-error</code>, <code>routine-reload-latest</code>, <code>routine-cancel</code>, <code>routine-save</code>.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>RoutineEditorView.swift:37-187,189-353,355-483,554-781</code>; <code>RoutineWorkspace.swift:38-112</code>. Tests: <code>RoutineEditorTests.swift:23-299</code> and <code>RoutineWorkspaceTests.swift:56-69,209-284</code>.</p>
+<h3 id="m20b--routine-detail-controls-status-and-history">M20B — Routine detail, controls, status, and history</h3>
+<pre class="text"><code>┌──────────────────── Daily review ───────────────────── [Done]┐
+│ Owner: Alpha. Output goes to this bot&#39;s direct chat.         │
+│ Daily 09:00 · Asia/Bangkok                                   │
+│ &lt;selectable prompt&gt;                                          │
+│ Sends prompt + up to 100 messages → provider/model…          │
+│ Next planned: …   OR   Paused — no scheduled runs.           │
+│ [Edit] [Run Now] [Pause | Resume…]                 [Delete…] │
+│ ⚠ routine error                                              │
+│ ──────────────────────────────────────────────────────────── │
+│ Run history                                      [Refresh]   │
+│ Latest 100 records plus any active run.                       │
+│ ┌ Completed | Manual                         timestamp      ┐ │
+│ │ destination host · model                                  │ │
+│ │ [Open owner&#39;s chat]                                       │ │
+│ └───────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<h4 id="controls">Controls</h4>
+<ul>
+<li><strong>Edit:</strong> opens M20A nested over detail.</li>
+<li><strong>Run Now:</strong> opens M20C. Disabled while another routine action exists or any displayed run is nonterminal.</li>
+<li><strong>Pause:</strong> prevents new scheduled runs and clears next-run time; it does not stop an already active run.</li>
+<li><strong>Resume…:</strong> opens M20A so destination/automatic consent is reviewed; it does not silently toggle on.</li>
+<li><strong>Delete…:</strong> asynchronously computes exact routine/run impact, then opens M20D.</li>
+<li><strong>Done/Escape:</strong> closes detail only when nested editor is absent.</li>
+</ul>
+<h4 id="historystatus">History/status</h4>
+<ul>
+<li>Shows latest 100 records plus any active run that fell outside the chronological page (for example after clock rollback), so Stop remains reachable.</li>
+<li>Status labels are the persisted typed status, plus Manual/Scheduled/Scheduled summary.</li>
+<li>Nonterminal run exposes <strong>Stop</strong>; Stop preserves partial text and rejects late deltas.</li>
+<li>Shows created timestamp, typed human-readable failure, skipped occurrence range, credential-free provider host/model binding, and <strong>Open owner's chat</strong> when available.</li>
+<li>Detail refreshes roughly once per second while open; failure stops the loop and shows sanitized routine error.</li>
+</ul>
+<p>Failure labels explicitly distinguish missing/changed provider, missing/invalid credential, login required, unavailable/rate limited/invalid response, attachments not supported, output/storage/schedule failure, cancelled/interrupted, and superseded occurrences. There is no automatic network retry.</p>
+<p><strong>Evidence:</strong> <code>RoutineViews.swift:67-195,229-282</code>; <code>RoutineWorkspace.swift:49-77,124-150,169-210,243-288</code>. Tests: <code>RoutineWorkspaceTests.swift:70-207,230-331</code> and <code>RoutineExecutionTests.swift:66-470</code>.</p>
+<h3 id="m20c--run-now-consent">M20C — Run Now consent</h3>
+<pre class="text"><code>┌──────────────────── Run this routine now? ───────────────────┐
+│ Sends this prompt and up to 100 recent messages from Alpha&#39;s │
+│ direct chat to &lt;destination&gt;, model &lt;model&gt;. Charges may…    │
+│ This is one new run, even while paused. Calendar unchanged.  │
+│                                      [Cancel] [Run Now]       │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<ul>
+<li>One-time explicit authorization for the captured routine definition.</li>
+<li>Works while paused and does not move/enable the calendar schedule.</li>
+<li>Scheduler rechecks definition/provider binding after credential I/O; drift blocks transmission rather than borrowing current composer selection.</li>
+<li>Output and run history go to owner's direct chat. Existing equal-text draft and group draft remain.</li>
+<li>Missing/changed binding creates visible blocked history; no fake success.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>RoutineViews.swift:196-213,252-259</code>; <code>RoutineWorkspace.swift:114-122</code>. Tests: <code>RoutineWorkspaceTests.swift:70-123</code> and <code>RoutineExecutionTests.swift:66-165,199-236</code>.</p>
+<h3 id="m20d--delete-routine-confirmation">M20D — Delete routine confirmation</h3>
+<pre class="text"><code>┌────────────── Delete routine and its history? ───────────────┐
+│ Delete “Daily review” and all 12 history records.             │
+│ 1 active run will be stopped. Chat messages/drafts are kept. │
+│ Future scheduling is paused first; failed deletion remains…  │
+│                              [Cancel] [Stop and Delete]       │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+<ul>
+<li>Exact confirmation contains routine name, run-history count, and active-run count.</li>
+<li>Destructive label is <strong>Delete</strong> with no active runs, otherwise <strong>Stop and Delete</strong>.</li>
+<li>Accepted deletion first atomically pauses future scheduling against the confirmed history set, stops active runs, then deletes definition/history.</li>
+<li>Chat messages and drafts remain.</li>
+<li>If deletion fails after pause, routine remains paused for explicit review.</li>
+<li>New history between plan and delete invalidates the operation rather than widening consent silently.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>RoutineViews.swift:214-228</code>; <code>RoutineWorkspace.swift:139-167</code>. Tests: <code>RoutineWorkspaceTests.swift:152-193</code> and <code>RoutineRepositoryTests.swift:49-80,164-192</code>.</p>
+<h3 id="routine-execution-boundary">Routine execution boundary</h3>
+<pre class="text"><code>App launch / Mac wake
+        ↓ reconcile due schedules
+enabled routine + bound provider + available credential
+        ↓ atomically claim one occurrence/run
+        ↓ send prompt + ≤100 owner-direct-chat messages
+        ↓ stream attributed reply into owner&#39;s direct chat
+        ↓ terminal run history + next occurrence
+
+App closed / Mac asleep / logged out
+        └─ no runs; on return, missed intervals coalesce instead of burst replay</code></pre>
+<ul>
+<li>No daemon/remote worker is supplied. The app makes no 24/7 execution claim.</li>
+<li>Wake reconciliation chooses at most the latest due occurrence and records skipped ranges instead of catch-up bursts.</li>
+<li>Restart marks unfinished claims interrupted and never silently resubmits them.</li>
+<li>Routine and interactive chat share the provider coordinator's concurrency cap.</li>
+<li>Provider credentials are resolved at execution time but never added to routine records or export.</li>
+</ul>
+<p><strong>Evidence:</strong> <code>RoutineWorkspace.swift:213-241</code>; <code>RoutineHost.swift:1-68</code>; <code>RoutineSchedule.swift:1-191</code>; tests in <code>RoutineScheduleTests.swift:11-215</code>, <code>RoutineExecutionTests.swift:66-470</code>, and <code>RoutineWorkspaceTests.swift:124-150,312-331</code>.</p>
+<hr />
+<h2 id="cross-screen-close-and-operation-ownership">Cross-screen close and operation ownership</h2>
+<pre class="text"><code>User closes window / quits
+          ↓
+pending export chooser? ── cancel chooser
+accepted export write? ─── wait; failure keeps app open
+accepted bot delete? ───── wait; failure keeps app open
+accepted routine save? ─── wait, then recheck newer dirty edits
+dirty routine form? ────── confirm discard
+accepted profile save? ─── wait, then recheck newer dirty edits
+dirty profile form? ────── confirm discard
+provider save? ─────────── wait/block close
+dirty Settings? ────────── confirm discard
+draft/storage flush? ───── attempt; failure keeps recovery visible</code></pre>
+<p>Authoritative implementation: <code>NativeShellApp.swift:153-205,1386-1450</code>, <code>ProviderWorkspace.swift:392-430</code>, plus operation-specific workspaces cited above.</p>
+<h2 id="persistence-and-network-matrix">Persistence and network matrix</h2>
+<table>
+<thead>
+<tr>
+<th>Screen</th>
+<th style="text-align: right;">Workspace write</th>
+<th style="text-align: right;">Preference write</th>
+<th style="text-align: right;">Credential access</th>
+<th style="text-align: right;">Network</th>
+<th>Explicit consent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M01</td>
+<td style="text-align: right;">Selection may flush drafts</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>No</td>
+</tr>
+<tr>
+<td>M02</td>
+<td style="text-align: right;">Create group</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>Create action</td>
+</tr>
+<tr>
+<td>M03</td>
+<td style="text-align: right;">Create bot + direct chat</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>Create action</td>
+</tr>
+<tr>
+<td>M04/M05</td>
+<td style="text-align: right;">CAS profile/group update</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>Save; dirty discard separate</td>
+</tr>
+<tr>
+<td>M08</td>
+<td style="text-align: right;">Transactional destructive delete</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Does not read/delete shared provider credentials</td>
+<td style="text-align: right;">May cancel already-started affected transport; no new request</td>
+<td>Exact impact + explicit Delete Bot</td>
+</tr>
+<tr>
+<td>M10/M11</td>
+<td style="text-align: right;">No by template alone</td>
+<td style="text-align: right;">Session show-hidden toggle only</td>
+<td style="text-align: right;">Entered form state cleared on close/switch</td>
+<td style="text-align: right;">No</td>
+<td>Dirty discard</td>
+</tr>
+<tr>
+<td>M12</td>
+<td style="text-align: right;">Provider metadata</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Keychain or process-memory write</td>
+<td style="text-align: right;">No connection test</td>
+<td>Save and use</td>
+</tr>
+<tr>
+<td>M13</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Explicit credential-free local <code>GET /models</code></td>
+<td>Discover click</td>
+</tr>
+<tr>
+<td>M14/M15</td>
+<td style="text-align: right;">Provider metadata on Save</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">User-selected file read once; process memory only</td>
+<td style="text-align: right;">No connection test</td>
+<td>File Import, then Save</td>
+</tr>
+<tr>
+<td>M16</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Local preferences</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td>Save Appearance</td>
+</tr>
+<tr>
+<td>M17–M19</td>
+<td style="text-align: right;">Flush drafts; read atomic snapshot</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Never reads credential store</td>
+<td style="text-align: right;">No</td>
+<td>Export click + OS destination/overwrite</td>
+</tr>
+<tr>
+<td>M20A</td>
+<td style="text-align: right;">Routine definition</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No on save</td>
+<td style="text-align: right;">No on save</td>
+<td>Binding/automatic disclosure checkbox when required</td>
+</tr>
+<tr>
+<td>M20B/C</td>
+<td style="text-align: right;">Run history/messages/control state</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Reads bound credential at run time</td>
+<td style="text-align: right;">Run Now or enabled schedule</td>
+<td>One-run alert or prior automatic authorization</td>
+</tr>
+<tr>
+<td>M20D</td>
+<td style="text-align: right;">Pause + delete routine/history</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">No</td>
+<td style="text-align: right;">Stops active run transport</td>
+<td>Exact delete alert</td>
+</tr>
+</tbody>
+</table>
+<h2 id="keyboard-and-accessibility-matrix">Keyboard and accessibility matrix</h2>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Keyboard contract</th>
+<th>Accessibility contract</th>
+<th>Known gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M01/M02</td>
+<td>Query focus; Up/Down; Return selects; <code>⌘Return</code> creates group; Escape closes</td>
+<td>Named result/chip actions and stable query/create IDs</td>
+<td>No physical keyboard/VoiceOver automation</td>
+</tr>
+<tr>
+<td>M03</td>
+<td>Cancel/default Create; Escape via workspace</td>
+<td>Named color buttons; stable name/create IDs</td>
+<td>No dirty warning; no explicit initial focus</td>
+</tr>
+<tr>
+<td>M04–M07</td>
+<td>First field focus; Escape/Cancel; Return default Save; alerts are role-labeled</td>
+<td>Headers, validation/errors, member actions, stable IDs</td>
+<td>Physical VoiceOver focus restoration unverified</td>
+</tr>
+<tr>
+<td>M08/M09</td>
+<td>Escape/Cancel before accept; destructive action intentionally has no default Return</td>
+<td>Stable sheet/delete/reload/repair IDs</td>
+<td>Context menu and post-delete focus not physically automated</td>
+</tr>
+<tr>
+<td>M10–M16</td>
+<td><code>⌘,</code>; default provider Save; native window close; standard picker/text behavior</td>
+<td>Stable IDs for all provider, discovery, Codex, and appearance controls</td>
+<td>Full tab order, OS panels, VoiceOver manual</td>
+</tr>
+<tr>
+<td>M17–M19</td>
+<td>Standard native Save Panel keyboard behavior is OS-owned</td>
+<td>Stable export button; status/error selectable</td>
+<td>OS overwrite/sandbox/VoiceOver not automated</td>
+</tr>
+<tr>
+<td>M20</td>
+<td>First-field focus; Escape/Cancel; default Save; Done is cancel action</td>
+<td>Stable editor/detail/control IDs and named Stop action</td>
+<td>Full traversal and physical sleep/wake manual</td>
+</tr>
+</tbody>
+</table>
+<h2 id="implemented-versus-open-product-boundaries">Implemented versus open product boundaries</h2>
+<h3 id="implemented-and-offline-verified">Implemented and offline verified</h3>
+<ul>
+<li>Durable bot/group creation, edit CAS, dirty discard, conflict reload, and group repair.</li>
+<li>Confirmed bot deletion with exact record counts and safe group/history retention.</li>
+<li>Manual provider configuration, explicit credential lifetimes, replacement-only secret entry, credential-free local model discovery, and experimental Codex file import.</li>
+<li>Detached appearance preferences and responsive saved pane layout.</li>
+<li>Versioned JSON export with exact referenced text-attachment bytes and credential exclusion.</li>
+<li>Routine create/edit, destination consent, awake-only schedule, Run Now, Pause/Resume, Stop, typed history, and confirmed deletion.</li>
+</ul>
+<h3 id="implemented-but-liveunverified">Implemented but live/unverified</h3>
+<ul>
+<li>Real provider compatibility/account/model availability and billing behavior.</li>
+<li>Production-signed Keychain behavior across distribution/update identities.</li>
+<li>Real Codex session compatibility beyond synthetic fixtures.</li>
+<li>Real local-router discovery/chat beyond URLProtocol/offline fixture evidence.</li>
+<li>External Save/Open Panel sandbox grants and overwrite flow.</li>
+<li>Physical sleep/wake, macOS 14 runtime matrix, VoiceOver, full keyboard traversal, IME behavior across every appearance transition, disk-full/power-loss, and hostile shared-folder races.</li>
+</ul>
+<h3 id="not-implemented">Not implemented</h3>
+<ul>
+<li>Workspace import/restore.</li>
+<li>Provider connection-test button or account/model entitlement verification.</li>
+<li>Provider deletion UI.</li>
+<li>Automatic discovery/import of Codex credentials, token refresh, or logout.</li>
+<li>Background/24×7 routine worker while the app is closed or the Mac sleeps.</li>
+<li>Undo for confirmed bot or routine deletion.</li>
+<li>A live computer/desktop management screen; the workspace inspector remains a separate disconnected placeholder unless another feature supplies such a service.</li>
+<li>Dirty-discard confirmation in M03 create-bot form.</li>
+<li>Corrected provider Settings disclosure for implemented confirmed text-attachment transmission; the current view still says attachments are never sent.</li>
+</ul>
+<h2 id="verification-commands">Verification commands</h2>
+<p>These commands validate the management implementation without using a live provider or the user's real workspace:</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> test</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> provider-smoke</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> deletion-smoke</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> routine-smoke</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> export-smoke</span></code></pre></div>
+<p>The smoke commands render real native views against isolated fixtures. They do not prove physical mouse/keyboard interaction, OS-owned panel traversal, live credentials, paid network calls, or production distribution. See <code>docs/PROVIDER-SETUP.md</code>, <code>docs/BOT-DELETION.md</code>, <code>docs/ROUTINES.md</code>, <code>docs/APPEARANCE.md</code>, and <code>docs/WORKSPACE-EXPORT.md</code> for subsystem-level contracts and their remaining gates.</p>
+</main></body></html>

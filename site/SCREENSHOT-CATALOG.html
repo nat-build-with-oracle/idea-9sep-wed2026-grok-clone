@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Screenshot catalog and visual evidence index · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/SCREENSHOT-CATALOG.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="screenshot-catalog-and-visual-evidence-index">Screenshot catalog and visual evidence index</h1>
+<p><strong>Captured:</strong> 2026-09-10, from source <code>ab2c2f3</code>; <strong>24 scenarios passed</strong>, producing <strong>62 emitted snapshot records → 58 PNG files → 50 distinct SHA-256 raster contents</strong>. Counts are not counts of independently implemented screens. Four appearance paths are emitted twice; several generic final-state names alias a specific already-captured state.</p>
+<p>Open the <a href="screenshots/index.html">offline, searchable gallery</a> locally, or use the image links below in Markdown. <a href="screenshots/manifest.json">Machine-readable manifest</a>. Return to the <a href="FEATURE-ATLAS.html">feature atlas</a>.</p>
+<h2 id="what-these-images-are">What these images are</h2>
+<ul>
+<li>Original SwiftUI/AppKit native-window <strong>renders</strong> from our sample/offline smoke app, not screenshots of Grok Bot, the real Mac desktop, or a provider account.</li>
+<li>The native renderer captures its own window view, including AppKit titlebar bounds. Manifest width/height are PNG pixels; a <code>--minimum</code> 760×600-point content request does not mean the PNG is exactly 760×600 pixels.</li>
+<li>All durable scenarios use temporary repositories and fake credentials/providers. Sample picker/chat scenarios intentionally use the non-durable sample bundle. The <code>unread</code> scenario explicitly injects foreground state.</li>
+<li>The fixed 24-scenario script never invokes live Codex stdin, a real model catalog, normal app data, or user reference images. It copies PNG bytes unchanged.</li>
+<li>Every file has dimension/hash verification. A separate visual review inspected 22 representative files; it did not inspect every variant or prove interaction. Its material limitations are recorded below, not hidden.</li>
+<li>No accessibility permission was granted/changed for this task. A read-only System Events check reported UI automation unavailable, so OS dialogs and missing interactive-only views were not fabricated or captured from the user workspace.</li>
+</ul>
+<h2 id="screen-to-evidence-map">Screen-to-evidence map</h2>
+<p>Every documented native screen/state has either an actual scenario or an explicit capture gap. Where W and M describe the same surface from different workflow angles, they share evidence rather than inflate screenshot counts.</p>
+<table>
+<thead>
+<tr>
+<th>Screen IDs</th>
+<th>Surface</th>
+<th>Actual scenario(s)</th>
+<th>Coverage / limitation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>W01</td>
+<td>Desktop shell</td>
+<td>workspace; sample-chat</td>
+<td>Wide synthetic workspace, not private reference content; first-run/no-selection substate is source/ASCII-only, not captured.</td>
+</tr>
+<tr>
+<td>W02</td>
+<td>Minimum shell</td>
+<td>workspace-minimum; appearance-minimum</td>
+<td>Actual 760×600 content request; inspector collapsed.</td>
+</tr>
+<tr>
+<td>W03</td>
+<td>Sidebar/search/activity/hidden</td>
+<td>unread; workspace</td>
+<td>Unread before/after covered; search-result and hidden-menu-specific states not captured.</td>
+</tr>
+<tr>
+<td>W04</td>
+<td>Direct conversation/actions</td>
+<td>sample-chat; provider-chat</td>
+<td>Sample direct transcript + durable group-provider response; message action popover not captured.</td>
+</tr>
+<tr>
+<td>W05</td>
+<td>Ordered group recipients</td>
+<td>group-round; group-round-minimum</td>
+<td>Light/Dark composer and review.</td>
+</tr>
+<tr>
+<td>W06</td>
+<td>Group mentions</td>
+<td>mention; mention-minimum</td>
+<td>Light/Dark composer, ambiguous/identity review, invalid mention recovery.</td>
+</tr>
+<tr>
+<td>W07 / M01</td>
+<td>New chat picker</td>
+<td>sample-picker</td>
+<td>Sample-only recipient picker; shared native view, no durable creation interaction claim.</td>
+</tr>
+<tr>
+<td>W08 / M02</td>
+<td>Group builder</td>
+<td>sample-group-picker</td>
+<td>Sample two-recipient selection, not full keyboard/transaction proof.</td>
+</tr>
+<tr>
+<td>W09</td>
+<td>Reply workflow</td>
+<td>reply</td>
+<td>Available reply reference/composer; loading/unavailable/jump variants not captured.</td>
+</tr>
+<tr>
+<td>W10</td>
+<td>Attachment chips/import</td>
+<td>attachment</td>
+<td>Post-fixture-send workspace and consent; no dedicated OS picker/progress/error capture.</td>
+</tr>
+<tr>
+<td>W11</td>
+<td>Transmission review</td>
+<td>attachment; group-round; mention</td>
+<td>Distinct file/ordered-group/mention consent views; source determines exact trigger.</td>
+</tr>
+<tr>
+<td>W12</td>
+<td>Generation lifecycle</td>
+<td>provider-chat; codex-chat</td>
+<td>Completed offline responses only; active/failed/cancelled/interrupted states lack dedicated renders.</td>
+</tr>
+<tr>
+<td>W13 / C01</td>
+<td>Disconnected computer</td>
+<td>workspace; sample-chat</td>
+<td>Static disconnected inspector; never use reference desktops or external services as implemented evidence.</td>
+</tr>
+<tr>
+<td>W14</td>
+<td>Marketplace/templates</td>
+<td>none</td>
+<td>No existing snapshot mode; ASCII + source contract only.</td>
+</tr>
+<tr>
+<td>W15</td>
+<td>Local display profile</td>
+<td>none</td>
+<td>No dedicated render; ASCII + source contract only.</td>
+</tr>
+<tr>
+<td>W16 / M04</td>
+<td>Edit Bot</td>
+<td>edit-bot</td>
+<td>Complete fixture editor with Cancel/Save.</td>
+</tr>
+<tr>
+<td>W17 / M05</td>
+<td>Edit Group</td>
+<td>edit-group</td>
+<td>Fields/membership visible; capture cuts before footer.</td>
+</tr>
+<tr>
+<td>W18 / M09</td>
+<td>Degraded group</td>
+<td>deletion</td>
+<td>degraded-group image exposes repair banner.</td>
+</tr>
+<tr>
+<td>W19</td>
+<td>Global loading/storage failure</td>
+<td>none</td>
+<td>No deterministic renderer for these error overlays; documented state contract only.</td>
+</tr>
+<tr>
+<td>M03</td>
+<td>Create Bot</td>
+<td>none</td>
+<td>Edit Bot is NOT a Create Bot capture; separate ASCII/source contract.</td>
+</tr>
+<tr>
+<td>M06</td>
+<td>Profile discard alert</td>
+<td>none</td>
+<td>AppKit/SwiftUI confirmation behavior documented; no alert screenshot.</td>
+</tr>
+<tr>
+<td>M07</td>
+<td>Conflict/reload profile</td>
+<td>none</td>
+<td>No conflict render; code/test evidence and ASCII.</td>
+</tr>
+<tr>
+<td>M08</td>
+<td>Delete Bot confirmation</td>
+<td>deletion</td>
+<td>Impact/counts and destructive action disclosure.</td>
+</tr>
+<tr>
+<td>M10</td>
+<td>Settings shell</td>
+<td>provider-settings; appearance; export</td>
+<td>Multiple top-level/final-state views; scrollable sections cannot all be seen in one screenshot.</td>
+</tr>
+<tr>
+<td>M11</td>
+<td>Template/replacement review</td>
+<td>provider-settings; router-settings</td>
+<td>Provider selection/top viewport only; replacement confirmation not captured.</td>
+</tr>
+<tr>
+<td>M12</td>
+<td>Compatible provider fields</td>
+<td>provider-settings</td>
+<td>Top viewport only; complete lower-field layout is in ASCII/source, not this PNG.</td>
+</tr>
+<tr>
+<td>M13</td>
+<td>Local model discovery</td>
+<td>router-settings</td>
+<td>Offline scenario passes model catalog assertions; result controls below fold, not visually proven.</td>
+</tr>
+<tr>
+<td>M14</td>
+<td>Codex configuration</td>
+<td>codex-settings</td>
+<td>Provider kind visible; full credential controls below fold.</td>
+</tr>
+<tr>
+<td>M15</td>
+<td>Codex auth OS picker</td>
+<td>none</td>
+<td>OS-owned; synthetic importer tests do not screenshot its real file-selection/grant interaction.</td>
+</tr>
+<tr>
+<td>M16</td>
+<td>Appearance/pane settings</td>
+<td>appearance; appearance-minimum</td>
+<td>Light/Dark/System workspace + Settings; System matches host effective theme.</td>
+</tr>
+<tr>
+<td>M17 / M19</td>
+<td>Export section/result</td>
+<td>export</td>
+<td>Success/count/disclosure state; progress and failure not separately captured.</td>
+</tr>
+<tr>
+<td>M18</td>
+<td>JSON Save/overwrite</td>
+<td>none</td>
+<td>OS-owned; fixture injects destination instead of automating Save Panel.</td>
+</tr>
+<tr>
+<td>M20 / M20A</td>
+<td>Routine editor</td>
+<td>routine</td>
+<td>Complete fixture editor; family navigation described in ASCII.</td>
+</tr>
+<tr>
+<td>M20B</td>
+<td>Routine status/history</td>
+<td>routine</td>
+<td>Scrollable history viewport, not all records.</td>
+</tr>
+<tr>
+<td>M20C</td>
+<td>Run Now review</td>
+<td>none</td>
+<td>Not separately captured; cannot use editor screenshot as proof of this consent.</td>
+</tr>
+<tr>
+<td>M20D</td>
+<td>Delete routine review</td>
+<td>none</td>
+<td>Not separately captured; documented from source/test evidence.</td>
+</tr>
+<tr>
+<td>C02 / C03 / C04</td>
+<td>External terminal/proposed viewers</td>
+<td>none</td>
+<td>Not app-integrated. Private prior terminal capture was blank; proposed ASCII is explicitly labeled.</td>
+</tr>
+<tr>
+<td>R01–R08</td>
+<td>Original reference surfaces</td>
+<td>private archive</td>
+<td>Eight original private source images indexed separately, not bundled as app output.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="capture-limitations-and-duplicate-state-notes">Capture limitations and duplicate-state notes</h2>
+<ol type="1">
+<li><strong>Settings:</strong> provider/router/Codex screenshots show the top of the scrollable window, stopping as Connection begins. Full model, URL, key/import controls are documented in M12–M15, but not visually proven by those captures.</li>
+<li><strong>Group editor:</strong> its current capture lacks visible Cancel/Save footer. Do not call the screenshot a complete editor-layout acceptance pass.</li>
+<li><strong>Scrollable views:</strong> routine history, attachment metadata and the first reply transcript bubble are partly outside their viewports. Consent/footer controls are visible in attachment review; full metadata is not.</li>
+<li><strong>Small windows:</strong> truncated sidebar rows and partially scrolled transcript are expected viewport evidence; minimum composer visibility is demonstrated, not every row or focus event.</li>
+<li><strong>Aliases:</strong> <code>mention--desktop-durable-workspace.png</code> and its minimum variant duplicate the explicit invalid-Dark mention image. They are not baseline workspaces. Unread and appearance final generic aliases also represent their final scenario states, not empty/first-launch workspaces.</li>
+<li><strong>Theme duplicates:</strong> Follow System can produce the same pixels as Dark on this host. Repeated Light captures share filenames; the script records those repeated emitted paths but the gallery lists each file once.</li>
+<li><strong>Uncaptured states:</strong> Create Bot, Marketplace, local profile, hidden/search-specific menus, error overlays, transient discard/replace/run/delete confirmations, live streaming failure variants, and real OS panels remain source/ASCII-only in this dump. No fake image is supplied for them.</li>
+</ol>
+<h2 id="scenario-commands-and-measured-results">Scenario commands and measured results</h2>
+<p>All commands below were executed by the fixed capture runner in this audit. They use the current native scripts from the repository root.</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Command</th>
+<th>Exit</th>
+<th>Unique PNG paths</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sample-chat</td>
+<td><code>scripts/native-prototype.sh snapshot</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>sample-picker</td>
+<td><code>scripts/native-prototype.sh snapshot --picker</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>sample-group-picker</td>
+<td><code>scripts/native-prototype.sh snapshot --group</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>workspace</td>
+<td><code>scripts/native-app.sh smoke</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>workspace-minimum</td>
+<td><code>scripts/native-app.sh smoke --minimum</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>provider-chat</td>
+<td><code>scripts/native-app.sh provider-smoke</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>provider-settings</td>
+<td><code>scripts/native-app.sh provider-smoke --settings</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>router-settings</td>
+<td><code>scripts/native-app.sh provider-smoke --router-models</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>codex-chat</td>
+<td><code>scripts/native-app.sh codex-smoke</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>codex-settings</td>
+<td><code>scripts/native-app.sh codex-smoke --settings</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>edit-bot</td>
+<td><code>scripts/native-app.sh profile-smoke</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>edit-group</td>
+<td><code>scripts/native-app.sh profile-smoke --edit-group</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>reply</td>
+<td><code>scripts/native-app.sh reply-smoke</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>export</td>
+<td><code>scripts/native-app.sh export-smoke</code></td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>deletion</td>
+<td><code>scripts/native-app.sh deletion-smoke</code></td>
+<td>0</td>
+<td>2</td>
+</tr>
+<tr>
+<td>routine</td>
+<td><code>scripts/native-app.sh routine-smoke</code></td>
+<td>0</td>
+<td>2</td>
+</tr>
+<tr>
+<td>attachment</td>
+<td><code>scripts/native-app.sh attachment-smoke</code></td>
+<td>0</td>
+<td>2</td>
+</tr>
+<tr>
+<td>appearance</td>
+<td><code>scripts/native-app.sh appearance-smoke</code></td>
+<td>0</td>
+<td>7</td>
+</tr>
+<tr>
+<td>appearance-minimum</td>
+<td><code>scripts/native-app.sh appearance-smoke --minimum</code></td>
+<td>0</td>
+<td>7</td>
+</tr>
+<tr>
+<td>unread</td>
+<td><code>scripts/native-app.sh unread-smoke --fixture-foreground</code></td>
+<td>0</td>
+<td>4</td>
+</tr>
+<tr>
+<td>group-round</td>
+<td><code>scripts/native-app.sh group-smoke</code></td>
+<td>0</td>
+<td>3</td>
+</tr>
+<tr>
+<td>group-round-minimum</td>
+<td><code>scripts/native-app.sh group-smoke --minimum</code></td>
+<td>0</td>
+<td>3</td>
+</tr>
+<tr>
+<td>mention</td>
+<td><code>scripts/native-app.sh mention-smoke</code></td>
+<td>0</td>
+<td>7</td>
+</tr>
+<tr>
+<td>mention-minimum</td>
+<td><code>scripts/native-app.sh mention-smoke --minimum</code></td>
+<td>0</td>
+<td>7</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> scripts/capture-screen-atlas.py <span class="at">--list</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> scripts/capture-screen-atlas.py</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> scripts/verify-screen-atlas.py</span></code></pre></div>
+<p>Capture logs and raw output remain in the ignored local-only capture run directory. Publishing images requires separate review; the helper never stages, commits or uploads. Runtime tests were rerun with <code>scripts/native-app.sh test</code>: <strong>300 core + 264 native shell = 564 tests, zero failures</strong>, command exit 0. This is fresh offline evidence, not release, real-provider or physical OS-panel certification.</p>
+<h2 id="complete-png-inventory">Complete PNG inventory</h2>
+<p>Click any image link to see its full native render. Scenario labels and captions are part of the evidence contract; filenames alone can be misleading.</p>
+<h3 id="s01--sample-chat--desktop-chatpng">S01 — sample-chat--desktop-chat.png</h3>
+<p><a href="screenshots/sample-chat--desktop-chat.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>sample-chat</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s02--sample-picker--desktop-pickerpng">S02 — sample-picker--desktop-picker.png</h3>
+<p><a href="screenshots/sample-picker--desktop-picker.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>sample-picker</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s03--sample-group-picker--desktop-grouppng">S03 — sample-group-picker--desktop-group.png</h3>
+<p><a href="screenshots/sample-group-picker--desktop-group.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>sample-group-picker</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s04--workspace--desktop-durable-workspacepng">S04 — workspace--desktop-durable-workspace.png</h3>
+<p><a href="screenshots/workspace--desktop-durable-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>workspace</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s05--workspace-minimum--small-durable-workspacepng">S05 — workspace-minimum--small-durable-workspace.png</h3>
+<p><a href="screenshots/workspace-minimum--small-durable-workspace.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>workspace-minimum</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s06--provider-chat--desktop-provider-chatpng">S06 — provider-chat--desktop-provider-chat.png</h3>
+<p><a href="screenshots/provider-chat--desktop-provider-chat.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>provider-chat</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s07--provider-settings--desktop-provider-settingspng">S07 — provider-settings--desktop-provider-settings.png</h3>
+<p><a href="screenshots/provider-settings--desktop-provider-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>provider-settings</code></p>
+<p>Top-of-Settings viewport only. Connection/model/key controls continue below the fold; this is not full provider-field visual evidence.</p>
+<h3 id="s08--router-settings--desktop-router-model-settingspng">S08 — router-settings--desktop-router-model-settings.png</h3>
+<p><a href="screenshots/router-settings--desktop-router-model-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>router-settings</code></p>
+<p>Top-of-Settings viewport only. Router fixture selection is visible; discovered model controls below the fold are not shown.</p>
+<h3 id="s09--codex-chat--desktop-codex-chatpng">S09 — codex-chat--desktop-codex-chat.png</h3>
+<p><a href="screenshots/codex-chat--desktop-codex-chat.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>codex-chat</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s10--codex-settings--desktop-codex-settingspng">S10 — codex-settings--desktop-codex-settings.png</h3>
+<p><a href="screenshots/codex-settings--desktop-codex-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>codex-settings</code></p>
+<p>Top-of-Settings viewport only. Experimental provider selection is visible; auth/import controls below the fold are not shown.</p>
+<h3 id="s11--edit-bot--desktop-edit-botpng">S11 — edit-bot--desktop-edit-bot.png</h3>
+<p><a href="screenshots/edit-bot--desktop-edit-bot.png">Open native screenshot</a> · 480×553 PNG pixels · scenario <code>edit-bot</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s12--edit-group--desktop-edit-grouppng">S12 — edit-group--desktop-edit-group.png</h3>
+<p><a href="screenshots/edit-group--desktop-edit-group.png">Open native screenshot</a> · 480×553 PNG pixels · scenario <code>edit-group</code></p>
+<p>Group editor viewport is clipped before Cancel/Save footer; source/ASCII document those controls, this image does not prove footer visibility.</p>
+<h3 id="s13--reply--desktop-reply-chatpng">S13 — reply--desktop-reply-chat.png</h3>
+<p><a href="screenshots/reply--desktop-reply-chat.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>reply</code></p>
+<p>Reply reference/composer are visible; the first transcript bubble is clipped at the top viewport.</p>
+<h3 id="s14--export--desktop-export-settingspng">S14 — export--desktop-export-settings.png</h3>
+<p><a href="screenshots/export--desktop-export-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>export</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s15--deletion--desktop-delete-confirmationpng">S15 — deletion--desktop-delete-confirmation.png</h3>
+<p><a href="screenshots/deletion--desktop-delete-confirmation.png">Open native screenshot</a> · 500×411 PNG pixels · scenario <code>deletion</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s16--deletion--desktop-degraded-grouppng">S16 — deletion--desktop-degraded-group.png</h3>
+<p><a href="screenshots/deletion--desktop-degraded-group.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>deletion</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s17--routine--desktop-routine-editorpng">S17 — routine--desktop-routine-editor.png</h3>
+<p><a href="screenshots/routine--desktop-routine-editor.png">Open native screenshot</a> · 480×693 PNG pixels · scenario <code>routine</code></p>
+<p>Editor is complete; history capture stops partway through a record and does not show the full scrollable history.</p>
+<h3 id="s18--routine--desktop-routine-historypng">S18 — routine--desktop-routine-history.png</h3>
+<p><a href="screenshots/routine--desktop-routine-history.png">Open native screenshot</a> · 600×550 PNG pixels · scenario <code>routine</code></p>
+<p>Editor is complete; history capture stops partway through a record and does not show the full scrollable history.</p>
+<h3 id="s19--attachment--desktop-attachment-confirmationpng">S19 — attachment--desktop-attachment-confirmation.png</h3>
+<p><a href="screenshots/attachment--desktop-attachment-confirmation.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>attachment</code></p>
+<p>Consent is visible; attachment metadata continues below the visible scroll area/fixed footer. This is injected selection, not the real OS picker.</p>
+<h3 id="s20--attachment--desktop-durable-workspacepng">S20 — attachment--desktop-durable-workspace.png</h3>
+<p><a href="screenshots/attachment--desktop-durable-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>attachment</code></p>
+<p>Final state of this named fixture scenario, NOT a first-launch baseline. Consent is visible; attachment metadata continues below the visible scroll area/fixed footer. This is injected selection, not the real OS picker.</p>
+<h3 id="s21--appearance--desktop-appearance-light-workspacepng">S21 — appearance--desktop-appearance-light-workspace.png</h3>
+<p><a href="screenshots/appearance--desktop-appearance-light-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>appearance</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s22--appearance--desktop-appearance-light-settingspng">S22 — appearance--desktop-appearance-light-settings.png</h3>
+<p><a href="screenshots/appearance--desktop-appearance-light-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>appearance</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s23--appearance--desktop-appearance-dark-workspacepng">S23 — appearance--desktop-appearance-dark-workspace.png</h3>
+<p><a href="screenshots/appearance--desktop-appearance-dark-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>appearance</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s24--appearance--desktop-appearance-dark-settingspng">S24 — appearance--desktop-appearance-dark-settings.png</h3>
+<p><a href="screenshots/appearance--desktop-appearance-dark-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>appearance</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s25--appearance--desktop-appearance-system-workspacepng">S25 — appearance--desktop-appearance-system-workspace.png</h3>
+<p><a href="screenshots/appearance--desktop-appearance-system-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>appearance</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim. Identical PNG content to S23 (different alias/theme record).</p>
+<h3 id="s26--appearance--desktop-appearance-system-settingspng">S26 — appearance--desktop-appearance-system-settings.png</h3>
+<p><a href="screenshots/appearance--desktop-appearance-system-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>appearance</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s27--appearance--desktop-durable-workspacepng">S27 — appearance--desktop-durable-workspace.png</h3>
+<p><a href="screenshots/appearance--desktop-durable-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>appearance</code></p>
+<p>Final state of this named fixture scenario, NOT a first-launch baseline. Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s28--appearance-minimum--small-appearance-light-workspacepng">S28 — appearance-minimum--small-appearance-light-workspace.png</h3>
+<p><a href="screenshots/appearance-minimum--small-appearance-light-workspace.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits.</p>
+<h3 id="s29--appearance-minimum--small-appearance-light-settingspng">S29 — appearance-minimum--small-appearance-light-settings.png</h3>
+<p><a href="screenshots/appearance-minimum--small-appearance-light-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits. Identical PNG content to S22 (different alias/theme record).</p>
+<h3 id="s30--appearance-minimum--small-appearance-dark-workspacepng">S30 — appearance-minimum--small-appearance-dark-workspace.png</h3>
+<p><a href="screenshots/appearance-minimum--small-appearance-dark-workspace.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits.</p>
+<h3 id="s31--appearance-minimum--small-appearance-dark-settingspng">S31 — appearance-minimum--small-appearance-dark-settings.png</h3>
+<p><a href="screenshots/appearance-minimum--small-appearance-dark-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits. Identical PNG content to S24 (different alias/theme record).</p>
+<h3 id="s32--appearance-minimum--small-appearance-system-workspacepng">S32 — appearance-minimum--small-appearance-system-workspace.png</h3>
+<p><a href="screenshots/appearance-minimum--small-appearance-system-workspace.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits. Identical PNG content to S30 (different alias/theme record).</p>
+<h3 id="s33--appearance-minimum--small-appearance-system-settingspng">S33 — appearance-minimum--small-appearance-system-settings.png</h3>
+<p><a href="screenshots/appearance-minimum--small-appearance-system-settings.png">Open native screenshot</a> · 580×772 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits. Identical PNG content to S26 (different alias/theme record).</p>
+<h3 id="s34--appearance-minimum--small-durable-workspacepng">S34 — appearance-minimum--small-durable-workspace.png</h3>
+<p><a href="screenshots/appearance-minimum--small-durable-workspace.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>appearance-minimum</code></p>
+<p>Final state of this named fixture scenario, NOT a first-launch baseline. 760×600 content request; titlebar/raster pixels differ. Truncated sidebar text and offscreen transcript are viewport states; composer fits.</p>
+<h3 id="s35--unread--desktop-unread-dark-beforepng">S35 — unread--desktop-unread-dark-before.png</h3>
+<p><a href="screenshots/unread--desktop-unread-dark-before.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>unread</code></p>
+<p>Synthetic foreground gate explicitly injected; not proof of real active/key-window reading acknowledgement.</p>
+<h3 id="s36--unread--desktop-unread-light-beforepng">S36 — unread--desktop-unread-light-before.png</h3>
+<p><a href="screenshots/unread--desktop-unread-light-before.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>unread</code></p>
+<p>Synthetic foreground gate explicitly injected; not proof of real active/key-window reading acknowledgement.</p>
+<h3 id="s37--unread--desktop-unread-afterpng">S37 — unread--desktop-unread-after.png</h3>
+<p><a href="screenshots/unread--desktop-unread-after.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>unread</code></p>
+<p>Synthetic foreground gate explicitly injected; not proof of real active/key-window reading acknowledgement.</p>
+<h3 id="s38--unread--desktop-durable-workspacepng">S38 — unread--desktop-durable-workspace.png</h3>
+<p><a href="screenshots/unread--desktop-durable-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>unread</code></p>
+<p>Final state of this named fixture scenario, NOT a first-launch baseline. Synthetic foreground gate explicitly injected; not proof of real active/key-window reading acknowledgement.</p>
+<h3 id="s39--group-round--desktop-group-composer-lightpng">S39 — group-round--desktop-group-composer-light.png</h3>
+<p><a href="screenshots/group-round--desktop-group-composer-light.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>group-round</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s40--group-round--desktop-group-composer-darkpng">S40 — group-round--desktop-group-composer-dark.png</h3>
+<p><a href="screenshots/group-round--desktop-group-composer-dark.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>group-round</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s41--group-round--desktop-group-round-confirmationpng">S41 — group-round--desktop-group-round-confirmation.png</h3>
+<p><a href="screenshots/group-round--desktop-group-round-confirmation.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>group-round</code></p>
+<p>Synthetic native fixture render; no physical interaction or live provider claim.</p>
+<h3 id="s42--group-round-minimum--small-group-composer-lightpng">S42 — group-round-minimum--small-group-composer-light.png</h3>
+<p><a href="screenshots/group-round-minimum--small-group-composer-light.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>group-round-minimum</code></p>
+<p>Minimum-size window; recipient area is constrained/scrollable. This is rendered disclosure, not physical Send/Stop input.</p>
+<h3 id="s43--group-round-minimum--small-group-composer-darkpng">S43 — group-round-minimum--small-group-composer-dark.png</h3>
+<p><a href="screenshots/group-round-minimum--small-group-composer-dark.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>group-round-minimum</code></p>
+<p>Minimum-size window; recipient area is constrained/scrollable. This is rendered disclosure, not physical Send/Stop input.</p>
+<h3 id="s44--group-round-minimum--small-group-round-confirmationpng">S44 — group-round-minimum--small-group-round-confirmation.png</h3>
+<p><a href="screenshots/group-round-minimum--small-group-round-confirmation.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>group-round-minimum</code></p>
+<p>Minimum-size window; recipient area is constrained/scrollable. This is rendered disclosure, not physical Send/Stop input. Identical PNG content to S41 (different alias/theme record).</p>
+<h3 id="s45--mention--desktop-mention-composer-lightpng">S45 — mention--desktop-mention-composer-light.png</h3>
+<p><a href="screenshots/mention--desktop-mention-composer-light.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>mention</code></p>
+<p>Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames.</p>
+<h3 id="s46--mention--desktop-mention-composer-darkpng">S46 — mention--desktop-mention-composer-dark.png</h3>
+<p><a href="screenshots/mention--desktop-mention-composer-dark.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>mention</code></p>
+<p>Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames.</p>
+<h3 id="s47--mention--desktop-mention-confirmation-lightpng">S47 — mention--desktop-mention-confirmation-light.png</h3>
+<p><a href="screenshots/mention--desktop-mention-confirmation-light.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>mention</code></p>
+<p>Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames.</p>
+<h3 id="s48--mention--desktop-mention-confirmation-darkpng">S48 — mention--desktop-mention-confirmation-dark.png</h3>
+<p><a href="screenshots/mention--desktop-mention-confirmation-dark.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>mention</code></p>
+<p>Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames.</p>
+<h3 id="s49--mention--desktop-mention-invalid-lightpng">S49 — mention--desktop-mention-invalid-light.png</h3>
+<p><a href="screenshots/mention--desktop-mention-invalid-light.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>mention</code></p>
+<p>Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames.</p>
+<h3 id="s50--mention--desktop-mention-invalid-darkpng">S50 — mention--desktop-mention-invalid-dark.png</h3>
+<p><a href="screenshots/mention--desktop-mention-invalid-dark.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>mention</code></p>
+<p>Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames.</p>
+<h3 id="s51--mention--desktop-durable-workspacepng">S51 — mention--desktop-durable-workspace.png</h3>
+<p><a href="screenshots/mention--desktop-durable-workspace.png">Open native screenshot</a> · 1280×880 PNG pixels · scenario <code>mention</code></p>
+<p>Alias of invalid-Dark mention state, NOT a normal baseline workspace. Generic durable-workspace alias is the same invalid-Dark state, not a pristine workspace; use explicit mention filenames. Identical PNG content to S50 (different alias/theme record).</p>
+<h3 id="s52--mention-minimum--small-mention-composer-lightpng">S52 — mention-minimum--small-mention-composer-light.png</h3>
+<p><a href="screenshots/mention-minimum--small-mention-composer-light.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state.</p>
+<h3 id="s53--mention-minimum--small-mention-composer-darkpng">S53 — mention-minimum--small-mention-composer-dark.png</h3>
+<p><a href="screenshots/mention-minimum--small-mention-composer-dark.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state.</p>
+<h3 id="s54--mention-minimum--small-mention-confirmation-lightpng">S54 — mention-minimum--small-mention-confirmation-light.png</h3>
+<p><a href="screenshots/mention-minimum--small-mention-confirmation-light.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state.</p>
+<h3 id="s55--mention-minimum--small-mention-confirmation-darkpng">S55 — mention-minimum--small-mention-confirmation-dark.png</h3>
+<p><a href="screenshots/mention-minimum--small-mention-confirmation-dark.png">Open native screenshot</a> · 520×560 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state.</p>
+<h3 id="s56--mention-minimum--small-mention-invalid-lightpng">S56 — mention-minimum--small-mention-invalid-light.png</h3>
+<p><a href="screenshots/mention-minimum--small-mention-invalid-light.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state.</p>
+<h3 id="s57--mention-minimum--small-mention-invalid-darkpng">S57 — mention-minimum--small-mention-invalid-dark.png</h3>
+<p><a href="screenshots/mention-minimum--small-mention-invalid-dark.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state.</p>
+<h3 id="s58--mention-minimum--small-durable-workspacepng">S58 — mention-minimum--small-durable-workspace.png</h3>
+<p><a href="screenshots/mention-minimum--small-durable-workspace.png">Open native screenshot</a> · 760×632 PNG pixels · scenario <code>mention-minimum</code></p>
+<p>Alias of invalid-Dark mention state, NOT a normal baseline workspace. Minimum-size fixture. Explicit mention states are valid coverage; generic durable-workspace alias is the same invalid-Dark state. Identical PNG content to S57 (different alias/theme record).</p>
+</main></body></html>

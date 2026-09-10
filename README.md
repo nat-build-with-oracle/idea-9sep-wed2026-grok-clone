@@ -70,6 +70,51 @@ attribution; one account/time is not broad compatibility or release certificatio
 
 ## Architecture and contracts
 
+### Complete screen and feature documentation
+
+**[Browse the HTML feature atlas](https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/)**
+· **[Screenshot gallery](https://nat-build-with-oracle.github.io/idea-9sep-wed2026-grok-clone/screenshots/)**
+
+GitHub Pages serves static documentation and synthetic screenshots only—not the
+macOS app, a provider backend, or a remote terminal. No private reference images,
+memory vault, credentials, or local runtime artifacts are published to Pages.
+
+Start with the **[feature atlas](docs/FEATURE-ATLAS.md)**: screen-by-screen controls,
+ASCII layouts, navigation flows, data/endpoint contracts, and explicit implemented,
+reference-only and planned states. The [screenshot catalog](docs/SCREENSHOT-CATALOG.md)
+links 58 original synthetic native PNGs from 24 offline capture scenarios; an
+[offline gallery](docs/screenshots/index.html) is included. Private reference images
+remain excluded from public source. Missing captures and clipped/scrollable viewports
+are documented rather than presented as complete UI verification.
+
+- [Workspace screens](docs/SCREENS-WORKSPACE.md)
+- [Management and Settings screens](docs/SCREENS-MANAGEMENT.md)
+- [Original-reference ASCII archive](docs/REFERENCE-SCREENS.md)
+- [Computer/terminal boundary and proposed integration](docs/COMPUTER-TERMINAL-CONTRACT.md)
+
+### Publish static documentation
+
+The Pages workflow publishes an allowlisted HTML/synthetic-image artifact, never the
+repository root. After editing public contracts, regenerate the committed HTML with
+the existing local Pandoc tool; CI verifies freshness and needs only Python 3:
+
+```sh
+python3 -B scripts/build-pages.py --render
+python3 -B scripts/test-screen-atlas.py
+python3 -B scripts/test-build-pages.py
+python3 -B scripts/verify-screen-atlas.py
+python3 -B scripts/build-pages.py --check
+python3 -B scripts/build-pages.py --output _site
+```
+
+Choose a fresh output directory for subsequent local runs; nonempty output is
+intentionally not overwritten.
+
+Push the reviewed docs, generated `site/`, and publication scripts to `main` to run
+`.github/workflows/pages.yml`, or dispatch **Publish feature atlas** manually. The
+workflow must finish successfully before the public URL is ready. `_site/` is an
+ignored build artifact; no Pages server code or native app build runs there.
+
 ```text
 SwiftUI + AppKit → presentation adapter → WorkspaceRepository → Core Data
 

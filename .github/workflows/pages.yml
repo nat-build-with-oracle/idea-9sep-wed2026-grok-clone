@@ -1,0 +1,62 @@
+name: Publish feature atlas
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'scripts/build-pages.py'
+      - 'scripts/test-build-pages.py'
+      - 'scripts/verify-screen-atlas.py'
+      - 'scripts/capture-screen-atlas.py'
+      - 'scripts/test-screen-atlas.py'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - name: Check out public source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify atlas evidence
+        run: python3 -B scripts/verify-screen-atlas.py
+      - name: Test atlas completeness guards
+        run: python3 -B scripts/test-screen-atlas.py
+      - name: Test the publication boundary
+        run: python3 -B scripts/test-build-pages.py
+      - name: Verify generated HTML is current
+        run: python3 -B scripts/build-pages.py --check
+      - name: Assemble allowlisted static files
+        run: python3 -B scripts/build-pages.py --output _site
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Upload static site only
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

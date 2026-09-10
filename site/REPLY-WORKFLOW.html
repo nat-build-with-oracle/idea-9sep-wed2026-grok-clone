@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Native message replies · BotWorkspace</title><link rel="stylesheet" href="style.css"></head>
+<body><nav class="site-nav" aria-label="Site"><a href="index.html">Feature atlas</a><a href="SCREENS-WORKSPACE.html">Workspace screens</a><a href="SCREENS-MANAGEMENT.html">Management screens</a><a href="screenshots/">Screenshots</a><a class="source" href="https://github.com/nat-build-with-oracle/idea-9sep-wed2026-grok-clone/blob/main/docs/REPLY-WORKFLOW.md">View source on GitHub</a></nav>
+<main class="page"><p class="eyebrow">BotWorkspace product contract</p><h1 id="native-message-replies">Native message replies</h1>
+<p>Implemented in the durable SwiftUI/AppKit workspace and the sample-only preview. This advances R03/R04/UI-04; it does not complete attachments, export, routines, native accessibility certification, or the full rewrite contract.</p>
+<h2 id="user-flow">User flow</h2>
+<ul>
+<li><strong>Reply</strong> on a nonempty user/assistant message selects that message without sending anything or changing the draft text. Event rows are not reply targets.</li>
+<li>The composer shows the recorded sender and a bounded, whitespace-normalized excerpt. <strong>Cancel reply</strong> removes only the reference, not the draft text.</li>
+<li>References belong to their conversation. Switching chats does not carry a reply selection into another chat, and a late lookup cannot replace a newer selection.</li>
+<li>Selecting the reference opens its original message. Older pages are loaded back to that message without removing already visible or streamed rows. Navigation during the lookup cancels its authority to scroll the newly selected chat.</li>
+<li><strong>Copy</strong> copies one message's text. The old bulk conversation-copy control has been removed; replying does not copy anything to the clipboard.</li>
+</ul>
+<pre class="text"><code>Reply action → same-conversation parent lookup → text + reply ID in local draft
+                                                    │
+                                      debounce / switch / close → atomic save
+                                                    │
+Send → capture text + parent + draft version → validate parent before effects
+        │                                           │
+        │                         persisted user message + queued generation
+        │                                           │
+        │                                  explicit provider request
+        └─ newer draft/reference survives ← compare original version on return
+
+Restart → restore text + parent ID → resolve preview (no provider call)
+Retry   → reuse original persisted user message and its original reply parent</code></pre>
+<h2 id="persistence-and-request-contracts">Persistence and request contracts</h2>
+<p><code>Draft.replyToID</code>, <code>Message.replyToID</code>, and <code>SendCommand.replyToID</code> already existed in the v1 domain. This feature connects them to native presentation without a schema change. References must resolve to a nonempty, non-event message in the same conversation. Missing/foreign targets fail instead of silently becoming an unrelated send. Failed writes and missing providers retain the draft/reference.</p>
+<p>Draft versioning includes reply choices, not only text edits. The repository's atomic matching-draft clear compares text and parent identity; the presentation store also keeps a newer choice made during submission. Before replacing a repository, <code>connect()</code> joins old draft writers and flushes the old store, then reloads document-scoped state. It does not copy old drafts into a new store.</p>
+<p>Provider context contains the normal recent-message window and the explicit parent exactly once. An older parent outside that window is additionally included with its original role and text. Trusted application metadata identifies its non-system context-turn index; parent content is not promoted to a system instruction. The representation also works with the Codex adapter's separate instructions/input mapping. Existing request-size and transport limits still apply. The later <a href="ATTACHMENTS.html">attachment workflow</a> adds explicit file consent for reply context; neither feature adds tools or a private Grok/Cursor endpoint integration.</p>
+<p>Previews use recorded speaker names, not a renamed bot's current display name. Pending and unavailable parents have distinct states. Failed lookups are cached rather than repeated for every stream update, and explicitly reloading a conversation retries unavailable references. Active assistant parents may refresh as their text streams. Preview resolution performs repository reads only.</p>
+<h2 id="verification">Verification</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> test</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> reply-smoke</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">scripts/native-app.sh</span> reply-smoke <span class="at">--small</span></span></code></pre></div>
+<p>The offline native smoke uses only its own temporary workspace. It sends a fixture message, selects a reply, closes/reopens the actual SQLite store, checks restored text/reference/sender, sends the restored reply through a validating fixture provider, verifies its persisted reference and matching-draft clearing, then renders a new unsent reply draft. It does not read account credentials, contact a live endpoint, or touch the normal workspace.</p>
+<p>Regression coverage includes the previously reproducible loss of a restored reply reference after editing its text; old-parent context; invalid targets before credential/provider effects; retry; native restart, cancellation, stale lookups, failed writes, same-text/new-parent races, repository switching, overlapping page loads, and scoped presentation labels.</p>
+<p>Native fixtures exercise the real service/rendering path, not automated mouse or VoiceOver interaction. Large backfills still need the full 10k-message performance budget, and IME/keyboard/VoiceOver/XCUITest coverage remains an explicit open gate.</p>
+</main></body></html>
