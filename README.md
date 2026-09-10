@@ -198,6 +198,110 @@ The public gallery contains only synthetic BotWorkspace renders: 58 PNG files fr
 offline scenarios. It does not publish user-supplied reference screenshots, private
 runtime state, credentials, or infrastructure configuration.
 
+<!-- UI_ATLAS_START -->
+## UI atlas — every captured native screen
+
+The README now includes every one of the **58 unique synthetic native UI renders**.
+Click a thumbnail for the original PNG, or open the [searchable interactive gallery](docs/screenshots/index.html).
+These are isolated offline fixtures—not live provider output, private reference images, or proof of physical mouse/keyboard behavior.
+
+<details>
+<summary>Show all 58 UI renders</summary>
+
+<table>
+<tr>
+  <td align="center"><a href="docs/screenshots/sample-chat--desktop-chat.png"><img src="docs/screenshots/sample-chat--desktop-chat.png" alt="sample-chat · sample-chat--desktop-chat.png" width="190"></a><br><sub><code>sample-chat</code><br>sample-chat--desktop-chat.png</sub></td>
+  <td align="center"><a href="docs/screenshots/sample-picker--desktop-picker.png"><img src="docs/screenshots/sample-picker--desktop-picker.png" alt="sample-picker · sample-picker--desktop-picker.png" width="190"></a><br><sub><code>sample-picker</code><br>sample-picker--desktop-picker.png</sub></td>
+  <td align="center"><a href="docs/screenshots/sample-group-picker--desktop-group.png"><img src="docs/screenshots/sample-group-picker--desktop-group.png" alt="sample-group-picker · sample-group-picker--desktop-group.png" width="190"></a><br><sub><code>sample-group-picker</code><br>sample-group-picker--desktop-group.png</sub></td>
+  <td align="center"><a href="docs/screenshots/workspace--desktop-durable-workspace.png"><img src="docs/screenshots/workspace--desktop-durable-workspace.png" alt="workspace · workspace--desktop-durable-workspace.png" width="190"></a><br><sub><code>workspace</code><br>workspace--desktop-durable-workspace.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/workspace-minimum--small-durable-workspace.png"><img src="docs/screenshots/workspace-minimum--small-durable-workspace.png" alt="workspace-minimum · workspace-minimum--small-durable-workspace.png" width="190"></a><br><sub><code>workspace-minimum</code><br>workspace-minimum--small-durable-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/provider-chat--desktop-provider-chat.png"><img src="docs/screenshots/provider-chat--desktop-provider-chat.png" alt="provider-chat · provider-chat--desktop-provider-chat.png" width="190"></a><br><sub><code>provider-chat</code><br>provider-chat--desktop-provider-chat.png</sub></td>
+  <td align="center"><a href="docs/screenshots/provider-settings--desktop-provider-settings.png"><img src="docs/screenshots/provider-settings--desktop-provider-settings.png" alt="provider-settings · provider-settings--desktop-provider-settings.png" width="190"></a><br><sub><code>provider-settings</code><br>provider-settings--desktop-provider-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/router-settings--desktop-router-model-settings.png"><img src="docs/screenshots/router-settings--desktop-router-model-settings.png" alt="router-settings · router-settings--desktop-router-model-settings.png" width="190"></a><br><sub><code>router-settings</code><br>router-settings--desktop-router-model-settings.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/codex-chat--desktop-codex-chat.png"><img src="docs/screenshots/codex-chat--desktop-codex-chat.png" alt="codex-chat · codex-chat--desktop-codex-chat.png" width="190"></a><br><sub><code>codex-chat</code><br>codex-chat--desktop-codex-chat.png</sub></td>
+  <td align="center"><a href="docs/screenshots/codex-settings--desktop-codex-settings.png"><img src="docs/screenshots/codex-settings--desktop-codex-settings.png" alt="codex-settings · codex-settings--desktop-codex-settings.png" width="190"></a><br><sub><code>codex-settings</code><br>codex-settings--desktop-codex-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/edit-bot--desktop-edit-bot.png"><img src="docs/screenshots/edit-bot--desktop-edit-bot.png" alt="edit-bot · edit-bot--desktop-edit-bot.png" width="190"></a><br><sub><code>edit-bot</code><br>edit-bot--desktop-edit-bot.png</sub></td>
+  <td align="center"><a href="docs/screenshots/edit-group--desktop-edit-group.png"><img src="docs/screenshots/edit-group--desktop-edit-group.png" alt="edit-group · edit-group--desktop-edit-group.png" width="190"></a><br><sub><code>edit-group</code><br>edit-group--desktop-edit-group.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/reply--desktop-reply-chat.png"><img src="docs/screenshots/reply--desktop-reply-chat.png" alt="reply · reply--desktop-reply-chat.png" width="190"></a><br><sub><code>reply</code><br>reply--desktop-reply-chat.png</sub></td>
+  <td align="center"><a href="docs/screenshots/export--desktop-export-settings.png"><img src="docs/screenshots/export--desktop-export-settings.png" alt="export · export--desktop-export-settings.png" width="190"></a><br><sub><code>export</code><br>export--desktop-export-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/deletion--desktop-delete-confirmation.png"><img src="docs/screenshots/deletion--desktop-delete-confirmation.png" alt="deletion · deletion--desktop-delete-confirmation.png" width="190"></a><br><sub><code>deletion</code><br>deletion--desktop-delete-confirmation.png</sub></td>
+  <td align="center"><a href="docs/screenshots/deletion--desktop-degraded-group.png"><img src="docs/screenshots/deletion--desktop-degraded-group.png" alt="deletion · deletion--desktop-degraded-group.png" width="190"></a><br><sub><code>deletion</code><br>deletion--desktop-degraded-group.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/routine--desktop-routine-editor.png"><img src="docs/screenshots/routine--desktop-routine-editor.png" alt="routine · routine--desktop-routine-editor.png" width="190"></a><br><sub><code>routine</code><br>routine--desktop-routine-editor.png</sub></td>
+  <td align="center"><a href="docs/screenshots/routine--desktop-routine-history.png"><img src="docs/screenshots/routine--desktop-routine-history.png" alt="routine · routine--desktop-routine-history.png" width="190"></a><br><sub><code>routine</code><br>routine--desktop-routine-history.png</sub></td>
+  <td align="center"><a href="docs/screenshots/attachment--desktop-attachment-confirmation.png"><img src="docs/screenshots/attachment--desktop-attachment-confirmation.png" alt="attachment · attachment--desktop-attachment-confirmation.png" width="190"></a><br><sub><code>attachment</code><br>attachment--desktop-attachment-confirmation.png</sub></td>
+  <td align="center"><a href="docs/screenshots/attachment--desktop-durable-workspace.png"><img src="docs/screenshots/attachment--desktop-durable-workspace.png" alt="attachment · attachment--desktop-durable-workspace.png" width="190"></a><br><sub><code>attachment</code><br>attachment--desktop-durable-workspace.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-appearance-light-workspace.png"><img src="docs/screenshots/appearance--desktop-appearance-light-workspace.png" alt="appearance · appearance--desktop-appearance-light-workspace.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-appearance-light-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-appearance-light-settings.png"><img src="docs/screenshots/appearance--desktop-appearance-light-settings.png" alt="appearance · appearance--desktop-appearance-light-settings.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-appearance-light-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-appearance-dark-workspace.png"><img src="docs/screenshots/appearance--desktop-appearance-dark-workspace.png" alt="appearance · appearance--desktop-appearance-dark-workspace.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-appearance-dark-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-appearance-dark-settings.png"><img src="docs/screenshots/appearance--desktop-appearance-dark-settings.png" alt="appearance · appearance--desktop-appearance-dark-settings.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-appearance-dark-settings.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-appearance-system-workspace.png"><img src="docs/screenshots/appearance--desktop-appearance-system-workspace.png" alt="appearance · appearance--desktop-appearance-system-workspace.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-appearance-system-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-appearance-system-settings.png"><img src="docs/screenshots/appearance--desktop-appearance-system-settings.png" alt="appearance · appearance--desktop-appearance-system-settings.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-appearance-system-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance--desktop-durable-workspace.png"><img src="docs/screenshots/appearance--desktop-durable-workspace.png" alt="appearance · appearance--desktop-durable-workspace.png" width="190"></a><br><sub><code>appearance</code><br>appearance--desktop-durable-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-appearance-light-workspace.png"><img src="docs/screenshots/appearance-minimum--small-appearance-light-workspace.png" alt="appearance-minimum · appearance-minimum--small-appearance-light-workspace.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-appearance-light-workspace.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-appearance-light-settings.png"><img src="docs/screenshots/appearance-minimum--small-appearance-light-settings.png" alt="appearance-minimum · appearance-minimum--small-appearance-light-settings.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-appearance-light-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-appearance-dark-workspace.png"><img src="docs/screenshots/appearance-minimum--small-appearance-dark-workspace.png" alt="appearance-minimum · appearance-minimum--small-appearance-dark-workspace.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-appearance-dark-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-appearance-dark-settings.png"><img src="docs/screenshots/appearance-minimum--small-appearance-dark-settings.png" alt="appearance-minimum · appearance-minimum--small-appearance-dark-settings.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-appearance-dark-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-appearance-system-workspace.png"><img src="docs/screenshots/appearance-minimum--small-appearance-system-workspace.png" alt="appearance-minimum · appearance-minimum--small-appearance-system-workspace.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-appearance-system-workspace.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-appearance-system-settings.png"><img src="docs/screenshots/appearance-minimum--small-appearance-system-settings.png" alt="appearance-minimum · appearance-minimum--small-appearance-system-settings.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-appearance-system-settings.png</sub></td>
+  <td align="center"><a href="docs/screenshots/appearance-minimum--small-durable-workspace.png"><img src="docs/screenshots/appearance-minimum--small-durable-workspace.png" alt="appearance-minimum · appearance-minimum--small-durable-workspace.png" width="190"></a><br><sub><code>appearance-minimum</code><br>appearance-minimum--small-durable-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/unread--desktop-unread-dark-before.png"><img src="docs/screenshots/unread--desktop-unread-dark-before.png" alt="unread · unread--desktop-unread-dark-before.png" width="190"></a><br><sub><code>unread</code><br>unread--desktop-unread-dark-before.png</sub></td>
+  <td align="center"><a href="docs/screenshots/unread--desktop-unread-light-before.png"><img src="docs/screenshots/unread--desktop-unread-light-before.png" alt="unread · unread--desktop-unread-light-before.png" width="190"></a><br><sub><code>unread</code><br>unread--desktop-unread-light-before.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/unread--desktop-unread-after.png"><img src="docs/screenshots/unread--desktop-unread-after.png" alt="unread · unread--desktop-unread-after.png" width="190"></a><br><sub><code>unread</code><br>unread--desktop-unread-after.png</sub></td>
+  <td align="center"><a href="docs/screenshots/unread--desktop-durable-workspace.png"><img src="docs/screenshots/unread--desktop-durable-workspace.png" alt="unread · unread--desktop-durable-workspace.png" width="190"></a><br><sub><code>unread</code><br>unread--desktop-durable-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/group-round--desktop-group-composer-light.png"><img src="docs/screenshots/group-round--desktop-group-composer-light.png" alt="group-round · group-round--desktop-group-composer-light.png" width="190"></a><br><sub><code>group-round</code><br>group-round--desktop-group-composer-light.png</sub></td>
+  <td align="center"><a href="docs/screenshots/group-round--desktop-group-composer-dark.png"><img src="docs/screenshots/group-round--desktop-group-composer-dark.png" alt="group-round · group-round--desktop-group-composer-dark.png" width="190"></a><br><sub><code>group-round</code><br>group-round--desktop-group-composer-dark.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/group-round--desktop-group-round-confirmation.png"><img src="docs/screenshots/group-round--desktop-group-round-confirmation.png" alt="group-round · group-round--desktop-group-round-confirmation.png" width="190"></a><br><sub><code>group-round</code><br>group-round--desktop-group-round-confirmation.png</sub></td>
+  <td align="center"><a href="docs/screenshots/group-round-minimum--small-group-composer-light.png"><img src="docs/screenshots/group-round-minimum--small-group-composer-light.png" alt="group-round-minimum · group-round-minimum--small-group-composer-light.png" width="190"></a><br><sub><code>group-round-minimum</code><br>group-round-minimum--small-group-composer-light.png</sub></td>
+  <td align="center"><a href="docs/screenshots/group-round-minimum--small-group-composer-dark.png"><img src="docs/screenshots/group-round-minimum--small-group-composer-dark.png" alt="group-round-minimum · group-round-minimum--small-group-composer-dark.png" width="190"></a><br><sub><code>group-round-minimum</code><br>group-round-minimum--small-group-composer-dark.png</sub></td>
+  <td align="center"><a href="docs/screenshots/group-round-minimum--small-group-round-confirmation.png"><img src="docs/screenshots/group-round-minimum--small-group-round-confirmation.png" alt="group-round-minimum · group-round-minimum--small-group-round-confirmation.png" width="190"></a><br><sub><code>group-round-minimum</code><br>group-round-minimum--small-group-round-confirmation.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/mention--desktop-mention-composer-light.png"><img src="docs/screenshots/mention--desktop-mention-composer-light.png" alt="mention · mention--desktop-mention-composer-light.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-mention-composer-light.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention--desktop-mention-composer-dark.png"><img src="docs/screenshots/mention--desktop-mention-composer-dark.png" alt="mention · mention--desktop-mention-composer-dark.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-mention-composer-dark.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention--desktop-mention-confirmation-light.png"><img src="docs/screenshots/mention--desktop-mention-confirmation-light.png" alt="mention · mention--desktop-mention-confirmation-light.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-mention-confirmation-light.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention--desktop-mention-confirmation-dark.png"><img src="docs/screenshots/mention--desktop-mention-confirmation-dark.png" alt="mention · mention--desktop-mention-confirmation-dark.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-mention-confirmation-dark.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/mention--desktop-mention-invalid-light.png"><img src="docs/screenshots/mention--desktop-mention-invalid-light.png" alt="mention · mention--desktop-mention-invalid-light.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-mention-invalid-light.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention--desktop-mention-invalid-dark.png"><img src="docs/screenshots/mention--desktop-mention-invalid-dark.png" alt="mention · mention--desktop-mention-invalid-dark.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-mention-invalid-dark.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention--desktop-durable-workspace.png"><img src="docs/screenshots/mention--desktop-durable-workspace.png" alt="mention · mention--desktop-durable-workspace.png" width="190"></a><br><sub><code>mention</code><br>mention--desktop-durable-workspace.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-mention-composer-light.png"><img src="docs/screenshots/mention-minimum--small-mention-composer-light.png" alt="mention-minimum · mention-minimum--small-mention-composer-light.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-mention-composer-light.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-mention-composer-dark.png"><img src="docs/screenshots/mention-minimum--small-mention-composer-dark.png" alt="mention-minimum · mention-minimum--small-mention-composer-dark.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-mention-composer-dark.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-mention-confirmation-light.png"><img src="docs/screenshots/mention-minimum--small-mention-confirmation-light.png" alt="mention-minimum · mention-minimum--small-mention-confirmation-light.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-mention-confirmation-light.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-mention-confirmation-dark.png"><img src="docs/screenshots/mention-minimum--small-mention-confirmation-dark.png" alt="mention-minimum · mention-minimum--small-mention-confirmation-dark.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-mention-confirmation-dark.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-mention-invalid-light.png"><img src="docs/screenshots/mention-minimum--small-mention-invalid-light.png" alt="mention-minimum · mention-minimum--small-mention-invalid-light.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-mention-invalid-light.png</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-mention-invalid-dark.png"><img src="docs/screenshots/mention-minimum--small-mention-invalid-dark.png" alt="mention-minimum · mention-minimum--small-mention-invalid-dark.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-mention-invalid-dark.png</sub></td>
+  <td align="center"><a href="docs/screenshots/mention-minimum--small-durable-workspace.png"><img src="docs/screenshots/mention-minimum--small-durable-workspace.png" alt="mention-minimum · mention-minimum--small-durable-workspace.png" width="190"></a><br><sub><code>mention-minimum</code><br>mention-minimum--small-durable-workspace.png</sub></td>
+</tr>
+</table>
+
+</details>
+<!-- UI_ATLAS_END -->
+
 ## Architecture
 
 ```text
