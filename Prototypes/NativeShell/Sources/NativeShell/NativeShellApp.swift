@@ -1361,8 +1361,21 @@ import WorkspaceCore
       settingsWindow.makeKeyAndOrderFront(nil)
       return
     }
+    // Size relative to the visible screen instead of a fixed 580x740, so the
+    // window has room to show the full form (Connection/Provider fields included)
+    // without relying on scroll gestures that some input methods don't deliver
+    // reliably to this NSHostingView. Clamped to the view's own minSize below
+    // and a sane upper bound so it doesn't balloon on very large displays.
+    let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
+    let settingsWidth = min(max(screenFrame.width * 0.55, 520), 900)
+    // Use nearly the full visible height (minus a small margin so the title
+    // bar and traffic lights aren't flush against the menu bar) rather than a
+    // fixed fraction — on a small display (e.g. 1280x800 points) 85% of the
+    // screen is smaller than this window used to be by default, defeating the
+    // point of sizing to the screen at all.
+    let settingsHeight = min(max(screenFrame.height - 40, 620), 1200)
     let settings = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 580, height: 740),
+      contentRect: NSRect(x: 0, y: 0, width: settingsWidth, height: settingsHeight),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
     )
     settings.title = "Bot Workspace Settings"
