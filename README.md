@@ -1,8 +1,5 @@
 # BotWorkspace
 
-<p align="center">
-  <img src="docs/assets/botworkspace-cover.png" alt="BotWorkspace — an independent open-source native Mac app concept cover" width="760">
-</p>
 
 <p align="center">
   <strong>An independent, open-source native macOS workspace for named AI teammates.</strong><br>
